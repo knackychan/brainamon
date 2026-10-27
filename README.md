@@ -1,25 +1,22 @@
-# Brainamp
+# Brainamon
 
-Releases of Brainamp, a local-first desktop library for the posts you save (Facebook Reels,
-Instagram, Reddit, YouTube): thumbnails and captions, AI descriptions and video analysis, search by
-meaning, notes, canvases, and Jarvis, an assistant that answers from everything you saved.
+A private, local-first library for the posts, videos and links you want to keep. Brainamon runs on your Windows PC and helps you organize your saves, search notes, create canvases, and ask Wiskit questions about your library.
 
-This repository only holds the Windows installers. The source code is kept elsewhere.
+## Download for Windows
 
-## Install
+[Download the latest Brainamon installer](https://github.com/knackychan/brainamon/releases/latest) · [All releases](https://github.com/knackychan/brainamon/releases)
 
-Download `Brainamp-Setup-<version>.exe` from the latest release and run it. It installs for your
-Windows user only, with no admin rights, to `%LOCALAPPDATA%\Programs\Brainamp`.
+Run the installer and follow the setup prompts. Windows may show an unknown-publisher warning. Brainamon checks future updates with a signed release manifest and installs them when you choose.
 
-Windows SmartScreen may say the publisher is unknown, because the installer is not code-signed.
-Check the file before running it: its SHA-256 must match the `.sha256` file published with it.
+## What it does
 
-```powershell
-Get-FileHash .\Brainamp-Setup-<version>.exe -Algorithm SHA256
-```
+- Save and organize links, posts and videos in a library on your PC.
+- Search your library, write notes, make canvases, and export to Obsidian.
+- Use Wiskit to ask questions about your saved material. AI features require your own provider or supported account.
+- Use the Android companion app with a paired PC or in standalone mode. Phone sync requires a license and Google Drive.
 
-## Updates
+Your library and settings stay under your control. Some features connect to services you choose, such as AI providers and Google Drive. See the [privacy policy](https://www.fredtomas.com/brainamon/privacy/).
 
-Brainamp checks this repository's latest release once per start and in Settings > App. An update
-is only downloaded and installed when you click, and only after its SHA-256 matches. Your library
-lives outside the install folder, so updates and uninstalling never touch it.
+The application source and support materials are maintained privately. This repository contains the public download page and release files.
+
+

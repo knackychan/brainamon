@@ -118,4 +118,6 @@ For support or privacy requests, contact [me@fredtomas.com](mailto:me@fredtomas.
 
 The application source and support materials are maintained privately. This repository contains the public presentation site (`docs/`, published with GitHub Pages), the download page and release files.
 
+Enjoying Brainamon? It is made by one person. You can [support it on Ko-fi](https://ko-fi.com/fredtomas).
+
 Made by Frederic TOMAS.

@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brainamon: your saved reels, finally useful</title>
+<meta name="description" content="Brainamon turns the reels, posts and videos you saved on Facebook, Instagram, Reddit and YouTube into a private library on your PC, with an AI assistant, video reports, notes, canvases and an Android app.">
+<meta property="og:title" content="Brainamon">
+<meta property="og:description" content="Your saved reels, finally useful. A private library on your PC, an assistant that cites its sources, and your library on your phone.">
+<meta property="og:image" content="https://knackychan.github.io/brainamon/img/cover.jpg">
+<meta property="og:image:width" content="1920">
+<meta property="og:image:height" content="1080">
+<meta name="twitter:card" content="summary_large_image">
+<meta property="og:type" content="website">
+<link rel="canonical" href="https://www.fredtomas.com/brainamon/">
+<link rel="icon" href="img/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<meta name="theme-color" content="#ffffff">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500;600&family=DotGothic16&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#123456;          /* the wordmark's navy */
+  --ink-2:#3d5570;
+  --ink-3:#5d7186;
+  --line:#e3e7ec;
+  --line-2:#cfd6de;
+  --paper:#ffffff;
+  --mist:#f5f7f9;
+  --orange:#e8542f;       /* the wordmark's "mon" */
+  --orange-ink:#c7401d;
+  --teal:#1f7a68;         /* the library felt */
+  --teal-deep:#145447;
+  --cream:#ede6d6;
+  --yellow:#ffd23f;
+  --display:'Archivo','Noto Sans TC','Helvetica Neue',Arial,sans-serif;
+  --body:'Archivo','Noto Sans TC','Helvetica Neue',Arial,sans-serif;
+  --mono:'IBM Plex Mono','Noto Sans TC',ui-monospace,Consolas,monospace;
+  --pixel:'DotGothic16','IBM Plex Mono',monospace;
+  --shadow-shot:0 1px 2px rgba(18,52,86,.06),0 8px 24px -6px rgba(18,52,86,.14),0 32px 64px -24px rgba(18,52,86,.22);
+  --ease:cubic-bezier(.16,1,.3,1);
+  --gut:clamp(16px,4vw,40px);
+  --max:1240px;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth;scroll-padding-top:84px}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.6 var(--body);font-variation-settings:'wdth' 100;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;overflow-x:clip}
+html[lang="zh-Hant"] body{font-family:'Noto Sans TC',var(--body);line-height:1.75}
+::selection{background:var(--yellow);color:var(--ink)}
+:focus-visible{outline:2px solid var(--orange);outline-offset:3px;border-radius:6px}
+img{display:block;max-width:100%;height:auto}
+a{color:inherit;text-decoration-thickness:1px;text-underline-offset:.22em}
+html{scrollbar-color:var(--line-2) transparent}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:10px;border:2px solid #fff}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 var(--gut)}
+.mono{font-family:var(--mono)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- header ---------- */
+.top{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.86);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid transparent;transition:border-color .3s}
+.top.scrolled{border-bottom-color:var(--line)}
+.top .wrap{display:flex;align-items:center;gap:20px;height:68px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;flex:none}
+.brand svg{height:22px;width:auto}
+.nav{display:flex;gap:4px;margin-left:auto;align-items:center}
+.nav a{font:500 14px/1 var(--body);text-decoration:none;color:var(--ink-2);padding:10px 12px;border-radius:8px;transition:background .2s,color .2s}
+.nav a:hover{background:var(--mist);color:var(--ink)}
+.lang{display:flex;border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px;flex:none}
+.lang button{all:unset;cursor:pointer;font:500 12px/1 var(--mono);padding:7px 10px;border-radius:999px;color:var(--ink-3);transition:background .2s,color .2s}
+.lang button[aria-pressed="true"]{background:var(--ink);color:#fff}
+.lang button:hover:not([aria-pressed="true"]){color:var(--ink)}
+.lang button:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+.top .btn{flex:none}
+@media (max-width:880px){.nav a.hide-s{display:none}}
+@media (max-width:640px){.nav{display:none}.top .wrap{gap:12px}.lang{margin-left:auto}.top .btn span.l{display:none}}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;gap:10px;font:600 15px/1 var(--body);text-decoration:none;border-radius:12px;padding:15px 20px;transition:transform .25s var(--ease),background .2s,box-shadow .25s var(--ease),color .2s;white-space:nowrap}
+.btn svg{width:18px;height:18px;flex:none}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--orange);color:#fff;box-shadow:0 1px 0 rgba(255,255,255,.25) inset,0 6px 16px -6px rgba(232,84,47,.55)}
+.btn-primary:hover{background:var(--orange-ink);box-shadow:0 1px 0 rgba(255,255,255,.25) inset,0 10px 22px -8px rgba(232,84,47,.6)}
+.btn-dark{background:var(--ink);color:#fff;box-shadow:0 6px 16px -8px rgba(18,52,86,.6)}
+.btn-dark:hover{background:#0b2540}
+.btn-ghost{color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-2)}
+.btn-ghost:hover{box-shadow:inset 0 0 0 1px var(--ink-3);background:var(--mist)}
+.btn-sm{padding:11px 14px;font-size:14px;border-radius:10px}
+.btn small{display:block;font:500 11px/1 var(--mono);opacity:.75;letter-spacing:.02em;margin-bottom:4px}
+.btn .stack{display:flex;flex-direction:column;align-items:flex-start;line-height:1.05}
+
+/* ---------- hero ---------- */
+.hero{padding:clamp(48px,8vw,104px) 0 0;position:relative}
+.hero h1{font:800 clamp(44px,8.4vw,112px)/.92 var(--display);font-variation-settings:'wdth' 112;letter-spacing:-.04em;margin:0;max-width:11.5em;text-wrap:balance}
+html[lang="zh-Hant"] .hero h1{font-weight:900;letter-spacing:-.02em;line-height:1.08;font-size:clamp(40px,7vw,92px)}
+.hero h1 em{font-style:normal;color:var(--orange);position:relative;white-space:nowrap}
+.hero h1 em::after{content:"";position:absolute;left:.02em;right:.04em;bottom:.02em;height:.09em;background:var(--yellow);z-index:-1;transform-origin:left;animation:mark 1.1s .5s var(--ease) both}
+@keyframes mark{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.hero-row{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:clamp(24px,5vw,72px);align-items:end;margin-top:clamp(24px,3.4vw,40px)}
+.lead{font-size:clamp(18px,1.6vw,21px);line-height:1.55;color:var(--ink-2);margin:0;max-width:36em;text-wrap:pretty}
+.ctas{display:flex;flex-wrap:wrap;gap:12px;justify-content:flex-end}
+.reassure{display:flex;gap:10px;align-items:flex-start;margin:18px 0 0;font:500 14.5px/1.5 var(--body);color:var(--ink-3);max-width:44em}
+.reassure svg{width:16px;height:16px;flex:none;margin-top:2px;color:var(--teal)}
+@media (max-width:860px){.hero-row{grid-template-columns:1fr;align-items:start}.ctas{justify-content:flex-start}}
+
+.stage{position:relative;margin-top:clamp(40px,6vw,72px);padding-bottom:clamp(40px,7vw,90px)}
+.stage::before{content:"";position:absolute;inset:12% calc(var(--gut) * -1) 0;background:radial-gradient(circle at 1px 1px,#d5dde5 1px,transparent 1.4px) 0 0/18px 18px;mask:linear-gradient(to bottom,transparent,#000 30%,#000 70%,transparent);-webkit-mask:linear-gradient(to bottom,transparent,#000 30%,#000 70%,transparent);z-index:-1}
+.shot{border-radius:14px;overflow:hidden;box-shadow:var(--shadow-shot);background:#e2dfd6;outline:1px solid rgba(18,52,86,.08);outline-offset:-1px}
+.shot img{width:100%}
+.stage .desk{width:88%;animation:rise 1.2s .15s var(--ease) both}
+.phone{--w:min(25%,290px);width:var(--w);border-radius:clamp(22px,3.4vw,44px);padding:clamp(6px,.8vw,10px);background:#0f1114;box-shadow:0 1px 0 rgba(255,255,255,.12) inset,0 30px 60px -20px rgba(18,52,86,.45),0 12px 24px -12px rgba(18,52,86,.3)}
+.phone img{border-radius:clamp(16px,2.7vw,34px);width:100%}
+.stage .phone{position:absolute;right:0;bottom:0;animation:rise 1.2s .45s var(--ease) both}
+@keyframes rise{from{opacity:0;transform:translateY(28px);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
+
+.sources{display:flex;flex-wrap:wrap;align-items:center;gap:10px 28px;padding:28px 0 8px;border-top:1px solid var(--line);font:500 14px/1 var(--mono);color:var(--ink-3)}
+.sources b{font-weight:500;color:var(--ink)}
+.sources span.dot{width:6px;height:6px;background:var(--yellow);transform:rotate(45deg);display:inline-block;margin-right:10px;vertical-align:2px}
+
+/* ---------- chapters ---------- */
+section.ch{padding:clamp(72px,11vw,150px) 0 0}
+.ch h2{font:800 clamp(34px,5.4vw,68px)/.98 var(--display);font-variation-settings:'wdth' 106;letter-spacing:-.035em;margin:0 0 22px;max-width:14em;text-wrap:balance}
+html[lang="zh-Hant"] .ch h2{font-weight:900;letter-spacing:-.01em;line-height:1.15}
+.ch h2 .jp{font:400 .32em/1 var(--pixel);letter-spacing:.02em;color:var(--teal);display:inline-block;vertical-align:.6em;margin-left:.4em;font-variation-settings:normal}
+.split h2{font-size:clamp(32px,4.2vw,56px)}
+.ch p.body{font-size:clamp(17px,1.4vw,19px);color:var(--ink-2);max-width:34em;margin:0;text-wrap:pretty}
+.ticks{list-style:none;padding:0;margin:26px 0 0;display:grid;gap:12px;max-width:34em}
+.ticks li{position:relative;padding-left:24px;color:var(--ink);font-size:16px;line-height:1.5}
+.ticks li::before{content:"";position:absolute;left:2px;top:.55em;width:8px;height:8px;background:var(--orange);transform:rotate(45deg)}
+.ticks li b{font-weight:650}
+
+.split{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:clamp(32px,6vw,88px);align-items:center}
+.split.flip{grid-template-columns:minmax(0,7fr) minmax(0,5fr)}
+.split.flip .txt{order:2}
+@media (max-width:900px){.split,.split.flip{grid-template-columns:1fr}.split.flip .txt{order:0}}
+.pair{position:relative;padding:0 0 clamp(36px,6vw,64px)}
+.pair .shot{width:86%}
+.pair .phone{position:absolute;right:0;bottom:0;--w:30%}
+.flip .pair .shot{margin-left:auto}
+.flip .pair .phone{right:auto;left:0}
+.cap{font:500 12.5px/1.5 var(--mono);color:var(--ink-3);margin:16px 0 0;max-width:46em}
+
+/* library annotation */
+.annot{position:relative;margin-top:clamp(32px,4vw,52px)}
+.pin{position:absolute;display:flex;align-items:center;gap:8px;font:600 13px/1.2 var(--body);color:var(--ink);background:#fff;padding:8px 12px 8px 10px;border-radius:999px;box-shadow:0 1px 2px rgba(18,52,86,.12),0 10px 24px -8px rgba(18,52,86,.35);white-space:nowrap;transform:translate(-50%,-50%)}
+.pin i{width:10px;height:10px;background:var(--orange);transform:rotate(45deg);flex:none;box-shadow:0 0 0 4px rgba(232,84,47,.18)}
+@media (max-width:760px){.pin{display:none}}
+.lib-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(20px,3vw,40px);margin-top:clamp(28px,4vw,44px);padding-top:28px;border-top:1px solid var(--line)}
+.lib-grid h3{font:700 18px/1.25 var(--display);margin:0 0 6px;letter-spacing:-.01em}
+.lib-grid p{margin:0;color:var(--ink-2);font-size:15.5px;line-height:1.55}
+@media (max-width:760px){.lib-grid{grid-template-columns:1fr}}
+
+/* Wiskit modes */
+.modes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--line);border-radius:14px;margin-top:28px;overflow:hidden}
+.modes div{padding:16px 16px 18px}
+.modes div+div{border-left:1px solid var(--line)}
+.modes b{display:block;font:600 13px/1 var(--mono);margin-bottom:8px;color:var(--ink)}
+.modes b::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--teal);margin-right:8px;vertical-align:1px}
+.modes span{font-size:14px;line-height:1.45;color:var(--ink-2);display:block}
+@media (max-width:520px){.modes{grid-template-columns:1fr}.modes div+div{border-left:0;border-top:1px solid var(--line)}}
+.guard{display:flex;gap:12px;align-items:flex-start;margin-top:22px;padding:14px 16px;background:#fff8e0;border-radius:12px;font-size:15px;line-height:1.5;color:var(--ink);max-width:34em}
+.guard svg{width:20px;height:20px;flex:none;color:#a07800;margin-top:1px}
+
+/* phone stage */
+.felt{margin-top:clamp(36px,5vw,56px);background:var(--teal);border-radius:clamp(20px,3vw,32px);padding:clamp(28px,5vw,64px) clamp(16px,4vw,56px) 0;overflow:hidden;position:relative;isolation:isolate}
+.felt::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 1px 1px,rgba(222,255,243,.22) 1px,transparent 1.5px) 0 0/16px 16px;z-index:-1}
+.phones{display:flex;justify-content:center;align-items:flex-start;gap:clamp(10px,2.4vw,32px)}
+.phones .phone{--w:auto;flex:1 1 0;max-width:260px;margin-bottom:-18%;background:#0b0c0e}
+.phones .phone:nth-child(2n){margin-top:clamp(24px,5vw,64px)}
+@media (max-width:700px){.phones .phone:nth-child(n+4){display:none}}
+@media (max-width:440px){.phones .phone:nth-child(n+3){display:none}}
+.felt-cap{display:flex;flex-wrap:wrap;gap:8px 22px;justify-content:center;font:500 12.5px/1 var(--mono);color:#e6f5ef;padding:22px 0 26px;position:relative;z-index:1;background:linear-gradient(transparent,var(--teal) 30%)}
+
+/* drive diagram */
+.flow{display:grid;grid-template-columns:1fr auto 1.2fr auto 1fr;align-items:center;gap:10px;margin-top:30px;max-width:640px}
+.node{border:1px solid var(--line-2);border-radius:14px;padding:14px 12px;text-align:center;background:#fff}
+.node svg{width:26px;height:26px;margin:0 auto 8px;display:block;color:var(--ink)}
+.node b{display:block;font:600 14px/1.2 var(--body)}
+.node span{display:block;font:500 11px/1.35 var(--mono);color:var(--ink-3);margin-top:4px}
+.node.vault{border-color:var(--teal);background:#f1f8f6}
+.node.vault svg{color:var(--teal)}
+.wire{width:clamp(18px,4vw,44px);height:2px;background:repeating-linear-gradient(90deg,var(--ink-3) 0 6px,transparent 6px 10px);position:relative;overflow:hidden}
+.wire::after{content:"";position:absolute;top:-2px;left:-30%;width:30%;height:6px;background:var(--orange);border-radius:3px;animation:pkt 2.4s var(--ease) infinite}
+.wire.back::after{animation-direction:reverse;animation-delay:1.2s}
+@keyframes pkt{to{left:100%}}
+@media (max-width:520px){.flow{grid-template-columns:1fr;max-width:280px}.wire{width:2px;height:22px;margin:0 auto;background:repeating-linear-gradient(180deg,var(--ink-3) 0 6px,transparent 6px 10px)}.wire::after{display:none}}
+
+/* obsidian */
+.obs{margin:clamp(28px,4vw,44px) 0 0;background:#1e1e1e;border-radius:clamp(16px,2.4vw,24px);overflow:hidden;box-shadow:var(--shadow-shot)}
+.obs img{width:100%}
+.obs figcaption{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 24px;padding:14px clamp(16px,2.4vw,24px) 16px;border-top:1px solid #2e2e2e;font-size:14px;color:#b9c0c7}
+.obs-tree{font-size:12px;color:#8a929a}
+.ticks-row{grid-template-columns:repeat(3,minmax(0,1fr));max-width:none;gap:16px clamp(20px,3vw,40px)}
+@media (max-width:760px){.ticks-row{grid-template-columns:1fr}}
+
+/* claude code terminal */
+.term{background:#14171c;border-radius:16px;box-shadow:var(--shadow-shot);overflow:hidden;color:#d7dde4}
+.term-bar{display:flex;align-items:center;gap:7px;padding:12px 16px;border-bottom:1px solid #262b33}
+.term-bar i{width:11px;height:11px;border-radius:50%;background:#3a414c}
+.term-bar i:first-child{background:#e8542f}
+.term-bar span{margin-left:10px;font:500 12px/1 var(--mono);color:#8b95a3}
+.term pre{margin:0;padding:clamp(16px,2.4vw,26px);font:400 clamp(12px,1.05vw,14px)/1.75 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}
+.term b{font-weight:600;color:#fff}
+.term .p{color:#e8542f;font-weight:600}
+.term .t{color:#4fb39c}
+.term .d{color:#9aa6b4}
+.term .g{color:#7fd3bd}
+.term .o{color:#ffd23f}
+.term .w{color:#eef1f4}
+.term .cur{display:inline-block;width:.6em;height:1.1em;background:#e8542f;vertical-align:-.2em;margin-left:2px;animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.term .ns{color:#8b95a3}
+@media (max-width:560px){.term .ns{display:none}.term pre{font-size:11.5px}}
+.term-cap{margin:0;padding:10px clamp(16px,2.4vw,26px) 14px;border-top:1px solid #262b33;font:500 12px/1.4 var(--mono);color:#7d8796}
+
+/* privacy */
+.priv{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:clamp(32px,6vw,88px);align-items:start}
+@media (max-width:900px){.priv{grid-template-columns:1fr}}
+.plist{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.plist li{display:grid;grid-template-columns:40px 1fr;gap:14px;padding:20px 0;border-bottom:1px solid var(--line)}
+.plist svg{width:24px;height:24px;color:var(--teal);margin-top:2px}
+.plist b{display:block;font:650 17px/1.3 var(--display);margin-bottom:4px}
+.plist span{color:var(--ink-2);font-size:15.5px;line-height:1.55}
+.more-link{display:inline-flex;gap:8px;align-items:center;margin-top:26px;font-weight:600;color:var(--orange-ink);text-decoration:none}
+.more-link:hover{text-decoration:underline}
+.more-link svg{width:16px;height:16px;transition:transform .25s var(--ease)}
+.more-link:hover svg{transform:translateX(3px)}
+
+/* more */
+.more{columns:3 280px;column-gap:clamp(24px,4vw,56px);margin-top:clamp(28px,4vw,44px)}
+.more div{break-inside:avoid;padding:18px 0 20px;border-top:1px solid var(--line)}
+.more b{display:block;font:650 17px/1.3 var(--display);margin-bottom:6px;letter-spacing:-.005em}
+.more span{color:var(--ink-2);font-size:15.5px;line-height:1.55}
+
+/* get */
+.get{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(16px,2.4vw,28px);margin-top:clamp(28px,4vw,44px)}
+@media (max-width:760px){.get{grid-template-columns:1fr}}
+.plan{border:1px solid var(--line-2);border-radius:20px;padding:clamp(22px,3vw,34px);display:flex;flex-direction:column;gap:14px;position:relative;overflow:hidden}
+.plan h3{font:800 clamp(24px,2.6vw,32px)/1.05 var(--display);font-variation-settings:'wdth' 104;letter-spacing:-.025em;margin:0}
+.plan p{margin:0;color:var(--ink-2);font-size:16px}
+.plan .os{font:500 12.5px/1 var(--mono);color:var(--ink-3)}
+.plan .btn{align-self:flex-start;margin-top:auto}
+.plan.win{background:var(--ink);color:#fff;border-color:var(--ink)}
+.plan.win p{color:#c8d4e2}.plan.win .os{color:#9fb2c8}
+.plan .glyph{position:absolute;right:-14px;top:-14px;width:120px;height:120px;opacity:.08}
+.plan.win .glyph{opacity:.14;color:#fff}
+
+.donate{margin-top:clamp(20px,3vw,28px);display:grid;grid-template-columns:auto 1fr auto;gap:20px;align-items:center;padding:clamp(20px,3vw,28px);border-radius:20px;background:#fff8e0}
+.donate .heart{width:52px;height:52px;border-radius:14px;background:var(--yellow);display:grid;place-items:center}
+.donate .heart svg{width:26px;height:26px;color:var(--ink)}
+.donate h3{font:750 20px/1.2 var(--display);margin:0 0 4px}
+.donate p{margin:0;color:var(--ink-2);font-size:15.5px}
+@media (max-width:640px){.donate{grid-template-columns:1fr}.donate .heart{display:none}}
+
+footer{margin-top:clamp(80px,11vw,140px);border-top:1px solid var(--line);padding:36px 0 48px;font-size:14px;color:var(--ink-3)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:16px 28px;align-items:center}
+footer a{color:var(--ink-2)}
+footer .sp{margin-left:auto}
+@media (max-width:640px){footer .sp{margin-left:0}}
+
+.reveal{transition:opacity .9s var(--ease),transform .9s var(--ease),filter .9s var(--ease)}
+.js .reveal:not(.in){opacity:0;transform:translateY(24px);filter:blur(4px)}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .js .reveal:not(.in){opacity:1;transform:none;filter:none}
+  html{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+<script>document.documentElement.classList.add('js')</script>
+
+<header class="top" id="top">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Brainamon home">
+      <svg viewBox="-8 -10 502 100" aria-hidden="true"><g fill="none" stroke-width="16" stroke-linecap="butt" stroke-linejoin="miter"><path stroke="#123456" d="M8 0V80 M8 8H26L36 18V30L26 40H8 M8 40H30L40 50V62L30 72H8 M64 24V80 M64 48L80 32H92 M118 32H132L142 42V62L132 72H118L108 62V42Z M142 24V80 M166 24V80 M190 24V80 M190 44L202 32H212L222 42V80 M256 32H270L280 42V62L270 72H256L246 62V42Z M280 24V80"/><path stroke="#E8542F" d="M304 24V80 M304 44L316 32H324L334 42V80 M334 44L346 32H354L364 42V80 M398 32H412L422 42V62L412 72H398L388 62V42Z M446 24V80 M446 44L458 32H468L478 42V80"/></g><path fill="#123456" d="M166 -2L176 8L166 18L156 8Z"/></svg>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="#wiskit" class="hide-s" data-i18n="nav.wiskit">Assistant</a>
+      <a href="#obsidian" class="hide-s">Obsidian</a>
+      <a href="#claude" class="hide-s">Claude Code</a>
+      <a href="#phone" data-i18n="nav.phone">Phone</a>
+      <a href="#privacy" class="hide-s" data-i18n="nav.privacy">Privacy</a>
+      <a href="#get" data-i18n="nav.get">Download</a>
+    </nav>
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="fr" aria-pressed="false">FR</button>
+      <button type="button" data-lang="zh" aria-pressed="false" lang="zh-Hant">繁中</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- hero -->
+  <section class="hero">
+    <div class="wrap">
+      <h1 data-i18n="hero.title">Everything you saved, finally <em>useful</em>.</h1>
+      <div class="hero-row">
+        <div>
+          <p class="lead" data-i18n="hero.lead">Brainamon turns the reels, posts and videos you saved on Facebook, Instagram, Reddit and YouTube into a private library on your PC. It describes them, analyzes the videos, writes notes from them and answers your questions, showing the saves it used.</p>
+          <p class="reassure"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg><span data-i18n="hero.note">Your library lives on your PC. AI runs with your own key, only when you ask.</span></p>
+        </div>
+        <div class="ctas">
+          <a class="btn btn-primary" data-link="gumroad" href="#get"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5 10.5 4.4v7.1H3zM11.5 4.3 21 3v8.5h-9.5zM3 12.5h7.5v7.1L3 18.5zM11.5 12.5H21V21l-9.5-1.3z"/></svg><span class="stack"><small data-i18n="cta.win.small">Windows · Gumroad</small><span data-i18n="cta.win">Buy Brainamon</span></span></a>
+          <a class="btn btn-dark" data-link="play" href="#get"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4.2 2.6c-.3.2-.4.6-.4 1v16.8c0 .4.1.8.4 1L13.6 12z"/><path d="M14.6 13l2.6 2.6-11 6.3c-.3.2-.7.2-1 .1z" opacity=".8"/><path d="M14.6 11 5.2 2c.3-.1.7-.1 1 .1l11 6.3z" opacity=".9"/><path d="M18.2 9 21 10.6c.7.4.7 1.4 0 1.8L18.2 14l-2.8-3z" opacity=".7"/></svg><span class="stack"><small data-i18n="cta.play.small">Android</small><span data-i18n="cta.play">Google Play</span></span></a>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div class="shot desk"><img src="img/desk-library.webp" width="1600" height="1000" alt="The Brainamon desktop app: the library of saved reels shown as cards, with the status panel, collections and the Wiskit assistant." fetchpriority="high"></div>
+        <div class="phone"><img src="img/phone-lib.webp" width="585" height="1266" alt="The Brainamon Android app showing the same library."></div>
+      </div>
+
+      <p class="sources">
+        <span data-i18n="sources.lead">Works with what you already saved on</span>
+        <b><span class="dot"></span>Facebook</b><b><span class="dot"></span>Instagram</b><b><span class="dot"></span>Reddit</b><b><span class="dot"></span>YouTube</b><b><span class="dot"></span><span data-i18n="sources.web">any web link</span></b>
+      </p>
+    </div>
+  </section>
+
+  <!-- library -->
+  <section class="ch" id="library">
+    <div class="wrap">
+      <div class="reveal">
+        <h2><span data-i18n="lib.title">One library for every save.</span><span class="jp" aria-hidden="true">ライブラリ</span></h2>
+        <p class="body" data-i18n="lib.body">Import your saved lists with the built-in scrapers or a CSV, paste a link, or share from your phone. Each save becomes a card with its thumbnail, caption, creator and category. The status panel shows what is still missing, and one step fills it in: thumbnails, AI descriptions, categories, video analysis and the search index.</p>
+      </div>
+      <div class="annot reveal">
+        <div class="shot"><img src="img/desk-library.webp" width="1600" height="1000" alt="The library workspace in detail." loading="lazy"></div>
+        <span class="pin" style="left:46%;top:38%"><i></i><span data-i18n="pin.cards">3,347 saves as cards</span></span>
+        <span class="pin" style="left:15%;top:42%"><i></i><span data-i18n="pin.status">What is missing, at a glance</span></span>
+        <span class="pin" style="left:13%;top:74%"><i></i><span data-i18n="pin.coll">Your collections</span></span>
+        <span class="pin" style="left:42%;top:9%"><i></i><span data-i18n="pin.search">Search by words or by meaning</span></span>
+        <span class="pin" style="left:85%;top:47%"><i></i><span data-i18n="pin.wiskit">Wiskit, always at hand</span></span>
+      </div>
+      <div class="lib-grid reveal">
+        <div><h3 data-i18n="lib.a.t">Smart search</h3><p data-i18n="lib.a.p">Type a few words or a whole question. Smart search mixes exact words with meaning, so “knee pain” also finds the mobility reel that never says it.</p></div>
+        <div><h3 data-i18n="lib.b.t">Fetch link info</h3><p data-i18n="lib.b.p">Missing a thumbnail or a caption? Brainamon reads the post or the page and fills in what it finds.</p></div>
+        <div><h3 data-i18n="lib.c.t">Batch processing</h3><p data-i18n="lib.c.p">Describe, categorize, analyze or index hundreds of saves in one run, with the count and the cost shown before you start.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- wiskit -->
+  <section class="ch" id="wiskit">
+    <div class="wrap split">
+      <div class="txt reveal">
+        <h2><span data-i18n="wk.title">Ask your library. Get answers with sources.</span></h2>
+        <p class="body" data-i18n="wk.body">Wiskit is the assistant inside Brainamon. Ask “What tips do I have on productivity?” and it reads your saves, answers, and links each point to the card it came from. Click a citation and the card opens.</p>
+        <div class="modes">
+          <div><b>Quick</b><span data-i18n="wk.quick">Fast answers from the best-ranked saves and notes.</span></div>
+          <div><b>Deep</b><span data-i18n="wk.deep">Researches the library: searches, reads reports, compares.</span></div>
+          <div><b>Claude Code</b><span data-i18n="wk.cc">Uses your own Claude Code sign-in as a third engine.</span></div>
+        </div>
+        <ul class="ticks">
+          <li data-i18n="wk.t1"><b>Sorts a batch of saves</b> into your existing categories.</li>
+          <li data-i18n="wk.t2"><b>Proposes a themed canvas</b> from what it found.</li>
+          <li data-i18n="wk.t3"><b>Saves an answer as a note</b>, or tidies one of yours.</li>
+          <li data-i18n="wk.t4"><b>Reviews your week</b>: what you saved in the last seven days.</li>
+        </ul>
+        <p class="guard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></svg><span data-i18n="wk.guard">Wiskit proposes, you decide. Nothing in your library changes until you click Apply.</span></p>
+      </div>
+      <div class="pair reveal">
+        <div class="shot"><img src="img/desk-wiskit.webp" width="1100" height="1253" alt="Wiskit answering a question about productivity, citing saved items such as No. 3046 and No. 2129, with a line drawn to the cited card." loading="lazy"></div>
+        <div class="phone"><img src="img/phone-jv.webp" width="585" height="1266" alt="Wiskit on the phone, with Quick and Deep modes." loading="lazy"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- video -->
+  <section class="ch" id="video">
+    <div class="wrap split flip">
+      <div class="txt reveal">
+        <h2><span data-i18n="vid.title">Watch less. Remember more.</span></h2>
+        <p class="body" data-i18n="vid.body">Analyze video downloads the reel, pulls key frames, transcribes the audio and writes a report: the subject, the key information, a summary and how you could use it. The transcript and the report stay with the save, ready for search and for Wiskit.</p>
+        <ul class="ticks">
+          <li data-i18n="vid.t1"><b>Long videos</b> are compressed and split for transcription automatically.</li>
+          <li data-i18n="vid.t2"><b>Frames to canvas</b> puts the key frames on a board.</li>
+          <li data-i18n="vid.t3"><b>Video Tools</b> analyzes a video file from your PC too.</li>
+        </ul>
+      </div>
+      <div class="pair reveal">
+        <div class="shot"><img src="img/desk-report.webp" width="1600" height="1000" alt="An item window with the video report: subject, key information on agent harnesses, summary." loading="lazy"></div>
+        <div class="phone"><img src="img/phone-item.webp" width="585" height="1266" alt="The same kind of report read on the phone." loading="lazy"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- knowledge -->
+  <section class="ch" id="knowledge">
+    <div class="wrap split">
+      <div class="txt reveal">
+        <h2><span data-i18n="kn.title">From a pile of saves to notes you keep.</span><span class="jp" aria-hidden="true">ノート</span></h2>
+        <p class="body" data-i18n="kn.body">Pick a topic, tick the sources, press Synthesize: the AI reads them and writes one note that lists its sources. Connections watches what you save and points out the topics that have no note yet. Your notes go to your Obsidian vault when you export.</p>
+        <ul class="ticks">
+          <li data-i18n="kn.t1"><b>Topics you follow</b> collect new saves for you.</li>
+          <li data-i18n="kn.t2"><b>Integrate and reorganize</b> folds new sources into an existing note.</li>
+          <li data-i18n="kn.t3"><b>Everything is indexed</b>, so Wiskit reads your notes too.</li>
+        </ul>
+        <p class="cap" data-i18n="kn.cap">Real note from the author’s library: a design toolkit synthesized from 110 saved posts.</p>
+      </div>
+      <div class="pair reveal">
+        <div class="shot"><img src="img/desk-knowledge.webp" width="1600" height="1000" alt="The Knowledge workspace: a synthesized note built from 110 saves, Connections suggestions and Wiskit." loading="lazy"></div>
+        <div class="phone"><img src="img/phone-know2.webp" width="585" height="1266" alt="A synthesized note read on the phone." loading="lazy"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- obsidian -->
+  <section class="ch" id="obsidian">
+    <div class="wrap">
+      <div class="split" style="align-items:end">
+        <div class="reveal">
+          <h2><span data-i18n="ob.title">Open your whole library in Obsidian.</span></h2>
+        </div>
+        <div class="reveal">
+          <p class="body" data-i18n="ob.body">Export to Obsidian writes your saves, categories, topics, reports and notes as linked Markdown files in a vault. Open the graph view and your library becomes a map: every save tied to its category, its topics and the notes that cite it.</p>
+        </div>
+      </div>
+      <figure class="obs reveal">
+        <img src="img/obsidian-graph.webp" width="1300" height="1000" alt="Obsidian graph view of the exported Brainamon vault: thousands of saves, notes and topics linked together." loading="lazy">
+        <figcaption><span data-i18n="ob.cap">The author’s vault in Obsidian: 3,347 saves, their categories, topics and notes.</span><span class="obs-tree mono">attachments · categories · items · notes · reports · topics · Knowledge Map</span></figcaption>
+      </figure>
+      <ul class="ticks ticks-row reveal">
+        <li data-i18n="ob.t1"><b>Plain Markdown</b> you own, readable by any editor.</li>
+        <li data-i18n="ob.t2"><b>Brainamon stays the source</b>: the vault is rebuilt from your library on each export.</li>
+        <li data-i18n="ob.t3"><b>Vault sync</b> keeps an Obsidian vault on the phone up to date, encrypted through Drive.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- claude code -->
+  <section class="ch" id="claude">
+    <div class="wrap split flip">
+      <div class="txt reveal">
+        <h2><span data-i18n="cc.title">Works with Claude Code.</span></h2>
+        <p class="body" data-i18n="cc.body">Brainamon includes a local MCP server for Claude Code. Connect it and Claude can search your library, read items, reports, notes and canvases, and start jobs like Describe or Fetch link info. Everything stays on your PC.</p>
+        <ul class="ticks">
+          <li data-i18n="cc.t1"><b>Nothing gets deleted.</b> No tool deletes, moves or overwrites anything.</li>
+          <li data-i18n="cc.t2"><b>Changes wait for you.</b> Notes, categories and canvases Claude proposes are applied only when you click in Brainamon.</li>
+          <li data-i18n="cc.t3"><b>Claude Code inside Wiskit.</b> Pick it as Wiskit’s third mode and ask with your own Claude sign-in.</li>
+        </ul>
+      </div>
+      <div class="term reveal" role="img" aria-label="Example Claude Code session using the Brainamon tools">
+        <div class="term-bar"><i></i><i></i><i></i><span>claude</span></div>
+        <pre><span class="p">&gt;</span> <span data-i18n="cc.q">What did I save about knee prehab? Turn it into a 10-minute routine.</span>
+
+<span class="t">●</span> <span class="ns">brainamon · </span><b>search_library</b>   <span class="d">"knee prehab"</span>   <span class="g">14 results</span>
+<span class="t">●</span> <span class="ns">brainamon · </span><b>show_item</b>        <span class="d">×5</span>
+<span class="t">●</span> <span class="ns">brainamon · </span><b>read_item_file</b>   <span class="d">report.md ×3</span>
+<span class="t">●</span> <span class="ns">brainamon · </span><b>save_note</b>        <span class="d">"Knee prehab, 10 minutes"</span>
+  <span class="o">↳ <span data-i18n="cc.wait">waiting for your click in Brainamon</span></span>
+
+<span class="w" data-i18n="cc.a">Here is a 10-minute routine built from 5 of your saves, with the source of each exercise...</span><span class="cur"></span></pre>
+        <p class="term-cap" data-i18n="cc.cap">Example session. Tool names are the real Brainamon MCP tools.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- notes -->
+  <section class="ch" id="notes">
+    <div class="wrap split flip">
+      <div class="txt reveal">
+        <h2><span data-i18n="nt.title">Your own notes, right beside the library.</span></h2>
+        <p class="body" data-i18n="nt.body">Write in a calm editor with highlights, ink, tasks and stamps. Record a voice note and get it back as text. Drop in a screenshot and Digest reads it into a note. Categories keep things tidy, and Wiskit can read everything you write.</p>
+        <ul class="ticks">
+          <li data-i18n="nt.t1"><b>Autosave</b> as you type, on the PC and on the phone.</li>
+          <li data-i18n="nt.t2"><b>AI summary</b> at the top of a long note, kept up to date.</li>
+          <li data-i18n="nt.t3"><b>Add from anywhere</b>: a thought, a link, a picture, a PDF.</li>
+        </ul>
+      </div>
+      <div class="pair reveal">
+        <div class="shot"><img src="img/desk-notes.webp" width="1600" height="1000" alt="The Notes workspace with the note editor open." loading="lazy"></div>
+        <div class="phone"><img src="img/phone-notes.webp" width="585" height="1266" alt="My Notes on the phone, shown as cards." loading="lazy"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- canvas -->
+  <section class="ch" id="canvas">
+    <div class="wrap split">
+      <div class="txt reveal">
+        <h2><span data-i18n="cv.title">Lay it out on a canvas.</span><span class="jp" aria-hidden="true">キャンバス</span></h2>
+        <p class="body" data-i18n="cv.body">Drag saves, images and notes onto boards: a morning routine, a mood board, a project. Ask Wiskit for a themed canvas and it groups and arranges the cards for you to approve. Your canvases open on the phone too.</p>
+      </div>
+      <div class="pair reveal">
+        <div class="shot"><img src="img/desk-canvas.webp" width="1600" height="1000" alt="A canvas called Morning routine with exercise reels arranged in groups." loading="lazy"></div>
+        <div class="phone"><img src="img/phone-canvas-open.webp" width="585" height="1266" alt="The same canvas on the phone." loading="lazy"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- phone + drive -->
+  <section class="ch" id="phone">
+    <div class="wrap">
+      <div class="reveal">
+        <h2><span data-i18n="ph.title">Your library, in your pocket.</span></h2>
+        <p class="body" data-i18n="ph.body">The Android app takes the library with you: browse the cards, read reports and notes, open your canvases and ask Wiskit with your own key. Share a link from any app and Brainamon keeps it as a draft until you press Save.</p>
+      </div>
+      <div class="felt reveal">
+        <div class="phones">
+          <div class="phone"><img src="img/phone-cap.webp" width="585" height="1266" alt="Add to Brainamon: a quick note or a library item." loading="lazy"></div>
+          <div class="phone"><img src="img/phone-lib.webp" width="585" height="1266" alt="The library on the phone." loading="lazy"></div>
+          <div class="phone"><img src="img/phone-know.webp" width="585" height="1266" alt="Knowledge notes on the phone." loading="lazy"></div>
+          <div class="phone"><img src="img/phone-item.webp" width="585" height="1266" alt="A saved reel with its report." loading="lazy"></div>
+        </div>
+        <p class="felt-cap"><span data-i18n="ph.c1">Add</span><span>·</span><span data-i18n="ph.c2">Library</span><span>·</span><span data-i18n="ph.c3">Knowledge</span><span>·</span><span data-i18n="ph.c4">Reports</span></p>
+      </div>
+
+      <div class="split" style="margin-top:clamp(56px,8vw,96px);align-items:start">
+        <div class="reveal">
+          <h2 style="font-size:clamp(28px,3.6vw,44px)"><span data-i18n="dr.title">Synced through your own Google Drive, encrypted.</span></h2>
+          <div class="flow" aria-hidden="true">
+            <div class="node"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><b data-i18n="dr.pc">Your PC</b><span data-i18n="dr.pc2">encrypts</span></div>
+            <div class="wire"></div>
+            <div class="node vault"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><b>Google Drive</b><span data-i18n="dr.drive2">hidden app folder · AES-256-GCM</span></div>
+            <div class="wire back"></div>
+            <div class="node"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg><b data-i18n="dr.ph">Your phone</b><span data-i18n="dr.ph2">decrypts</span></div>
+          </div>
+        </div>
+        <div class="reveal">
+          <p class="body" data-i18n="dr.body">The PC encrypts the library and uploads it to Brainamon’s hidden app-data folder in your Google Drive. Only your paired devices hold the key, and Brainamon cannot see your other Drive files. Changes you make on the phone travel back to the PC the same way.</p>
+          <ul class="ticks">
+            <li data-i18n="dr.t1"><b>Off until you turn it on.</b> No cloud call before that.</li>
+            <li data-i18n="dr.t2"><b>Pair a phone</b> by scanning a QR code on the PC.</li>
+            <li data-i18n="dr.t3"><b>Phone only?</b> The app also works without a PC, with an optional encrypted backup.</li>
+            <li data-i18n="dr.t4"><b>Recovery</b> lets you restore the library on a new PC.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- privacy -->
+  <section class="ch" id="privacy">
+    <div class="wrap priv">
+      <div class="reveal">
+        <h2><span data-i18n="pv.title">Private by design.</span></h2>
+        <p class="body" data-i18n="pv.body">Brainamon is local-first software. There is no Brainamon account, and your library never passes through a Brainamon server.</p>
+        <a class="more-link" href="privacy/" data-keep-lang><span data-i18n="pv.link">Read the privacy policy</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </div>
+      <ul class="plist reveal">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><div><b data-i18n="pv.a.t">Your library stays on your PC</b><span data-i18n="pv.a.p">No analytics and no automatic crash reports sent to the developer.</span></div></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg><div><b data-i18n="pv.b.t">Your own AI keys</b><span data-i18n="pv.b.p">Anthropic, OpenAI or a model running on your PC (Ollama, LM Studio). AI is used only when you ask, and provider charges are separate.</span></div></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"/></svg><div><b data-i18n="pv.c.t">Protected secrets</b><span data-i18n="pv.c.p">API keys and site logins are protected with Windows DPAPI on the PC and Android Keystore on the phone.</span></div></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><div><b data-i18n="pv.d.t">Encrypted sync, off by default</b><span data-i18n="pv.d.p">Drive sync uses only Brainamon’s own hidden folder, encrypted before upload.</span></div></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- more -->
+  <section class="ch" id="more">
+    <div class="wrap">
+      <h2 class="reveal"><span data-i18n="mo.title">And a lot more.</span></h2>
+      <div class="more reveal">
+        <div><b data-i18n="mo.1.t">Scrapers</b><span data-i18n="mo.1.p">Capture your saved lists on Facebook, Instagram, Reddit and YouTube from your browser. Brainamon picks up the file from Downloads by itself.</span></div>
+        <div><b data-i18n="mo.2.t">Instagram export</b><span data-i18n="mo.2.p">Import the Saved file from your Instagram data download, on the phone.</span></div>
+        <div><b data-i18n="mo.3.t">Local models</b><span data-i18n="mo.3.p">Prefer to stay offline? Point Wiskit at a model running on your PC with Ollama or LM Studio.</span></div>
+        <div><b data-i18n="mo.5.t">Video downloads</b><span data-i18n="mo.5.p">Keep a copy of the reels you care about, with private posts reached through logins you choose to add.</span></div>
+        <div><b data-i18n="mo.6.t">Desktop Wiskit</b><span data-i18n="mo.6.p">Brainamon can start with Windows and wait in the tray, with Wiskit one click away.</span></div>
+        <div><b data-i18n="mo.7.t">Automatic updates</b><span data-i18n="mo.7.p">New versions download in the background and are checked against a signature. They install when you choose.</span></div>
+        <div><b data-i18n="mo.8.t">Day and night</b><span data-i18n="mo.8.p">A night theme for late reading, on the PC and on the phone.</span></div>
+        <div><b data-i18n="mo.9.t">Backup and restore</b><span data-i18n="mo.9.p">Your library is plain files and one database in a folder you choose, easy to back up.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- get -->
+  <section class="ch" id="get">
+    <div class="wrap">
+      <h2 class="reveal"><span data-i18n="get.title">Get Brainamon.</span></h2>
+      <div class="get reveal">
+        <div class="plan win">
+          <svg class="glyph" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5 10.5 4.4v7.1H3zM11.5 4.3 21 3v8.5h-9.5zM3 12.5h7.5v7.1L3 18.5zM11.5 12.5H21V21l-9.5-1.3z"/></svg>
+          <span class="os">Windows 10 · 11</span>
+          <h3 data-i18n="get.win.t">Brainamon for Windows</h3>
+          <p data-i18n="get.win.p">A one-time purchase, sold on Gumroad. It includes the license key that unlocks phone sync with your PC.</p>
+          <a class="btn btn-primary" data-link="gumroad" href="#get"><span data-i18n="get.win.b">Buy on Gumroad</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        </div>
+        <div class="plan">
+          <svg class="glyph" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4.2 2.6c-.3.2-.4.6-.4 1v16.8c0 .4.1.8.4 1L13.6 12z"/><path d="M14.6 13l2.6 2.6-11 6.3c-.3.2-.7.2-1 .1zM14.6 11 5.2 2c.3-.1.7-.1 1 .1l11 6.3zM18.2 9 21 10.6c.7.4.7 1.4 0 1.8L18.2 14l-2.8-3z"/></svg>
+          <span class="os">Android</span>
+          <h3 data-i18n="get.and.t">Brainamon for Android</h3>
+          <p data-i18n="get.and.p">Pair it with your PC to carry your whole library, or use it on its own for links and notes.</p>
+          <a class="btn btn-dark" data-link="play" href="#get"><span data-i18n="get.and.b">Get it on Google Play</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        </div>
+      </div>
+      <div class="donate reveal">
+        <div class="heart"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg></div>
+        <div><h3 data-i18n="don.t">Enjoying Brainamon?</h3><p data-i18n="don.p">It is made by one person. A donation helps keep it growing.</p></div>
+        <a class="btn btn-ghost" data-link="donate" href="#get"><span data-i18n="don.b">Make a donation</span></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span data-i18n="ft.by">Made by Frederic TOMAS</span>
+    <a href="mailto:me@fredtomas.com">me@fredtomas.com</a>
+    <a href="privacy/" data-keep-lang data-i18n="ft.privacy">Privacy policy</a>
+    <span class="sp">© 2026 Brainamon</span>
+  </div>
+</footer>
+
+<script>
+/* ===== Store links ===== */
+const LINKS = {
+  gumroad: 'https://fredtomas.gumroad.com/l/brainamon',
+  play:    'https://play.google.com/store/apps/details?id=app.brainamon.mobile',
+  donate:  'https://fredtomas.gumroad.com/l/brainamon'
+}
+/* ================================================================== */
+document.querySelectorAll('[data-link]').forEach(a => {
+  const u = LINKS[a.dataset.link]
+  if (u) { a.href = u; a.target = '_blank'; a.rel = 'noopener' }
+})
+
+const T = {
+fr: {
+  'nav.wiskit':'Assistant','nav.phone':'Mobile','nav.privacy':'Confidentialité','nav.get':'Télécharger',
+  'hero.title':'Tout ce que vous avez enregistré, enfin <em>utile</em>.',
+  'hero.lead':'Brainamon transforme les reels, publications et vidéos enregistrés sur Facebook, Instagram, Reddit et YouTube en une bibliothèque privée sur votre PC. Il les décrit, analyse les vidéos, en tire des notes et répond à vos questions en montrant les enregistrements utilisés.',
+  'hero.note':'Votre bibliothèque reste sur votre PC. L’IA fonctionne avec votre propre clé, seulement quand vous le demandez.',
+  'cta.win.small':'Windows · Gumroad','cta.win':'Acheter Brainamon','cta.play.small':'Android','cta.play':'Google Play',
+  'sources.lead':'Fonctionne avec ce que vous avez déjà enregistré sur','sources.web':'n’importe quel lien web',
+  'lib.title':'Une bibliothèque pour tous vos enregistrements.',
+  'lib.body':'Importez vos listes avec les scrapers intégrés ou un CSV, collez un lien ou partagez depuis votre téléphone. Chaque enregistrement devient une carte avec sa miniature, sa légende, son créateur et sa catégorie. Le panneau d’état montre ce qui manque encore, et une étape le complète : miniatures, descriptions IA, catégories, analyse vidéo et index de recherche.',
+  'pin.cards':'3 347 enregistrements en cartes','pin.status':'Ce qui manque, d’un coup d’œil','pin.coll':'Vos collections','pin.search':'Recherche par mots ou par sens','pin.wiskit':'Wiskit, toujours à portée',
+  'lib.a.t':'Recherche intelligente','lib.a.p':'Tapez quelques mots ou une vraie question. La recherche intelligente mêle mots exacts et sens : « douleur au genou » trouve aussi le reel de mobilité qui ne le dit jamais.',
+  'lib.b.t':'Infos du lien','lib.b.p':'Une miniature ou une légende manque ? Brainamon lit la publication ou la page et complète ce qu’il trouve.',
+  'lib.c.t':'Traitement par lots','lib.c.p':'Décrivez, classez, analysez ou indexez des centaines d’enregistrements en une fois, avec le nombre et le coût affichés avant de lancer.',
+  'wk.title':'Interrogez votre bibliothèque. Des réponses avec leurs sources.',
+  'wk.body':'Wiskit est l’assistant de Brainamon. Demandez « Quelles astuces de productivité ai-je enregistrées ? » : il lit vos enregistrements, répond et relie chaque point à la carte d’où il vient. Cliquez sur une citation et la carte s’ouvre.',
+  'wk.quick':'Réponses rapides à partir des meilleurs enregistrements et notes.','wk.deep':'Fouille la bibliothèque : recherche, lit les rapports, compare.','wk.cc':'Utilise votre propre connexion Claude Code comme troisième moteur.',
+  'wk.t1':'<b>Range un lot d’enregistrements</b> dans vos catégories existantes.','wk.t2':'<b>Propose un canvas thématique</b> à partir de ce qu’il a trouvé.','wk.t3':'<b>Enregistre une réponse en note</b>, ou remet en forme l’une des vôtres.','wk.t4':'<b>Fait le point sur votre semaine</b> : ce que vous avez enregistré ces sept derniers jours.',
+  'wk.guard':'Wiskit propose, vous décidez. Rien ne change dans votre bibliothèque tant que vous n’avez pas cliqué sur Appliquer.',
+  'vid.title':'Regardez moins. Retenez plus.',
+  'vid.body':'Analyser la vidéo télécharge le reel, extrait les images clés, transcrit l’audio et rédige un rapport : le sujet, les informations clés, un résumé et la façon de l’utiliser. La transcription et le rapport restent avec l’enregistrement, prêts pour la recherche et pour Wiskit.',
+  'vid.t1':'<b>Les vidéos longues</b> sont compressées et découpées automatiquement pour la transcription.','vid.t2':'<b>Images vers canvas</b> place les images clés sur un tableau.','vid.t3':'<b>Outils vidéo</b> analyse aussi un fichier vidéo de votre PC.',
+  'kn.title':'D’une pile d’enregistrements à des notes qui restent.',
+  'kn.body':'Choisissez un sujet, cochez les sources, appuyez sur Synthétiser : l’IA les lit et rédige une note qui cite ses sources. Connexions observe ce que vous enregistrez et signale les sujets qui n’ont pas encore de note. Vos notes partent dans votre coffre Obsidian à l’export.',
+  'kn.t1':'<b>Les sujets suivis</b> rassemblent pour vous les nouveaux enregistrements.','kn.t2':'<b>Intégrer et réorganiser</b> ajoute de nouvelles sources à une note existante.','kn.t3':'<b>Tout est indexé</b> : Wiskit lit aussi vos notes.',
+  'kn.cap':'Note réelle de la bibliothèque de l’auteur : une boîte à outils design synthétisée à partir de 110 publications enregistrées.',
+  'nt.title':'Vos propres notes, juste à côté de la bibliothèque.',
+  'nt.body':'Écrivez dans un éditeur calme avec surlignage, encre, tâches et tampons. Enregistrez une note vocale et récupérez-la en texte. Déposez une capture d’écran et Digest la transforme en note. Les catégories gardent tout en ordre, et Wiskit peut lire tout ce que vous écrivez.',
+  'nt.t1':'<b>Sauvegarde automatique</b> pendant la frappe, sur le PC comme sur le téléphone.','nt.t2':'<b>Résumé IA</b> en tête d’une longue note, tenu à jour.','nt.t3':'<b>Ajoutez de partout</b> : une idée, un lien, une image, un PDF.',
+  'cv.title':'Organisez tout sur un canvas.',
+  'cv.body':'Glissez enregistrements, images et notes sur des tableaux : une routine du matin, un mood board, un projet. Demandez à Wiskit un canvas thématique : il regroupe et dispose les cartes, et vous validez. Vos canvas s’ouvrent aussi sur le téléphone.',
+  'ph.title':'Votre bibliothèque, dans votre poche.',
+  'ph.body':'L’application Android emporte la bibliothèque avec vous : parcourez les cartes, lisez rapports et notes, ouvrez vos canvas et interrogez Wiskit avec votre propre clé. Partagez un lien depuis n’importe quelle application : Brainamon le garde en brouillon jusqu’à ce que vous appuyiez sur Enregistrer.',
+  'ph.c1':'Ajouter','ph.c2':'Bibliothèque','ph.c3':'Connaissances','ph.c4':'Rapports',
+  'dr.title':'Synchronisé par votre propre Google Drive, chiffré.',
+  'dr.pc':'Votre PC','dr.pc2':'chiffre','dr.drive2':'dossier d’app caché · AES-256-GCM','dr.ph':'Votre téléphone','dr.ph2':'déchiffre',
+  'dr.body':'Le PC chiffre la bibliothèque et l’envoie dans le dossier de données caché de Brainamon sur votre Google Drive. Seuls vos appareils associés détiennent la clé, et Brainamon ne voit pas vos autres fichiers Drive. Les modifications faites sur le téléphone reviennent au PC par le même chemin.',
+  'dr.t1':'<b>Désactivé tant que vous ne l’activez pas.</b> Aucun appel au cloud avant.','dr.t2':'<b>Associez un téléphone</b> en scannant un QR code sur le PC.','dr.t3':'<b>Téléphone seul ?</b> L’application fonctionne aussi sans PC, avec une sauvegarde chiffrée en option.','dr.t4':'<b>La récupération</b> permet de restaurer la bibliothèque sur un nouveau PC.',
+  'pv.title':'Privé dès la conception.',
+  'pv.body':'Brainamon est un logiciel local d’abord. Il n’y a pas de compte Brainamon, et votre bibliothèque ne passe jamais par un serveur Brainamon.',
+  'pv.link':'Lire la politique de confidentialité',
+  'pv.a.t':'Votre bibliothèque reste sur votre PC','pv.a.p':'Aucune statistique d’usage ni rapport de plantage envoyé automatiquement au développeur.',
+  'pv.b.t':'Vos propres clés IA','pv.b.p':'Anthropic, OpenAI ou un modèle qui tourne sur votre PC (Ollama, LM Studio). L’IA n’est utilisée que sur demande, et les frais du fournisseur sont à part.',
+  'pv.c.t':'Secrets protégés','pv.c.p':'Clés API et connexions aux sites sont protégées par Windows DPAPI sur le PC et Android Keystore sur le téléphone.',
+  'pv.d.t':'Synchronisation chiffrée, désactivée par défaut','pv.d.p':'La synchronisation Drive n’utilise que le dossier caché de Brainamon, chiffré avant l’envoi.',
+  'mo.title':'Et bien plus encore.',
+  'mo.1.t':'Scrapers','mo.1.p':'Récupérez vos listes enregistrées sur Facebook, Instagram, Reddit et YouTube depuis votre navigateur. Brainamon récupère seul le fichier dans Téléchargements.',
+  'mo.2.t':'Export Instagram','mo.2.p':'Importez le fichier des enregistrements de votre téléchargement de données Instagram, sur le téléphone.',
+  'mo.3.t':'Modèles locaux','mo.3.p':'Vous préférez rester hors ligne ? Reliez Wiskit à un modèle qui tourne sur votre PC avec Ollama ou LM Studio.',
+  'ob.title':'Ouvrez toute votre bibliothèque dans Obsidian.',
+  'ob.body':'Exporter vers Obsidian écrit vos enregistrements, catégories, sujets, rapports et notes sous forme de fichiers Markdown liés dans un coffre. Ouvrez la vue graphe et votre bibliothèque devient une carte : chaque enregistrement relié à sa catégorie, à ses sujets et aux notes qui le citent.',
+  'ob.cap':'Le coffre de l’auteur dans Obsidian : 3 347 enregistrements, leurs catégories, sujets et notes.',
+  'ob.t1':'<b>Du Markdown simple</b> qui vous appartient, lisible par n’importe quel éditeur.','ob.t2':'<b>Brainamon reste la source</b> : le coffre est reconstruit à partir de votre bibliothèque à chaque export.','ob.t3':'<b>La synchronisation du coffre</b> garde un coffre Obsidian à jour sur le téléphone, chiffré via Drive.',
+  'cc.title':'Compatible avec Claude Code.',
+  'cc.body':'Brainamon inclut un serveur MCP local pour Claude Code. Connectez-le et Claude peut chercher dans votre bibliothèque, lire éléments, rapports, notes et canvas, et lancer des tâches comme Décrire ou Infos du lien. Tout reste sur votre PC.',
+  'cc.t1':'<b>Rien n’est supprimé.</b> Aucun outil ne supprime, ne déplace ni n’écrase quoi que ce soit.','cc.t2':'<b>Les changements vous attendent.</b> Notes, catégories et canvas proposés par Claude ne sont appliqués que lorsque vous cliquez dans Brainamon.','cc.t3':'<b>Claude Code dans Wiskit.</b> Choisissez-le comme troisième mode de Wiskit et posez vos questions avec votre propre connexion Claude.',
+  'cc.q':'Qu’ai-je enregistré sur la prévention des blessures au genou ? Fais-en une routine de 10 minutes.',
+  'cc.wait':'en attente de votre clic dans Brainamon',
+  'cc.a':'Voici une routine de 10 minutes construite à partir de 5 de vos enregistrements, avec la source de chaque exercice...',
+  'cc.cap':'Exemple de session. Les noms d’outils sont les vrais outils MCP de Brainamon.',
+  'mo.5.t':'Téléchargement des vidéos','mo.5.p':'Gardez une copie des reels qui comptent, y compris des publications privées grâce aux connexions que vous choisissez d’ajouter.',
+  'mo.6.t':'Wiskit sur le bureau','mo.6.p':'Brainamon peut démarrer avec Windows et attendre dans la zone de notification, avec Wiskit à un clic.',
+  'mo.7.t':'Mises à jour automatiques','mo.7.p':'Les nouvelles versions se téléchargent en arrière-plan et sont vérifiées par une signature. Elles s’installent quand vous le décidez.',
+  'mo.8.t':'Jour et nuit','mo.8.p':'Un thème de nuit pour lire tard, sur le PC et sur le téléphone.',
+  'mo.9.t':'Sauvegarde et restauration','mo.9.p':'Votre bibliothèque est faite de fichiers simples et d’une base de données, dans le dossier de votre choix : facile à sauvegarder.',
+  'get.title':'Obtenir Brainamon.',
+  'get.win.t':'Brainamon pour Windows','get.win.p':'Un achat unique, vendu sur Gumroad. Il inclut la clé de licence qui active la synchronisation du téléphone avec votre PC.','get.win.b':'Acheter sur Gumroad',
+  'get.and.t':'Brainamon pour Android','get.and.p':'Associez-le à votre PC pour emporter toute votre bibliothèque, ou utilisez-le seul pour vos liens et vos notes.','get.and.b':'Disponible sur Google Play',
+  'don.t':'Brainamon vous plaît ?','don.p':'Il est fait par une seule personne. Un don l’aide à continuer de grandir.','don.b':'Faire un don',
+  'ft.by':'Créé par Frederic TOMAS','ft.privacy':'Politique de confidentialité',
+  '_title':'Brainamon : vos reels enregistrés, enfin utiles',
+  '_desc':'Brainamon transforme les reels, publications et vidéos enregistrés sur Facebook, Instagram, Reddit et YouTube en bibliothèque privée sur votre PC, avec un assistant IA, des rapports vidéo, des notes, des canvas et une application Android.'
+},
+zh: {
+  'nav.wiskit':'助理','nav.phone':'手機','nav.privacy':'隱私','nav.get':'下載',
+  'hero.title':'你收藏的一切，終於<em>派上用場</em>。',
+  'hero.lead':'Brainamon 把你在 Facebook、Instagram、Reddit 和 YouTube 收藏的短片、貼文與影片，整理成電腦上的私人資料庫。它會為內容寫描述、分析影片、整理成筆記，並回答你的問題，同時標出它參考了哪些收藏。',
+  'hero.note':'資料庫保存在你的電腦上。AI 使用你自己的金鑰，只在你要求時才執行。',
+  'cta.win.small':'Windows · Gumroad','cta.win':'購買 Brainamon','cta.play.small':'Android','cta.play':'Google Play',
+  'sources.lead':'支援你已收藏的內容：','sources.web':'任何網頁連結',
+  'lib.title':'一個資料庫，收納所有收藏。',
+  'lib.body':'用內建的擷取工具或 CSV 匯入收藏清單、貼上連結，或從手機分享。每則收藏都會變成一張卡片，附上縮圖、說明文字、作者與分類。狀態面板會顯示還缺什麼，一個步驟就能補齊：縮圖、AI 描述、分類、影片分析與搜尋索引。',
+  'pin.cards':'3,347 則收藏化為卡片','pin.status':'缺少什麼，一目了然','pin.coll':'你的分類收藏','pin.search':'以關鍵字或語意搜尋','pin.wiskit':'Wiskit 隨時待命',
+  'lib.a.t':'智慧搜尋','lib.a.p':'輸入幾個字或完整的問題。智慧搜尋結合精確字詞與語意，搜尋「膝蓋痛」也能找到從沒提過這幾個字的活動度訓練短片。',
+  'lib.b.t':'擷取連結資訊','lib.b.p':'少了縮圖或說明？Brainamon 會讀取貼文或網頁，把找到的資訊補上。',
+  'lib.c.t':'批次處理','lib.c.p':'一次為數百則收藏寫描述、分類、分析或建立索引，開始前會先顯示數量與費用。',
+  'wk.title':'向你的資料庫提問，答案附上出處。',
+  'wk.body':'Wiskit 是 Brainamon 內建的助理。問它「我收藏了哪些提升效率的技巧？」，它會讀取你的收藏、回答問題，並把每個重點連到出處卡片。點一下引用，卡片就會打開。',
+  'wk.quick':'從排名最前的收藏與筆記快速回答。','wk.deep':'深入研究資料庫：搜尋、閱讀報告、比較。','wk.cc':'以你自己的 Claude Code 登入作為第三種引擎。',
+  'wk.t1':'<b>整批分類收藏</b>，放進你現有的分類。','wk.t2':'<b>提議主題畫布</b>，依據它找到的內容。','wk.t3':'<b>把回答存成筆記</b>，或幫你整理現有筆記。','wk.t4':'<b>回顧這一週</b>：你最近七天收藏了什麼。',
+  'wk.guard':'Wiskit 提議，由你決定。在你按下「套用」之前，資料庫不會有任何變動。',
+  'vid.title':'少看一點，多記一點。',
+  'vid.body':'「分析影片」會下載短片、擷取關鍵畫面、將語音轉成文字，並寫成一份報告：主題、重點資訊、摘要，以及你可以如何運用。逐字稿與報告會和收藏放在一起，可供搜尋，也能讓 Wiskit 讀取。',
+  'vid.t1':'<b>長影片</b>會自動壓縮並分段轉錄。','vid.t2':'<b>畫面放到畫布</b>，把關鍵畫面排上看板。','vid.t3':'<b>影片工具</b>也能分析你電腦裡的影片檔。',
+  'kn.title':'從一堆收藏，到值得保留的筆記。',
+  'kn.body':'選一個主題、勾選來源、按下「綜合」：AI 讀完後寫成一篇列出來源的筆記。「關聯」會留意你收藏的內容，指出還沒有筆記的主題。匯出時，筆記會進入你的 Obsidian 筆記庫。',
+  'kn.t1':'<b>追蹤的主題</b>會替你收集新的收藏。','kn.t2':'<b>整合與重組</b>把新來源併入現有筆記。','kn.t3':'<b>全部建立索引</b>，Wiskit 也能讀你的筆記。',
+  'kn.cap':'作者資料庫中的真實筆記：由 110 則收藏貼文綜合而成的設計工具清單。',
+  'nt.title':'你自己的筆記，就在資料庫旁邊。',
+  'nt.body':'在安靜的編輯器裡書寫，支援螢光標記、手寫、待辦與印章。錄一段語音筆記，就能取回文字。拖入一張截圖，Digest 會把它讀成筆記。分類讓一切井然有序，Wiskit 也能讀取你寫的所有內容。',
+  'nt.t1':'<b>自動儲存</b>，電腦與手機上都一樣。','nt.t2':'<b>AI 摘要</b>放在長筆記開頭，並保持更新。','nt.t3':'<b>隨處新增</b>：想法、連結、圖片、PDF。',
+  'cv.title':'在畫布上排出全貌。',
+  'cv.body':'把收藏、圖片和筆記拖到看板上：晨間例行、情緒板、一個專案。請 Wiskit 做一張主題畫布，它會分組並排好卡片，讓你確認。畫布在手機上也能打開。',
+  'ph.title':'你的資料庫，放進口袋。',
+  'ph.body':'Android 應用程式讓資料庫隨身同行：瀏覽卡片、閱讀報告與筆記、打開畫布，並用你自己的金鑰詢問 Wiskit。從任何應用程式分享連結，Brainamon 會先存成草稿，直到你按下「儲存」。',
+  'ph.c1':'新增','ph.c2':'資料庫','ph.c3':'知識','ph.c4':'報告',
+  'dr.title':'透過你自己的 Google 雲端硬碟同步，全程加密。',
+  'dr.pc':'你的電腦','dr.pc2':'加密','dr.drive2':'隱藏的應用程式資料夾 · AES-256-GCM','dr.ph':'你的手機','dr.ph2':'解密',
+  'dr.body':'電腦會先加密資料庫，再上傳到你 Google 雲端硬碟中 Brainamon 專用的隱藏資料夾。只有你配對過的裝置持有金鑰，Brainamon 也看不到你雲端硬碟裡的其他檔案。你在手機上的變更，會循同一路徑回到電腦。',
+  'dr.t1':'<b>預設關閉，</b>開啟前不會連線雲端。','dr.t2':'<b>配對手機</b>，只要掃描電腦上的 QR 碼。','dr.t3':'<b>只用手機？</b>沒有電腦也能使用，並可選擇加密備份。','dr.t4':'<b>復原功能</b>讓你在新電腦上還原資料庫。',
+  'pv.title':'從設計開始就重視隱私。',
+  'pv.body':'Brainamon 是以本機為優先的軟體。沒有 Brainamon 帳號，你的資料庫也從不經過 Brainamon 的伺服器。',
+  'pv.link':'閱讀隱私權政策',
+  'pv.a.t':'資料庫留在你的電腦上','pv.a.p':'不收集使用統計，也不會自動把當機報告傳給開發者。',
+  'pv.b.t':'使用你自己的 AI 金鑰','pv.b.p':'Anthropic、OpenAI，或在你電腦上執行的模型（Ollama、LM Studio）。只在你要求時才使用 AI，服務商費用另計。',
+  'pv.c.t':'受保護的機密資料','pv.c.p':'API 金鑰與網站登入資訊，在電腦上由 Windows DPAPI 保護，在手機上由 Android Keystore 保護。',
+  'pv.d.t':'加密同步，預設關閉','pv.d.p':'雲端同步只使用 Brainamon 自己的隱藏資料夾，上傳前即已加密。',
+  'mo.title':'還有更多。',
+  'mo.1.t':'擷取工具','mo.1.p':'在瀏覽器中擷取你在 Facebook、Instagram、Reddit 和 YouTube 的收藏清單。Brainamon 會自動從「下載」資料夾讀取檔案。',
+  'mo.2.t':'Instagram 匯出檔','mo.2.p':'在手機上匯入 Instagram 資料下載中的「已儲存」檔案。',
+  'mo.3.t':'本機模型','mo.3.p':'想完全離線？讓 Wiskit 使用你電腦上透過 Ollama 或 LM Studio 執行的模型。',
+  'ob.title':'在 Obsidian 中打開整個資料庫。',
+  'ob.body':'「匯出到 Obsidian」會把你的收藏、分類、主題、報告與筆記，寫成筆記庫中互相連結的 Markdown 檔案。打開關係圖檢視，資料庫就成了一張地圖：每則收藏都連到它的分類、主題，以及引用它的筆記。',
+  'ob.cap':'作者在 Obsidian 中的筆記庫：3,347 則收藏，以及它們的分類、主題與筆記。',
+  'ob.t1':'<b>純 Markdown 檔案</b>，完全屬於你，任何編輯器都能讀。','ob.t2':'<b>以 Brainamon 為來源</b>：每次匯出都會從資料庫重新建立筆記庫。','ob.t3':'<b>筆記庫同步</b>讓手機上的 Obsidian 筆記庫保持最新，經由雲端硬碟加密傳輸。',
+  'cc.title':'支援 Claude Code。',
+  'cc.body':'Brainamon 內建供 Claude Code 使用的本機 MCP 伺服器。連接後，Claude 就能搜尋你的資料庫，讀取項目、報告、筆記與畫布，並啟動「描述」或「擷取連結資訊」等工作。所有資料都留在你的電腦上。',
+  'cc.t1':'<b>絕不刪除。</b>沒有任何工具會刪除、移動或覆寫內容。','cc.t2':'<b>變更由你決定。</b>Claude 提議的筆記、分類與畫布，只有在你於 Brainamon 中點擊後才會套用。','cc.t3':'<b>Wiskit 裡的 Claude Code。</b>選它作為 Wiskit 的第三種模式，用你自己的 Claude 登入提問。',
+  'cc.q':'我收藏過哪些膝蓋保健的內容？幫我整理成 10 分鐘的例行運動。',
+  'cc.wait':'等待你在 Brainamon 中點擊確認',
+  'cc.a':'以下是根據你 5 則收藏整理的 10 分鐘例行運動，每個動作都附上出處……',
+  'cc.cap':'範例對話。工具名稱皆為 Brainamon 實際的 MCP 工具。',
+  'mo.5.t':'影片下載','mo.5.p':'保留重要短片的副本；透過你自行加入的登入資訊，也能取得私人貼文。',
+  'mo.6.t':'桌面上的 Wiskit','mo.6.p':'Brainamon 可隨 Windows 啟動並待在系統匣，Wiskit 一鍵即可叫出。',
+  'mo.7.t':'自動更新','mo.7.p':'新版本在背景下載，並以數位簽章驗證，由你決定何時安裝。',
+  'mo.8.t':'日間與夜間','mo.8.p':'夜間主題，適合深夜閱讀，電腦與手機都支援。',
+  'mo.9.t':'備份與還原','mo.9.p':'資料庫由一般檔案和一個資料庫檔組成，存放在你指定的資料夾，備份很容易。',
+  'get.title':'取得 Brainamon。',
+  'get.win.t':'Brainamon Windows 版','get.win.p':'一次購買，於 Gumroad 販售。內含授權金鑰，可開啟手機與電腦的同步。','get.win.b':'在 Gumroad 購買',
+  'get.and.t':'Brainamon Android 版','get.and.p':'與電腦配對，隨身帶著整個資料庫；也能單獨使用，收集連結和筆記。','get.and.b':'在 Google Play 取得',
+  'don.t':'喜歡 Brainamon 嗎？','don.p':'它由一個人獨力打造。你的贊助能讓它持續成長。','don.b':'贊助支持',
+  'ft.by':'由 Frederic TOMAS 製作','ft.privacy':'隱私權政策',
+  '_title':'Brainamon：你收藏的短片，終於派上用場',
+  '_desc':'Brainamon 把你在 Facebook、Instagram、Reddit 和 YouTube 收藏的短片、貼文與影片，整理成電腦上的私人資料庫，並提供 AI 助理、影片報告、筆記、畫布與 Android 應用程式。'
+}}
+
+const HTML_LANG = { en: 'en', fr: 'fr', zh: 'zh-Hant' }
+const nodes = [...document.querySelectorAll('[data-i18n]')]
+const orig = new Map(nodes.map(n => [n, n.innerHTML]))
+const metaDesc = document.querySelector('meta[name="description"]')
+const base = { title: document.title, desc: metaDesc.content }
+let cur = 'en'
+
+function setLang(l) {
+  if (!HTML_LANG[l]) l = 'en'
+  cur = l
+  const d = T[l] || {}
+  nodes.forEach(n => { n.innerHTML = d[n.dataset.i18n] ?? orig.get(n) })
+  document.documentElement.lang = HTML_LANG[l]
+  document.title = d._title || base.title
+  metaDesc.content = d._desc || base.desc
+  document.querySelectorAll('.lang button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.lang === l)))
+  document.querySelectorAll('[data-keep-lang]').forEach(a => { a.href = l === 'en' ? 'privacy/' : 'privacy/?lang=' + l })
+  try { localStorage.setItem('bm-lang', l) } catch (e) {}
+  const u = new URL(location.href)
+  if (l === 'en') u.searchParams.delete('lang'); else u.searchParams.set('lang', l)
+  history.replaceState(null, '', u)
+}
+function pick() {
+  const q = new URLSearchParams(location.search).get('lang')
+  if (q) return q
+  try { const s = localStorage.getItem('bm-lang'); if (s) return s } catch (e) {}
+  const n = (navigator.language || '').toLowerCase()
+  return n.startsWith('fr') ? 'fr' : n.startsWith('zh') ? 'zh' : 'en'
+}
+document.querySelectorAll('.lang button').forEach(b => b.addEventListener('click', () => setLang(b.dataset.lang)))
+setLang(pick())
+
+const bar = document.getElementById('top')
+addEventListener('scroll', () => bar.classList.toggle('scrolled', scrollY > 8), { passive: true })
+
+const io = 'IntersectionObserver' in window && new IntersectionObserver(es => es.forEach(e => {
+  if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target) }
+}), { rootMargin: '0px 0px -10% 0px' })
+document.querySelectorAll('.reveal').forEach(el => io ? io.observe(el) : el.classList.add('in'))
+</script>
+</body>
+</html>

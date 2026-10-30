@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brainamon privacy policy</title>
+<meta name="description" content="How Brainamon handles your data: a local library on your devices, optional AI with your own keys, optional encrypted Google Drive sync, and purchase records held by Gumroad.">
+<link rel="canonical" href="https://www.fredtomas.com/brainamon/privacy/">
+<link rel="icon" href="../img/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../img/apple-touch-icon.png">
+<meta name="theme-color" content="#ffffff">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#123456;--ink-2:#3d5570;--ink-3:#5d7186;--line:#e3e7ec;--line-2:#cfd6de;--mist:#f5f7f9;
+  --orange:#e8542f;--orange-ink:#c7401d;--teal:#1f7a68;--yellow:#ffd23f;
+  --body:'Archivo','Noto Sans TC','Helvetica Neue',Arial,sans-serif;
+  --mono:'IBM Plex Mono','Noto Sans TC',ui-monospace,Consolas,monospace;
+  --gut:clamp(16px,4vw,40px);--ease:cubic-bezier(.16,1,.3,1);
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth;scroll-padding-top:84px}
+body{margin:0;background:#fff;color:var(--ink);font:400 17px/1.7 var(--body);-webkit-font-smoothing:antialiased;overflow-x:clip}
+html[lang="zh-Hant"] body{font-family:'Noto Sans TC',var(--body);line-height:1.85}
+::selection{background:var(--yellow);color:var(--ink)}
+:focus-visible{outline:2px solid var(--orange);outline-offset:3px;border-radius:6px}
+a{color:var(--orange-ink);text-decoration-thickness:1px;text-underline-offset:.22em;overflow-wrap:anywhere}
+code{font:500 .86em/1 var(--mono);background:var(--mist);padding:.15em .4em;border-radius:5px;color:var(--ink);overflow-wrap:anywhere}
+.wrap{max-width:1160px;margin:0 auto;padding:0 var(--gut)}
+.top{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.88);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;gap:16px;height:68px}
+.brand svg{height:22px;width:auto;display:block}
+.back{margin-left:auto;font:500 14px/1 var(--body);color:var(--ink-2);text-decoration:none;padding:10px 12px;border-radius:8px}
+.back:hover{background:var(--mist);color:var(--ink)}
+.lang{display:flex;border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px;flex:none}
+.lang button{all:unset;cursor:pointer;font:500 12px/1 var(--mono);padding:7px 10px;border-radius:999px;color:var(--ink-3)}
+.lang button[aria-pressed="true"]{background:var(--ink);color:#fff}
+.lang button:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+@media (max-width:520px){.back{display:none}.lang{margin-left:auto}}
+
+.head{padding:clamp(48px,7vw,88px) 0 clamp(28px,4vw,44px);border-bottom:1px solid var(--line)}
+h1{font:800 clamp(40px,6.4vw,80px)/.98 var(--body);font-variation-settings:'wdth' 110;letter-spacing:-.04em;margin:0;text-wrap:balance}
+html[lang="zh-Hant"] h1{font-weight:900;letter-spacing:-.01em;line-height:1.15}
+.meta{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:22px;font:500 13.5px/1.5 var(--mono);color:var(--ink-3)}
+.meta b{color:var(--ink);font-weight:500}
+.note{margin:18px 0 0;padding:12px 16px;background:#fff8e0;border-radius:12px;font-size:15px;max-width:44em}
+
+.layout{display:grid;grid-template-columns:240px minmax(0,1fr);gap:clamp(32px,6vw,80px);padding-top:clamp(32px,5vw,56px)}
+@media (max-width:900px){.layout{grid-template-columns:1fr}.toc{position:static!important}}
+.toc{position:sticky;top:96px;align-self:start}
+.toc ol{list-style:none;margin:0;padding:0;border-left:1px solid var(--line)}
+.toc a{display:block;padding:7px 0 7px 16px;margin-left:-1px;border-left:2px solid transparent;color:var(--ink-2);text-decoration:none;font-size:14.5px;line-height:1.35;transition:color .2s,border-color .2s}
+.toc a:hover{color:var(--ink)}
+.toc a.on{color:var(--ink);border-left-color:var(--orange);font-weight:600}
+@media (max-width:900px){.toc ol{columns:2 220px;border-left:0}.toc a{border-left:0;padding-left:0}}
+
+article{max-width:44em}
+article[hidden]{display:none}
+article .lede{font-size:clamp(18px,1.6vw,20px);color:var(--ink-2);margin:0 0 8px;text-wrap:pretty}
+article h2{font:750 clamp(24px,2.6vw,32px)/1.15 var(--body);font-variation-settings:'wdth' 104;letter-spacing:-.02em;margin:clamp(48px,6vw,72px) 0 16px;padding-top:4px;text-wrap:balance}
+article h2:first-of-type{margin-top:40px}
+article p,article li{color:var(--ink-2)}
+article p{margin:0 0 16px}
+article ul,article ol{padding-left:0;margin:0 0 18px;list-style:none;display:grid;gap:12px}
+article ul li{position:relative;padding-left:22px}
+article ul li::before{content:"";position:absolute;left:2px;top:.62em;width:7px;height:7px;background:var(--orange);transform:rotate(45deg)}
+article ol{counter-reset:s}
+article ol li{counter-increment:s;position:relative;padding-left:36px}
+article ol li::before{content:counter(s);position:absolute;left:0;top:.15em;width:24px;height:24px;border-radius:7px;background:var(--mist);color:var(--ink);font:600 13px/24px var(--mono);text-align:center}
+article strong{color:var(--ink);font-weight:650}
+footer{margin-top:clamp(80px,10vw,120px);border-top:1px solid var(--line);padding:32px 0 44px;font-size:14px;color:var(--ink-3)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:12px 28px}
+footer a{color:var(--ink-2)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="../" data-keep-lang aria-label="Brainamon home">
+      <svg viewBox="-8 -10 502 100" aria-hidden="true"><g fill="none" stroke-width="16" stroke-linecap="butt" stroke-linejoin="miter"><path stroke="#123456" d="M8 0V80 M8 8H26L36 18V30L26 40H8 M8 40H30L40 50V62L30 72H8 M64 24V80 M64 48L80 32H92 M118 32H132L142 42V62L132 72H118L108 62V42Z M142 24V80 M166 24V80 M190 24V80 M190 44L202 32H212L222 42V80 M256 32H270L280 42V62L270 72H256L246 62V42Z M280 24V80"/><path stroke="#E8542F" d="M304 24V80 M304 44L316 32H324L334 42V80 M334 44L346 32H354L364 42V80 M398 32H412L422 42V62L412 72H398L388 62V42Z M446 24V80 M446 44L458 32H468L478 42V80"/></g><path fill="#123456" d="M166 -2L176 8L166 18L156 8Z"/></svg>
+    </a>
+    <a class="back" href="../" data-keep-lang data-t="back">← Back to Brainamon</a>
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="fr" aria-pressed="false">FR</button>
+      <button type="button" data-lang="zh" aria-pressed="false" lang="zh-Hant">繁中</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="head">
+    <h1 data-t="h1">Privacy policy</h1>
+    <div class="meta"><span><span data-t="updated">Last updated</span> <b>2026-10-28</b></span><span><span data-t="contact">Contact</span> <b><a href="mailto:me@fredtomas.com">me@fredtomas.com</a></b></span></div>
+    <p class="note" data-t="tnote" hidden></p>
+  </div>
+
+  <div class="layout">
+    <nav class="toc" aria-label="Sections"><ol id="toc"></ol></nav>
+
+    <!-- ================= ENGLISH (authoritative) ================= -->
+    <article lang="en" data-lang="en">
+      <p class="lede">Seller and privacy contact: Frederic TOMAS, an individual, at <a href="mailto:me@fredtomas.com">me@fredtomas.com</a>. Public copy of this policy: <a href="https://www.fredtomas.com/brainamon/privacy/">https://www.fredtomas.com/brainamon/privacy/</a></p>
+      <p>Brainamon stores a library on your devices. Windows desktop, standalone phone, Google Drive mirror and direct-PC modes have different connections, described below. Saving links and notes needs no AI key. External AI processing and Google Drive sync are optional. Reading the bundled policy, software license and notices does not require a provider connection.</p>
+
+      <h2 id="en-local">Local data and credentials</h2>
+      <ul>
+        <li>On Windows, the selected data folder holds saved links, metadata, thumbnails/media, notes, transcripts, reports, canvases, chats and settings. Settings &gt; App shows the data folder. The selected settings home is normally <code>%LOCALAPPDATA%\Brainamon</code>, a reused populated <code>%LOCALAPPDATA%\Content Manager</code>, or the explicit <code>BRAINAMON_HOME</code>. Source runs normally use the repository's <code>data/</code> and <code>local/</code>; configured locations can differ.</li>
+        <li>API keys, Google authorization, mirror keys and explicitly imported site sessions are kept in the settings home, outside normal library/Drive exports. Windows protects app-managed secret files with current-user DPAPI and access restrictions. Library files themselves are not all encrypted by Brainamon. Protection does not prevent access by someone using your unlocked account or by malware with the same access.</li>
+        <li>Social-site cookies and remembered scraper logins are credentials for the site you choose to access. Import, remembering a login, and copying it for downloads are explicit choices. Forget saved access stops app use and removes app-managed secrets; it does not revoke the site's sessions or delete your original exports, browser profiles or backups.</li>
+        <li>The phone holds library rows, downloaded/opened files, saved offline copies, drafts and pending changes in local browser/app storage. Decrypted library content can remain on the device. The Android app stores pairing/AI keys and Google tokens using Android Keystore-backed encrypted storage and excludes its app data from Android backup. This protection does not describe ordinary browser storage or make downloaded library content encrypted at rest.</li>
+        <li>The desktop error log and in-app diagnostics are local. They may contain file paths, errors, operation details and content from requests/responses. The app does not automatically upload crash reports or analytics to the developer. Review/redact logs or support bundles before choosing to send them; do not include keys, pairing codes or cookie exports.</li>
+      </ul>
+
+      <h2 id="en-ai">Optional AI processing</h2>
+      <p>AI requests go from the device running the operation to the selected provider or configured OpenAI-compatible/local/proxy endpoint. A proxy may forward them to another provider; a server labelled Local is only local if its configured address actually is. Direct-PC phone mode sends requests to the running PC, which performs the external processing. Standalone/mirror phone own-key features use the providers supported by the phone.</p>
+      <p>Depending on the operation, inputs can include questions, chat history, library titles, URLs, descriptions, captions, notes, transcript/report excerpts, retrieved context, supplied images, PDF documents or selected video frames. Own-key phone PDF reading uploads the complete PDF; direct-PC/desktop PDF reading extracts text on the PC. Adding a PDF on the phone starts reading immediately. Search indexing and some Deep research send library text for embeddings; semantic queries send query text. Video analysis can upload extracted audio to OpenAI for transcription and frames/text to the selected analysis provider. Voice notes upload recorded audio to OpenAI for transcription. Picture-reading features send the chosen image to the configured vision provider. Desktop voice-note temporary audio is scheduled for cleanup after processing. Phone recordings can stay queued locally until transcription and saving succeed, and upload automatically when connectivity returns. Video-analysis extracted audio, frames and downloaded media can remain according to the operation's retention options; transcripts/reports remain in the library until deleted. Choosing Claude Code mode in a source installation also uses your separately configured Claude Code service and permissions.</p>
+      <p>API credentials authenticate these requests. Provider/API charges are separate from the app's one-time purchase. Provider/proxy terms govern their handling of inputs, outputs, retention and any training use; Brainamon does not promise that a provider deletes immediately, never trains, or keeps data in a particular country. Review your endpoint and provider's current terms before sending sensitive content. Removing a local key stops future use by that copy of the app; it does not revoke the key with its issuer or erase requests already processed externally.</p>
+
+      <h2 id="en-net">Requested network access and other apps</h2>
+      <p>Fetching previews, captions, pages or media contacts the requested sites and their content hosts, transmitting the requested URL and normal connection information such as your IP address and request headers. Chosen site credentials are used only through the relevant access flow. Some previews are requested after a link is pasted/shared. Source sites control their own logs, availability and terms. Browser scraping and video download/analysis run on the PC; a Drive mirror is file sync and does not provide a live PC jobs connection.</p>
+      <p>Installed Windows builds check GitHub daily and download updates automatically by default; Settings &gt; App can turn this off. Manual checks/downloads remain available. Checks include the app version; downloads contact GitHub release hosts. Installation always waits for an explicit Install and restart action. Optional tool installation contacts the relevant package/tool/browser download services. These services receive normal connection/download information. The app's local library is not part of an update-check request.</p>
+      <p>Sharing a link creates a local draft; Save commits it. Phone edits can queue locally, then travel encrypted through Drive for PC intake when paired with a licensed PC. The encrypted license-control record includes the signed license (holder, optional email, license ID and issue date) plus a short-lived access grant. The paired phone verifies it locally; it is not sent to a licensing server or included in the QR. The PC renews access while running and signed in; removal propagates through Drive, or the last grant expires within one hour when the PC cannot reach Drive. Local phone content/edits remain available while locked. Standalone phone users can optionally back up their library journal encrypted in Google Drive without a PC or license. This backup uses its own key and separate files, even when the account also holds a desktop library. Restoring it requires the same Google account and the phone recovery code; AI keys are not included. Exports and Open in Obsidian hand the selected content to the destination you choose; those exported copies have their own retention. Android QR scanning uses Google Play services' code scanner; Brainamon receives the scanned text and does not request camera permission itself. Android includes Google's code-scanner/ML Kit components. Google's ML Kit terms state that its input processing happens on-device, while the SDK can contact Google for fixes/model and compatibility updates and sends API performance/utilization metrics to Google. See <a href="https://developers.google.com/ml-kit/terms">https://developers.google.com/ml-kit/terms</a> and Google's privacy policy at <a href="https://policies.google.com/privacy">https://policies.google.com/privacy</a>. Exact shipped SDK/device behavior still requires release verification; this app does not promise that every Android dependency makes no external request.</p>
+
+      <h2 id="en-drive">Optional Google Drive sync</h2>
+      <p>Google authorization uses <code>drive.appdata</code>, access to Brainamon's hidden app-data area rather than your ordinary Drive files. Drive is off until you connect/enable it. The PC encrypts the mirror contents with AES-256-GCM before upload; paired devices hold the key needed to decrypt them. Standalone phone mode can also store encrypted changes there. Optional Obsidian vault sync sends its configured content through the app's encrypted Drive flow. Google receives your account and connection information and can observe file counts, sizes and change times. Encryption of these contents does not hide that metadata or prevent access by a device/person holding the key.</p>
+      <p>Pairing/recovery codes carry library key material. Anyone with the code and the Google account may be able to read the corresponding library. AI-key transfer is separately selected on the PC: selected keys are sealed with a one-time transfer key, expire for collection after 30 minutes and are deleted after successful collection. Failed/offline cleanup can leave expired ciphertext until a later authorized cleanup; expiry is not a promise that every remote byte vanished then. The library key itself does not expire with that transfer. Keep codes and clipboard copies secret.</p>
+      <p>Optional Recovery setup uploads passphrase-protected and independent kit-secret-protected envelopes of the library master key to the same hidden Drive area. Scrypt derives the passphrase wrapping key; AES-256-GCM encrypts each envelope. Recovery metadata includes format/version, account, library identity, fingerprint, generation and setup time. The plaintext passphrase and kit secret are not sent to Google or the seller. A recovery kit or explicit phone recovery export contains sensitive key material that you choose where to save. Google sign-in alone cannot decrypt the mirror, and losing every recovery secret/device can make it unrecoverable. New-PC restore downloads the latest available mirror into a separate local library; it is not retained version history or a full machine/credential backup.</p>
+      <p>Google's service terms and retention apply to Google-held data. Disconnecting is different from deleting the mirror or revoking another phone's Google authorization.</p>
+      <p>Brainamon uses the Google Drive app-data access only to store, read and delete its own encrypted mirror, change, transfer and recovery files for your devices. It does not read your other Drive files and does not send Google user data to the seller. Library content read from the mirror goes to another party only when you direct it, such as a question you send to your own AI provider. Brainamon does not use Google user data for advertising and does not use it to train AI models. Brainamon's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+
+      <h2 id="en-buy">Purchase and support information</h2>
+      <p>Brainamon is sold through Gumroad. The app has no Brainamon customer account, store or card-entry system. Gumroad handles checkout, payment, sales tax, receipts, download delivery and refund requests under its own terms and privacy policy (<a href="https://gumroad.com/privacy">https://gumroad.com/privacy</a>); payment card details go to Gumroad and its payment processors, never to the seller or the app.</p>
+      <p>Through Gumroad the seller receives the order details Gumroad shares with sellers, such as your email address, name, country, the product bought, the price paid and refund status. When you activate, the app sends the license key from your Gumroad receipt once to the seller's activation service at fredtomas.com, which asks Gumroad whether the purchase is valid and not refunded and returns your Brainamon license key; that key carries the name and email of the purchase and is stored in the app on your PC. The activation service keeps no record of the request beyond the hosting provider's standard access logs. The seller also receives what you choose to send for support: emails, attachments or diagnostics. These are used only to deliver the purchase and license, answer support and privacy requests, handle refunds or disputes and keep required accounting records. They are not sold, not used for advertising and not used for unrelated marketing. Order records stay in Gumroad and are not copied to another service, except license details the seller needs to reissue a key and support emails kept in the seller's mailbox. They are kept as long as needed for these purposes and for legally required accounting periods.</p>
+      <p>The developer cannot inspect your local library remotely through a privacy request and does not automatically receive it from normal app use.</p>
+      <p>Gumroad, AI providers and Google can process information outside your country under their own policies and transfer safeguards.</p>
+
+      <h2 id="en-delete">Retention and deleting your data</h2>
+      <p>Local library/settings data remains until you delete it; caches may be trimmed while saved offline copies and pending changes remain. Backups and exports are separate copies. For a full backup or deletion walkthrough, see <code>docs/BACKUP-RESTORE.md</code> supplied with the project documentation.</p>
+      <ol>
+        <li>Review pending phone edits/drafts and keep or send anything you need before removing a copy. Deleting an item/note uses the existing library controls; in mirror mode a PC deletion queued from the phone takes effect on the PC only after intake.</li>
+        <li>If you want the PC's owned mirrored library files removed from Drive, while still authorized use Settings &gt; Cloud &gt; Disconnect Google Drive... and select Also delete the phone's library copy from Drive, then confirm Disconnect and delete the copy. Wait for successful completion. This targets files identified by the current mirror manifest, not every Drive object, solo journal, vault export, unknown/old file or provider backup. A failed/offline attempt is not completed deletion. Review other retained app data through Google's available controls.</li>
+        <li>On each phone, More &gt; Unpair (or Remove from this phone in standalone mode) removes that connection. Saved offline files and some pending/local records may remain. To remove all app storage after reviewing unsent work, use Android's app-storage clearing control or uninstall; in a browser clear the Brainamon site's storage. Remove separately exported files yourself. More &gt; Clear the phone's copy only clears a cache: saved offline files and unsent changes stay, and an immediate refresh can download the library again.</li>
+        <li>On Windows, note the selected data folder in Settings &gt; App and the actual settings home, then Quit fully, including the background/tray process. Interactive uninstall offers to permanently delete local saved data; keeping data is the default, and silent uninstall keeps it. Choosing deletion lists the settings/library folders for a second confirmation, including any discovered custom library outside the settings home. Confirm only after checking every path and any needed backups: everything inside the listed folders is deleted. Cleanup stops on unsafe/unrecognized paths or failures. Review unlisted custom/old folders separately.</li>
+        <li>Review separate backups, Downloads cookie exports, legacy profiles, logs, other-device copies and exported/Obsidian content. Remove or revoke credentials with their issuers if desired.</li>
+      </ol>
+      <p>Unpair all phones on the PC queues a key rotation; it finishes only after authorized publication, verification and owned old-file cleanup. It cannot erase cached plaintext on another device or revoke that device's independent Google sign-in. No control promises secure/forensic erasure or automatic deletion from AI providers, marketplaces, their backups or records legally retained.</p>
+
+      <h2 id="en-rights">Privacy rights and contact</h2>
+      <p>Seller: Frederic TOMAS, an individual.<br>Support, privacy requests and complaints: <a href="mailto:me@fredtomas.com">me@fredtomas.com</a>.<br>Public privacy-policy URL: <a href="https://www.fredtomas.com/brainamon/privacy/">https://www.fredtomas.com/brainamon/privacy/</a></p>
+      <p>For seller-held purchase/support records, applicable rights can include access/inquiry, a copy, correction, deletion, stopping/restricting processing, objection, portability or withdrawing consent where relevant. Email <a href="mailto:me@fredtomas.com">me@fredtomas.com</a>, identifying the request and enough order/contact information to locate it. Mandatory retention or another lawful exception may limit deletion; applicable rights are not waived by this policy. Requests about provider-held data should also be addressed to that provider. You may complain to the competent data-protection authority, such as the CNIL where applicable in France; the applicable authority, seller obligations and response process must be confirmed for the actual business before launch.</p>
+      <p>Brainamon is not directed at children under 13. The intended audience and applicable age rules must be reviewed before targeting children. Changes to this policy should identify the revision date and be made available with the app and at the final public URL.</p>
+    </article>
+
+    <!-- ================= FRANÇAIS ================= -->
+    <article lang="fr" data-lang="fr" hidden>
+      <p class="lede">Vendeur et contact pour la confidentialité : Frederic TOMAS, particulier, à <a href="mailto:me@fredtomas.com">me@fredtomas.com</a>. Copie publique de cette politique : <a href="https://www.fredtomas.com/brainamon/privacy/">https://www.fredtomas.com/brainamon/privacy/</a></p>
+      <p>Brainamon conserve une bibliothèque sur vos appareils. Les modes bureau Windows, téléphone autonome, miroir Google Drive et PC direct utilisent des connexions différentes, décrites ci-dessous. Enregistrer des liens et des notes ne nécessite aucune clé d’IA. Le traitement par une IA externe et la synchronisation Google Drive sont facultatifs. Lire la politique, la licence logicielle et les mentions fournies avec l’application ne nécessite aucune connexion à un fournisseur.</p>
+
+      <h2 id="fr-local">Données locales et identifiants</h2>
+      <ul>
+        <li>Sous Windows, le dossier de données choisi contient les liens enregistrés, les métadonnées, les miniatures et médias, les notes, les transcriptions, les rapports, les canvas, les conversations et les réglages. Réglages &gt; App indique le dossier de données. Le dossier des réglages est normalement <code>%LOCALAPPDATA%\Brainamon</code>, un dossier <code>%LOCALAPPDATA%\Content Manager</code> existant et réutilisé, ou le dossier explicite <code>BRAINAMON_HOME</code>. Une exécution depuis les sources utilise normalement les dossiers <code>data/</code> et <code>local/</code> du dépôt ; les emplacements configurés peuvent différer.</li>
+        <li>Les clés API, l’autorisation Google, les clés du miroir et les sessions de sites importées explicitement sont conservées dans le dossier des réglages, en dehors des exports normaux de la bibliothèque et de Drive. Windows protège les fichiers secrets gérés par l’application avec DPAPI pour l’utilisateur courant et des restrictions d’accès. Les fichiers de la bibliothèque ne sont pas tous chiffrés par Brainamon. Cette protection n’empêche pas l’accès par une personne utilisant votre session déverrouillée ni par un logiciel malveillant disposant des mêmes droits.</li>
+        <li>Les cookies de réseaux sociaux et les connexions mémorisées des scrapers sont des identifiants pour le site auquel vous choisissez d’accéder. Importer, mémoriser une connexion et la copier pour les téléchargements sont des choix explicites. Oublier l’accès enregistré arrête son utilisation par l’application et supprime les secrets qu’elle gère ; cela ne révoque pas les sessions du site et ne supprime pas vos exports d’origine, profils de navigateur ou sauvegardes.</li>
+        <li>Le téléphone conserve les lignes de la bibliothèque, les fichiers téléchargés ou ouverts, les copies hors ligne, les brouillons et les modifications en attente dans le stockage local du navigateur ou de l’application. Du contenu déchiffré de la bibliothèque peut rester sur l’appareil. L’application Android stocke les clés d’association et d’IA ainsi que les jetons Google dans un stockage chiffré adossé à Android Keystore, et exclut ses données de la sauvegarde Android. Cette protection ne concerne pas le stockage ordinaire d’un navigateur et ne rend pas chiffré au repos le contenu téléchargé de la bibliothèque.</li>
+        <li>Le journal d’erreurs du bureau et les diagnostics intégrés sont locaux. Ils peuvent contenir des chemins de fichiers, des erreurs, des détails d’opérations et du contenu de requêtes ou de réponses. L’application n’envoie pas automatiquement de rapports de plantage ni de statistiques au développeur. Relisez et masquez les journaux ou paquets de support avant de choisir de les envoyer ; n’y incluez pas de clés, de codes d’association ni d’exports de cookies.</li>
+      </ul>
+
+      <h2 id="fr-ai">Traitement par IA facultatif</h2>
+      <p>Les requêtes d’IA partent de l’appareil qui exécute l’opération vers le fournisseur choisi ou le point d’accès configuré (compatible OpenAI, local ou proxy). Un proxy peut les transmettre à un autre fournisseur ; un serveur indiqué comme Local n’est local que si son adresse configurée l’est réellement. En mode PC direct, le téléphone envoie les requêtes au PC en marche, qui effectue le traitement externe. Les fonctions avec votre propre clé en mode téléphone autonome ou miroir utilisent les fournisseurs pris en charge par le téléphone.</p>
+      <p>Selon l’opération, les données envoyées peuvent inclure des questions, l’historique de conversation, des titres, URL, descriptions et légendes de la bibliothèque, des notes, des extraits de transcriptions ou de rapports, du contexte récupéré, des images fournies, des documents PDF ou des images extraites de vidéos. La lecture de PDF sur le téléphone avec votre propre clé envoie le PDF complet ; en mode PC direct ou sur le bureau, le texte est extrait sur le PC. Ajouter un PDF sur le téléphone lance la lecture immédiatement. L’indexation pour la recherche et certaines recherches Deep envoient du texte de la bibliothèque pour les embeddings ; les recherches sémantiques envoient le texte de la requête. L’analyse vidéo peut envoyer l’audio extrait à OpenAI pour transcription, et des images et du texte au fournisseur d’analyse choisi. Les notes vocales envoient l’audio enregistré à OpenAI pour transcription. Les fonctions de lecture d’image envoient l’image choisie au fournisseur de vision configuré. L’audio temporaire des notes vocales du bureau est programmé pour suppression après traitement. Les enregistrements du téléphone peuvent rester en file d’attente localement jusqu’à la réussite de la transcription et de l’enregistrement, et s’envoient automatiquement au retour de la connexion. L’audio extrait, les images et les médias téléchargés pour l’analyse vidéo peuvent être conservés selon les options de conservation de l’opération ; les transcriptions et rapports restent dans la bibliothèque jusqu’à leur suppression. Choisir le mode Claude Code dans une installation depuis les sources utilise aussi votre service Claude Code et ses autorisations, configurés séparément.</p>
+      <p>Les identifiants d’API authentifient ces requêtes. Les frais du fournisseur ou de l’API sont distincts de l’achat unique de l’application. Les conditions du fournisseur ou du proxy régissent le traitement des entrées et sorties, leur conservation et toute utilisation pour l’entraînement ; Brainamon ne promet pas qu’un fournisseur supprime immédiatement, n’entraîne jamais de modèle ou conserve les données dans un pays donné. Consultez les conditions actuelles de votre point d’accès et de votre fournisseur avant d’envoyer du contenu sensible. Retirer une clé locale arrête son utilisation future par cette copie de l’application ; cela ne révoque pas la clé auprès de son émetteur et n’efface pas les requêtes déjà traitées à l’extérieur.</p>
+
+      <h2 id="fr-net">Accès réseau demandés et autres applications</h2>
+      <p>Récupérer des aperçus, des légendes, des pages ou des médias contacte les sites demandés et leurs hébergeurs de contenu, en transmettant l’URL demandée et les informations de connexion habituelles comme votre adresse IP et les en-têtes de requête. Les identifiants de site choisis ne sont utilisés que dans le parcours d’accès concerné. Certains aperçus sont demandés après le collage ou le partage d’un lien. Les sites sources gèrent leurs propres journaux, leur disponibilité et leurs conditions. Le scraping dans le navigateur et le téléchargement ou l’analyse de vidéos s’exécutent sur le PC ; un miroir Drive est une synchronisation de fichiers et ne fournit pas de connexion en direct aux tâches du PC.</p>
+      <p>Les versions Windows installées vérifient GitHub chaque jour et téléchargent les mises à jour automatiquement par défaut ; Réglages &gt; App permet de le désactiver. Les vérifications et téléchargements manuels restent disponibles. Les vérifications incluent la version de l’application ; les téléchargements contactent les hébergeurs de versions de GitHub. L’installation attend toujours une action explicite Installer et redémarrer. L’installation d’outils facultatifs contacte les services de téléchargement des paquets, outils ou navigateurs concernés. Ces services reçoivent les informations habituelles de connexion et de téléchargement. La bibliothèque locale ne fait pas partie d’une requête de vérification de mise à jour.</p>
+      <p>Partager un lien crée un brouillon local ; Enregistrer le valide. Les modifications faites sur le téléphone peuvent être mises en file d’attente localement, puis voyager chiffrées par Drive jusqu’au PC lorsque le téléphone est associé à un PC sous licence. L’enregistrement chiffré de contrôle de licence contient la licence signée (titulaire, e-mail facultatif, identifiant de licence et date d’émission) et une autorisation d’accès de courte durée. Le téléphone associé la vérifie localement ; elle n’est pas envoyée à un serveur de licences ni incluse dans le QR code. Le PC renouvelle l’accès tant qu’il est en marche et connecté ; un retrait se propage par Drive, ou la dernière autorisation expire en une heure si le PC ne peut pas joindre Drive. Le contenu et les modifications locales du téléphone restent disponibles pendant le verrouillage. Les utilisateurs du téléphone en mode autonome peuvent, s’ils le souhaitent, sauvegarder leur journal de bibliothèque chiffré dans Google Drive sans PC ni licence. Cette sauvegarde utilise sa propre clé et des fichiers séparés, même si le compte contient aussi une bibliothèque de bureau. La restaurer nécessite le même compte Google et le code de récupération du téléphone ; les clés d’IA n’y sont pas incluses. Les exports et Ouvrir dans Obsidian remettent le contenu choisi à la destination de votre choix ; ces copies exportées ont leur propre durée de conservation. Sur Android, la lecture des QR codes utilise le scanner de codes des services Google Play ; Brainamon reçoit le texte lu et ne demande pas lui-même l’autorisation d’accès à l’appareil photo. Android inclut les composants de scanner de codes et ML Kit de Google. Les conditions de ML Kit indiquent que le traitement des entrées a lieu sur l’appareil, tandis que le SDK peut contacter Google pour des correctifs, des mises à jour de modèles et de compatibilité, et envoie à Google des statistiques de performance et d’utilisation de l’API. Voir <a href="https://developers.google.com/ml-kit/terms">https://developers.google.com/ml-kit/terms</a> et la politique de confidentialité de Google sur <a href="https://policies.google.com/privacy">https://policies.google.com/privacy</a>. Le comportement exact du SDK et de l’appareil livrés doit encore être vérifié à la publication ; l’application ne promet pas qu’aucune dépendance Android n’effectue de requête externe.</p>
+
+      <h2 id="fr-drive">Synchronisation Google Drive facultative</h2>
+      <p>L’autorisation Google utilise <code>drive.appdata</code>, un accès à la zone de données cachée de Brainamon plutôt qu’à vos fichiers Drive ordinaires. Drive reste désactivé tant que vous ne le connectez pas et ne l’activez pas. Le PC chiffre le contenu du miroir en AES-256-GCM avant l’envoi ; les appareils associés détiennent la clé nécessaire pour le déchiffrer. Le mode téléphone autonome peut aussi y stocker des modifications chiffrées. La synchronisation facultative d’un coffre Obsidian envoie son contenu configuré par le parcours Drive chiffré de l’application. Google reçoit les informations de votre compte et de connexion et peut observer le nombre de fichiers, leur taille et leurs dates de modification. Le chiffrement de ce contenu ne masque pas ces métadonnées et n’empêche pas l’accès par un appareil ou une personne détenant la clé.</p>
+      <p>Les codes d’association et de récupération contiennent des éléments de la clé de la bibliothèque. Toute personne disposant du code et du compte Google peut être en mesure de lire la bibliothèque correspondante. Le transfert des clés d’IA se choisit séparément sur le PC : les clés sélectionnées sont scellées avec une clé de transfert à usage unique, ne peuvent plus être récupérées après 30 minutes et sont supprimées après une récupération réussie. Un nettoyage échoué ou hors ligne peut laisser un texte chiffré expiré jusqu’à un nettoyage autorisé ultérieur ; l’expiration ne garantit pas que chaque octet distant a alors disparu. La clé de la bibliothèque elle-même n’expire pas avec ce transfert. Gardez secrets les codes et leurs copies dans le presse-papiers.</p>
+      <p>La configuration facultative de la récupération envoie, dans la même zone Drive cachée, des enveloppes de la clé maîtresse de la bibliothèque protégées par une phrase secrète et, indépendamment, par le secret d’un kit. Scrypt dérive la clé d’enveloppe à partir de la phrase secrète ; AES-256-GCM chiffre chaque enveloppe. Les métadonnées de récupération comprennent le format et la version, le compte, l’identité de la bibliothèque, l’empreinte, la génération et la date de configuration. La phrase secrète et le secret du kit en clair ne sont envoyés ni à Google ni au vendeur. Un kit de récupération ou un export explicite de récupération du téléphone contient des éléments de clé sensibles que vous choisissez où conserver. La seule connexion Google ne permet pas de déchiffrer le miroir, et perdre tous les secrets et appareils de récupération peut le rendre irrécupérable. La restauration sur un nouveau PC télécharge le dernier miroir disponible dans une bibliothèque locale séparée ; ce n’est ni un historique de versions conservé ni une sauvegarde complète de la machine ou des identifiants.</p>
+      <p>Les conditions de service et de conservation de Google s’appliquent aux données détenues par Google. Se déconnecter n’est pas la même chose que supprimer le miroir ou révoquer l’autorisation Google d’un autre téléphone.</p>
+      <p>Brainamon utilise l’accès aux données d’application Google Drive uniquement pour stocker, lire et supprimer ses propres fichiers chiffrés de miroir, de modifications, de transfert et de récupération pour vos appareils. Il ne lit pas vos autres fichiers Drive et n’envoie pas de données utilisateur Google au vendeur. Le contenu de la bibliothèque lu depuis le miroir n’est transmis à un tiers que lorsque vous le décidez, par exemple une question envoyée à votre propre fournisseur d’IA. Brainamon n’utilise pas les données utilisateur Google à des fins publicitaires ni pour entraîner des modèles d’IA. L’utilisation et le transfert par Brainamon des informations reçues des API Google respectent la <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, y compris les exigences d’utilisation limitée (Limited Use).</p>
+
+      <h2 id="fr-buy">Achat et assistance</h2>
+      <p>Brainamon est vendu par l’intermédiaire de Gumroad. L’application n’a ni compte client Brainamon, ni boutique, ni saisie de carte bancaire. Gumroad gère la commande, le paiement, la taxe de vente, les reçus, la livraison du téléchargement et les demandes de remboursement selon ses propres conditions et sa politique de confidentialité (<a href="https://gumroad.com/privacy">https://gumroad.com/privacy</a>) ; les données de carte bancaire vont à Gumroad et à ses prestataires de paiement, jamais au vendeur ni à l’application.</p>
+      <p>Par Gumroad, le vendeur reçoit les détails de commande que Gumroad partage avec les vendeurs, comme votre adresse e-mail, votre nom, votre pays, le produit acheté, le prix payé et l’état du remboursement. Lors de l’activation, l’application envoie une fois la clé de licence de votre reçu Gumroad au service d’activation du vendeur sur fredtomas.com. Ce service demande à Gumroad si l’achat est valide et non remboursé, puis renvoie votre clé de licence Brainamon ; cette clé contient le nom et l’adresse e-mail de l’achat et est stockée dans l’application sur votre PC. Le service d’activation ne conserve aucun enregistrement de la requête, hormis les journaux d’accès standard de l’hébergeur. Le vendeur reçoit aussi ce que vous choisissez d’envoyer pour l’assistance : e-mails, pièces jointes ou diagnostics. Ces données servent uniquement à livrer l’achat et la licence, à répondre aux demandes d’assistance et de confidentialité, à traiter les remboursements ou litiges et à tenir la comptabilité obligatoire. Elles ne sont pas vendues, ni utilisées pour la publicité ou pour un marketing sans rapport. Les enregistrements de commande restent chez Gumroad et ne sont pas copiés vers un autre service, sauf les détails de licence dont le vendeur a besoin pour réémettre une clé et les e-mails d’assistance conservés dans la messagerie du vendeur. Ils sont conservés le temps nécessaire à ces finalités et pendant les durées comptables légales.</p>
+      <p>Le développeur ne peut pas consulter votre bibliothèque locale à distance dans le cadre d’une demande de confidentialité et ne la reçoit pas automatiquement lors de l’utilisation normale de l’application.</p>
+      <p>Gumroad, les fournisseurs d’IA et Google peuvent traiter des informations hors de votre pays selon leurs propres politiques et garanties de transfert.</p>
+
+      <h2 id="fr-delete">Conservation et suppression de vos données</h2>
+      <p>Les données locales de la bibliothèque et des réglages restent jusqu’à ce que vous les supprimiez ; les caches peuvent être réduits tandis que les copies hors ligne et les modifications en attente restent. Les sauvegardes et exports sont des copies distinctes. Pour un guide complet de sauvegarde ou de suppression, voir <code>docs/BACKUP-RESTORE.md</code> fourni avec la documentation du projet.</p>
+      <ol>
+        <li>Vérifiez les modifications et brouillons en attente sur le téléphone, et conservez ou envoyez ce dont vous avez besoin avant de supprimer une copie. La suppression d’un élément ou d’une note se fait avec les commandes habituelles de la bibliothèque ; en mode miroir, une suppression sur le PC demandée depuis le téléphone ne prend effet sur le PC qu’après sa réception.</li>
+        <li>Si vous voulez retirer de Drive les fichiers miroir de la bibliothèque appartenant au PC, tant que l’autorisation est valide, utilisez Réglages &gt; Cloud &gt; Déconnecter Google Drive… et sélectionnez Supprimer aussi la copie de la bibliothèque du téléphone sur Drive, puis confirmez Déconnecter et supprimer la copie. Attendez la fin de l’opération. Cela vise les fichiers identifiés par le manifeste actuel du miroir, et non chaque objet Drive, journal autonome, export de coffre, fichier inconnu ou ancien, ou sauvegarde du fournisseur. Une tentative échouée ou hors ligne n’est pas une suppression terminée. Vérifiez les autres données d’application conservées avec les outils proposés par Google.</li>
+        <li>Sur chaque téléphone, Plus &gt; Dissocier (ou Retirer de ce téléphone en mode autonome) supprime cette connexion. Des fichiers hors ligne enregistrés et certains éléments en attente ou locaux peuvent rester. Pour supprimer tout le stockage de l’application après avoir vérifié le travail non envoyé, utilisez la commande Android d’effacement du stockage de l’application ou désinstallez-la ; dans un navigateur, effacez le stockage du site Brainamon. Supprimez vous-même les fichiers exportés séparément. Plus &gt; Vider la copie du téléphone ne vide qu’un cache : les fichiers hors ligne et les modifications non envoyées restent, et une actualisation immédiate peut télécharger à nouveau la bibliothèque.</li>
+        <li>Sous Windows, notez le dossier de données choisi dans Réglages &gt; App et le dossier réel des réglages, puis quittez complètement l’application, y compris le processus en arrière-plan et l’icône de la zone de notification. La désinstallation interactive propose de supprimer définitivement les données locales ; conserver les données est le choix par défaut, et la désinstallation silencieuse les conserve. Choisir la suppression affiche la liste des dossiers de réglages et de bibliothèque pour une seconde confirmation, y compris toute bibliothèque personnalisée trouvée hors du dossier des réglages. Ne confirmez qu’après avoir vérifié chaque chemin et toute sauvegarde nécessaire : tout le contenu des dossiers listés est supprimé. Le nettoyage s’arrête en cas de chemin dangereux ou non reconnu, ou d’échec. Vérifiez séparément les dossiers personnalisés ou anciens non listés.</li>
+        <li>Vérifiez les sauvegardes séparées, les exports de cookies dans Téléchargements, les anciens profils, les journaux, les copies sur d’autres appareils et le contenu exporté ou Obsidian. Supprimez ou révoquez les identifiants auprès de leurs émetteurs si vous le souhaitez.</li>
+      </ol>
+      <p>Dissocier tous les téléphones sur le PC programme une rotation de clé ; elle ne se termine qu’après une publication autorisée, une vérification et le nettoyage des anciens fichiers appartenant à la bibliothèque. Elle ne peut pas effacer le texte en clair mis en cache sur un autre appareil ni révoquer la connexion Google indépendante de cet appareil. Aucune commande ne garantit un effacement sécurisé ou forensique, ni une suppression automatique chez les fournisseurs d’IA, les places de marché, dans leurs sauvegardes ou dans les enregistrements conservés légalement.</p>
+
+      <h2 id="fr-rights">Droits et contact</h2>
+      <p>Vendeur : Frederic TOMAS, particulier.<br>Assistance, demandes relatives à la confidentialité et réclamations : <a href="mailto:me@fredtomas.com">me@fredtomas.com</a>.<br>Adresse publique de la politique : <a href="https://www.fredtomas.com/brainamon/privacy/">https://www.fredtomas.com/brainamon/privacy/</a></p>
+      <p>Pour les données d’achat et d’assistance détenues par le vendeur, les droits applicables peuvent comprendre l’accès, l’obtention d’une copie, la rectification, l’effacement, la limitation ou l’arrêt du traitement, l’opposition, la portabilité ou le retrait du consentement le cas échéant. Écrivez à <a href="mailto:me@fredtomas.com">me@fredtomas.com</a> en précisant votre demande et suffisamment d’informations de commande ou de contact pour la retrouver. Une obligation légale de conservation ou une autre exception légale peut limiter l’effacement ; cette politique ne vous fait renoncer à aucun droit applicable. Les demandes concernant des données détenues par un fournisseur doivent aussi être adressées à ce fournisseur. Vous pouvez introduire une réclamation auprès de l’autorité de protection des données compétente, comme la CNIL lorsque cela s’applique en France ; l’autorité applicable, les obligations du vendeur et la procédure de réponse doivent être confirmées pour l’activité réelle avant le lancement.</p>
+      <p>Brainamon ne s’adresse pas aux enfants de moins de 13 ans. Le public visé et les règles d’âge applicables doivent être examinés avant de cibler des enfants. Les modifications de cette politique doivent indiquer la date de révision et être mises à disposition avec l’application et à l’adresse publique définitive.</p>
+    </article>
+
+    <!-- ================= 繁體中文 ================= -->
+    <article lang="zh-Hant" data-lang="zh" hidden>
+      <p class="lede">賣方與隱私聯絡人：Frederic TOMAS（個人），電子郵件 <a href="mailto:me@fredtomas.com">me@fredtomas.com</a>。本政策公開版本：<a href="https://www.fredtomas.com/brainamon/privacy/">https://www.fredtomas.com/brainamon/privacy/</a></p>
+      <p>Brainamon 會在你的裝置上儲存一個資料庫。Windows 桌面版、手機獨立模式、Google 雲端硬碟鏡像模式與直連電腦模式使用不同的連線方式，說明如下。儲存連結與筆記不需要任何 AI 金鑰。外部 AI 處理與 Google 雲端硬碟同步皆為選用功能。閱讀隨附的政策、軟體授權與聲明不需要連線至任何服務商。</p>
+
+      <h2 id="zh-local">本機資料與憑證</h2>
+      <ul>
+        <li>在 Windows 上，所選的資料資料夾保存已儲存的連結、中繼資料、縮圖與媒體、筆記、逐字稿、報告、畫布、對話與設定。「設定 &gt; 應用程式」會顯示資料資料夾。設定所在位置通常為 <code>%LOCALAPPDATA%\Brainamon</code>、沿用的既有 <code>%LOCALAPPDATA%\Content Manager</code>，或明確指定的 <code>BRAINAMON_HOME</code>。從原始碼執行時通常使用儲存庫中的 <code>data/</code> 與 <code>local/</code>；自訂位置可能不同。</li>
+        <li>API 金鑰、Google 授權、鏡像金鑰與明確匯入的網站工作階段，保存在設定所在位置，不包含在一般的資料庫或雲端硬碟匯出中。Windows 以目前使用者的 DPAPI 與存取限制保護應用程式管理的機密檔案。資料庫檔案本身並未全部由 Brainamon 加密。此保護無法阻止使用你已解鎖帳戶的人，或具有相同權限的惡意軟體存取。</li>
+        <li>社群網站的 Cookie 與擷取工具記住的登入資訊，是你選擇存取之網站的憑證。匯入、記住登入資訊以及將其複製用於下載，皆為明確的選擇。「忘記已儲存的存取」會停止應用程式使用並移除應用程式管理的機密；但不會撤銷該網站的工作階段，也不會刪除你原始的匯出檔、瀏覽器設定檔或備份。</li>
+        <li>手機會在瀏覽器或應用程式的本機儲存空間中保存資料庫項目、已下載或開啟的檔案、離線副本、草稿與待同步的變更。解密後的資料庫內容可能留在裝置上。Android 應用程式使用以 Android Keystore 為基礎的加密儲存空間保存配對與 AI 金鑰及 Google 權杖，並將應用程式資料排除在 Android 備份之外。此保護不適用於一般瀏覽器儲存空間，也不代表已下載的資料庫內容在裝置上是加密保存的。</li>
+        <li>桌面版的錯誤記錄與應用程式內診斷資訊皆保存在本機。其中可能包含檔案路徑、錯誤、操作細節以及請求或回應的內容。應用程式不會自動將當機報告或分析資料上傳給開發者。選擇傳送記錄或支援資料前，請先檢查並遮蔽敏感內容；請勿包含金鑰、配對碼或 Cookie 匯出檔。</li>
+      </ul>
+
+      <h2 id="zh-ai">選用的 AI 處理</h2>
+      <p>AI 請求會從執行操作的裝置，傳送到你選擇的服務商或設定的端點（相容 OpenAI、本機或代理伺服器）。代理伺服器可能把請求轉送給其他服務商；標示為「本機」的伺服器，只有在其設定位址確實位於本機時才是本機。直連電腦模式下，手機會把請求送到執行中的電腦，由電腦進行外部處理。手機獨立或鏡像模式中使用自有金鑰的功能，會使用手機支援的服務商。</p>
+      <p>視操作而定，送出的內容可能包括問題、對話記錄、資料庫中的標題、網址、描述、說明文字、筆記、逐字稿或報告摘錄、檢索到的上下文、你提供的圖片、PDF 文件或選取的影片畫面。手機以自有金鑰閱讀 PDF 時會上傳完整 PDF；直連電腦或桌面版閱讀 PDF 時，則在電腦上擷取文字。在手機上新增 PDF 會立即開始閱讀。搜尋索引與部分 Deep 研究會傳送資料庫文字以產生向量嵌入；語意查詢會傳送查詢文字。影片分析可能把擷取的音訊上傳至 OpenAI 進行轉錄，並將畫面與文字傳送給選定的分析服務商。語音筆記會把錄製的音訊上傳至 OpenAI 進行轉錄。讀取圖片的功能會將所選圖片傳送給設定的視覺服務商。桌面版語音筆記的暫存音訊會在處理後排定清除。手機錄音可能在本機排隊，直到轉錄與儲存成功，並在恢復連線時自動上傳。影片分析擷取的音訊、畫面與下載的媒體，可能依該操作的保留選項而留存；逐字稿與報告會保留在資料庫中直到被刪除。在原始碼安裝中選擇 Claude Code 模式，也會使用你另行設定的 Claude Code 服務與權限。</p>
+      <p>API 憑證用於驗證這些請求。服務商或 API 費用與應用程式的一次性購買費用分開計算。服務商或代理伺服器的條款規範其對輸入、輸出、保留期限及任何訓練用途的處理方式；Brainamon 不保證服務商會立即刪除資料、永不用於訓練，或將資料保存在特定國家。傳送敏感內容前，請先查閱你所用端點與服務商的現行條款。移除本機金鑰只會停止該應用程式副本日後的使用；不會向發行者撤銷該金鑰，也不會清除已在外部處理過的請求。</p>
+
+      <h2 id="zh-net">請求的網路存取與其他應用程式</h2>
+      <p>擷取預覽、說明文字、網頁或媒體時，會連線至所請求的網站及其內容主機，並傳送所請求的網址與一般連線資訊，例如你的 IP 位址與請求標頭。你選擇的網站憑證只會在相關的存取流程中使用。部分預覽會在貼上或分享連結後發出請求。來源網站自行管理其記錄、可用性與條款。瀏覽器擷取與影片下載或分析在電腦上執行；雲端硬碟鏡像是檔案同步，不提供與電腦工作的即時連線。</p>
+      <p>已安裝的 Windows 版本預設每天檢查 GitHub 並自動下載更新；可在「設定 &gt; 應用程式」中關閉。手動檢查與下載仍可使用。檢查時會包含應用程式版本；下載會連線至 GitHub 的發行版本主機。安裝一律等待你明確按下「安裝並重新啟動」。安裝選用工具時會連線至相關套件、工具或瀏覽器的下載服務。這些服務會收到一般的連線與下載資訊。本機資料庫不會包含在檢查更新的請求中。</p>
+      <p>分享連結會建立本機草稿；按下「儲存」才會正式建立。手機上的編輯可在本機排隊，並在與已授權的電腦配對後，以加密方式經由雲端硬碟傳回電腦。加密的授權控制記錄包含已簽署的授權（持有人、選填的電子郵件、授權 ID 與發行日期）以及短效的存取許可。配對的手機會在本機驗證；它不會傳送到授權伺服器，也不包含在 QR 碼中。電腦在執行且已登入時會續期存取許可；撤除會經由雲端硬碟傳遞，或在電腦無法連上雲端硬碟時，最後一次的許可於一小時內到期。鎖定期間，手機上的本機內容與編輯仍可使用。手機獨立模式的使用者，可選擇在沒有電腦或授權的情況下，將資料庫日誌加密備份到 Google 雲端硬碟。此備份使用獨立的金鑰與分開的檔案，即使同一帳戶也存有桌面版資料庫亦然。還原時需要同一個 Google 帳戶與手機的復原碼；AI 金鑰不包含在內。匯出與「在 Obsidian 中開啟」會把所選內容交給你指定的目的地；這些匯出副本有其各自的保留期限。Android 的 QR 碼掃描使用 Google Play 服務的條碼掃描器；Brainamon 只接收掃描到的文字，本身不要求相機權限。Android 版包含 Google 的條碼掃描器與 ML Kit 元件。Google 的 ML Kit 條款表示其輸入處理在裝置上進行，而 SDK 可能連線至 Google 取得修正、模型與相容性更新，並將 API 效能與使用量指標傳送給 Google。請參閱 <a href="https://developers.google.com/ml-kit/terms">https://developers.google.com/ml-kit/terms</a> 及 Google 隱私權政策 <a href="https://policies.google.com/privacy">https://policies.google.com/privacy</a>。實際發行的 SDK 與裝置行為仍需在發行時驗證；本應用程式不保證所有 Android 相依元件都不會發出外部請求。</p>
+
+      <h2 id="zh-drive">選用的 Google 雲端硬碟同步</h2>
+      <p>Google 授權使用 <code>drive.appdata</code>，也就是存取 Brainamon 專用的隱藏應用程式資料區，而非你一般的雲端硬碟檔案。在你連結並啟用之前，雲端硬碟功能保持關閉。電腦會先以 AES-256-GCM 加密鏡像內容再上傳；配對的裝置持有解密所需的金鑰。手機獨立模式也可在該處儲存加密的變更。選用的 Obsidian 筆記庫同步，會經由應用程式的加密雲端硬碟流程傳送其設定的內容。Google 會收到你的帳戶與連線資訊，並能看到檔案數量、大小與變更時間。內容加密並不會隱藏這些中繼資料，也無法阻止持有金鑰的裝置或人員存取。</p>
+      <p>配對碼與復原碼含有資料庫的金鑰資料。任何持有該代碼與 Google 帳戶的人，都可能讀取對應的資料庫。AI 金鑰的轉移需在電腦上另外選擇：所選金鑰會以一次性的轉移金鑰封存，30 分鐘後即無法再領取，成功領取後即刪除。清除失敗或離線時，可能會留下已過期的密文，直到之後經授權的清除為止；過期並不保證遠端的每一個位元組都已在當時消失。資料庫金鑰本身不會隨該次轉移而過期。請妥善保密代碼及剪貼簿中的副本。</p>
+      <p>選用的「復原」設定，會將資料庫主金鑰的封套上傳到同一個隱藏的雲端硬碟區域：一份以通關密語保護，另一份獨立以復原組密鑰保護。通關密語的包裝金鑰由 Scrypt 推導；每個封套以 AES-256-GCM 加密。復原中繼資料包含格式與版本、帳戶、資料庫識別、指紋、世代與設定時間。明文的通關密語與復原組密鑰不會傳送給 Google 或賣方。復原組或手機上明確匯出的復原資料含有敏感的金鑰資料，存放位置由你決定。單憑 Google 登入無法解密鏡像；若遺失所有復原密鑰與裝置，可能無法再復原。在新電腦上還原，會將最新可用的鏡像下載到另一個本機資料庫；這並非保留的版本歷史，也不是完整的電腦或憑證備份。</p>
+      <p>Google 持有的資料適用 Google 的服務條款與保留政策。中斷連線不等於刪除鏡像，也不等於撤銷另一支手機的 Google 授權。</p>
+      <p>Brainamon 只使用 Google 雲端硬碟的應用程式資料存取權，為你的裝置儲存、讀取與刪除其自身的加密鏡像、變更、轉移與復原檔案。它不會讀取你其他的雲端硬碟檔案，也不會將 Google 使用者資料傳送給賣方。從鏡像讀取的資料庫內容，只有在你主動指示時才會傳給第三方，例如你傳送給自己 AI 服務商的問題。Brainamon 不會將 Google 使用者資料用於廣告，也不會用來訓練 AI 模型。Brainamon 對於從 Google API 取得之資訊的使用與傳輸，遵守 <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API 服務使用者資料政策</a>，包括「有限使用」的要求。</p>
+
+      <h2 id="zh-buy">購買與支援資訊</h2>
+      <p>Brainamon 透過 Gumroad 販售。應用程式沒有 Brainamon 客戶帳號、商店或信用卡輸入系統。Gumroad 依其自身條款與隱私權政策（<a href="https://gumroad.com/privacy">https://gumroad.com/privacy</a>）處理結帳、付款、銷售稅、收據、下載交付與退款申請；信用卡資料會交給 Gumroad 及其付款處理商，絕不會交給賣方或應用程式。</p>
+      <p>賣方會透過 Gumroad 收到 Gumroad 與賣方共享的訂單資料，例如你的電子郵件、姓名、國家、購買的產品、支付的價格與退款狀態。啟用時，應用程式會將你 Gumroad 收據上的授權金鑰傳送一次到賣方位於 fredtomas.com 的啟用服務，該服務向 Gumroad 確認購買有效且未退款後，傳回你的 Brainamon 授權金鑰；該金鑰帶有購買時的姓名與電子郵件，並儲存在你電腦上的應用程式中。除了主機供應商的標準存取記錄外，啟用服務不保留任何請求記錄。賣方也會收到你為了取得支援而選擇傳送的內容：電子郵件、附件或診斷資料。這些資料僅用於交付購買項目與授權、回覆支援與隱私請求、處理退款或爭議，以及保存必要的會計記錄。它們不會被出售，不會用於廣告，也不會用於無關的行銷。訂單記錄保留在 Gumroad，不會複製到其他服務，但賣方重新核發金鑰所需的授權資料，以及保存在賣方信箱中的支援郵件除外。資料只在上述目的所需期間，以及法定會計保存期間內保留。</p>
+      <p>開發者無法因隱私請求而遠端查看你的本機資料庫，正常使用應用程式時也不會自動收到其內容。</p>
+      <p>Gumroad、AI 服務商與 Google 可能依其自身政策與傳輸保障措施，在你所在國家以外處理資訊。</p>
+
+      <h2 id="zh-delete">資料保留與刪除</h2>
+      <p>本機的資料庫與設定資料會保留到你刪除為止；快取可能會被清理，但離線副本與待同步的變更會保留。備份與匯出是分開的副本。完整的備份或刪除步驟，請參閱專案文件中附帶的 <code>docs/BACKUP-RESTORE.md</code>。</p>
+      <ol>
+        <li>移除副本前，請先檢查手機上待同步的編輯與草稿，保留或送出你需要的內容。刪除項目或筆記請使用資料庫原有的操作；在鏡像模式下，從手機排入的電腦端刪除，要等電腦接收後才會生效。</li>
+        <li>若要從雲端硬碟移除電腦所擁有的鏡像資料庫檔案，請在仍有授權時使用「設定 &gt; 雲端 &gt; 中斷 Google 雲端硬碟連線…」，並勾選「同時從雲端硬碟刪除手機的資料庫副本」，然後確認「中斷連線並刪除副本」。請等待操作成功完成。此操作針對目前鏡像清單所識別的檔案，而非雲端硬碟中的每個物件、獨立模式日誌、筆記庫匯出、未知或舊檔案，或服務商的備份。失敗或離線的嘗試並不算完成刪除。其他保留的應用程式資料，請透過 Google 提供的控制項檢視。</li>
+        <li>在每支手機上，「更多 &gt; 解除配對」（獨立模式為「從此手機移除」）會移除該連線。已儲存的離線檔案與部分待同步或本機記錄可能仍會保留。檢查完尚未送出的內容後，若要移除所有應用程式儲存資料，請使用 Android 的清除應用程式儲存空間功能或解除安裝；在瀏覽器中，請清除 Brainamon 網站的儲存資料。另外匯出的檔案請自行刪除。「更多 &gt; 清除手機副本」只會清除快取：離線檔案與尚未送出的變更仍會保留，立即重新整理也可能再次下載資料庫。</li>
+        <li>在 Windows 上，請先記下「設定 &gt; 應用程式」中所選的資料資料夾與實際的設定位置，然後完全結束應用程式，包括背景與系統匣程序。互動式解除安裝會提供永久刪除本機資料的選項；預設為保留資料，靜默解除安裝也會保留。選擇刪除後，會列出設定與資料庫資料夾供第二次確認，包括在設定位置以外找到的自訂資料庫。請檢查每個路徑並確認已有需要的備份後再確認：所列資料夾內的所有內容都會被刪除。遇到不安全或無法辨識的路徑或發生錯誤時，清除會停止。未列出的自訂或舊資料夾請另行檢查。</li>
+        <li>請檢查另外的備份、「下載」資料夾中的 Cookie 匯出檔、舊版設定檔、記錄、其他裝置上的副本，以及匯出或 Obsidian 的內容。如有需要，請向發行者移除或撤銷相關憑證。</li>
+      </ol>
+      <p>在電腦上「解除所有手機的配對」會排定金鑰輪替；只有在經授權發布、驗證並清除所擁有的舊檔案後才會完成。它無法清除其他裝置上快取的明文，也無法撤銷該裝置獨立的 Google 登入。沒有任何操作保證安全或鑑識等級的清除，也不保證能自動從 AI 服務商、銷售平台、其備份或依法保留的記錄中刪除資料。</p>
+
+      <h2 id="zh-rights">隱私權利與聯絡方式</h2>
+      <p>賣方：Frederic TOMAS（個人）。<br>支援、隱私請求與申訴：<a href="mailto:me@fredtomas.com">me@fredtomas.com</a>。<br>隱私權政策公開網址：<a href="https://www.fredtomas.com/brainamon/privacy/">https://www.fredtomas.com/brainamon/privacy/</a></p>
+      <p>對於賣方持有的購買與支援記錄，適用的權利可能包括查詢與存取、取得副本、更正、刪除、停止或限制處理、反對、可攜性，以及在相關情況下撤回同意。請寄信至 <a href="mailto:me@fredtomas.com">me@fredtomas.com</a>，說明你的請求，並提供足以找到相關記錄的訂單或聯絡資訊。法定保存義務或其他合法例外可能限制刪除；本政策不會使你放棄任何適用的權利。關於服務商所持有資料的請求，也應直接向該服務商提出。你可以向主管的資料保護機關提出申訴，例如在法國適用時向 CNIL 申訴；適用的主管機關、賣方義務與回覆程序，須在正式營運前依實際業務確認。</p>
+      <p>Brainamon 並非以未滿 13 歲的兒童為對象。若要以兒童為目標，須先檢視目標對象與適用的年齡規定。本政策的變更應標示修訂日期，並隨應用程式及在最終公開網址上提供。</p>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Frederic TOMAS</span>
+    <a href="mailto:me@fredtomas.com">me@fredtomas.com</a>
+    <a href="../" data-keep-lang>Brainamon</a>
+    <span>© 2026</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  const UI = {
+    en: { back: '← Back to Brainamon', h1: 'Privacy policy', updated: 'Last updated', contact: 'Contact', tnote: '', title: 'Brainamon privacy policy' },
+    fr: { back: '← Retour à Brainamon', h1: 'Politique de confidentialité', updated: 'Dernière mise à jour', contact: 'Contact',
+          tnote: 'Traduction fournie pour plus de commodité. En cas de différence, la version anglaise fait foi.', title: 'Brainamon : politique de confidentialité' },
+    zh: { back: '← 返回 Brainamon', h1: '隱私權政策', updated: '最後更新', contact: '聯絡', tnote: '此譯文僅供參考。如有任何差異，以英文版本為準。', title: 'Brainamon 隱私權政策' }
+  }
+  const HTML_LANG = { en: 'en', fr: 'fr', zh: 'zh-Hant' }
+  const toc = document.getElementById('toc')
+  let spy
+
+  function buildToc(art) {
+    toc.innerHTML = ''
+    const hs = [...art.querySelectorAll('h2[id]')]
+    hs.forEach(h => {
+      const li = document.createElement('li'), a = document.createElement('a')
+      a.href = '#' + h.id; a.textContent = h.textContent; li.appendChild(a); toc.appendChild(li)
+    })
+    if (spy) spy.disconnect()
+    if (!('IntersectionObserver' in window)) return
+    spy = new IntersectionObserver(es => es.forEach(e => {
+      if (!e.isIntersecting) return
+      toc.querySelectorAll('a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + e.target.id))
+    }), { rootMargin: '-20% 0px -70% 0px' })
+    hs.forEach(h => spy.observe(h))
+  }
+
+  function setLang(l) {
+    if (!UI[l]) l = 'en'
+    document.querySelectorAll('article[data-lang]').forEach(a => { a.hidden = a.dataset.lang !== l })
+    document.querySelectorAll('[data-t]').forEach(n => { n.textContent = UI[l][n.dataset.t] || '' })
+    document.querySelector('.note').hidden = !UI[l].tnote
+    document.documentElement.lang = HTML_LANG[l]
+    document.title = UI[l].title
+    document.querySelectorAll('.lang button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.lang === l)))
+    document.querySelectorAll('[data-keep-lang]').forEach(a => { a.href = l === 'en' ? '../' : '../?lang=' + l })
+    buildToc(document.querySelector('article[data-lang="' + l + '"]'))
+    try { localStorage.setItem('bm-lang', l) } catch (e) {}
+    const u = new URL(location.href)
+    if (l === 'en') u.searchParams.delete('lang'); else u.searchParams.set('lang', l)
+    history.replaceState(null, '', u)
+  }
+  function pick() {
+    const q = new URLSearchParams(location.search).get('lang')
+    if (q) return q
+    try { const s = localStorage.getItem('bm-lang'); if (s) return s } catch (e) {}
+    const n = (navigator.language || '').toLowerCase()
+    return n.startsWith('fr') ? 'fr' : n.startsWith('zh') ? 'zh' : 'en'
+  }
+  document.querySelectorAll('.lang button').forEach(b => b.addEventListener('click', () => setLang(b.dataset.lang)))
+  setLang(pick())
+})()
+</script>
+</body>
+</html>

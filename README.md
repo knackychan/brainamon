@@ -1,5 +1,9 @@
 # Brainamon
 
+[![Brainamon: everything you saved, finally useful](docs/img/cover.jpg)](https://knackychan.github.io/brainamon/)
+
+**[Presentation site](https://knackychan.github.io/brainamon/)** · [Buy on Gumroad](https://fredtomas.gumroad.com/l/brainamon) · [Privacy policy](https://www.fredtomas.com/brainamon/privacy/)
+
 A private, local-first library for the posts, videos and links you want to keep. Brainamon runs on your Windows PC and helps you organize your saves, search notes, create canvases, and ask Wiskit questions about your library.
 
 ## Download for Windows
@@ -27,6 +31,6 @@ The 1.0.0 installer is a test release; clean-machine and upgrade validation rema
 
 Your library and settings stay under your control. Some features connect to services you choose, such as AI providers and Google Drive. See the [privacy policy](https://www.fredtomas.com/brainamon/privacy/).
 
-The application source and support materials are maintained privately. This repository contains the public download page and release files.
+The application source and support materials are maintained privately. This repository contains the public presentation site (`docs/`, published with GitHub Pages), the download page and release files.
 
 

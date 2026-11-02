@@ -1,5 +1,5 @@
 import { Drive } from './drive'
-import { reconnectGate } from './gate'
+import { beginCloudChange, cloudCheckpoint, cloudRevision, endCloudChange, reconnectGate } from './gate'
 import { pairing, token, type Pairing } from './pairing'
 import { isApp, secrets, secretsSaved, vaultFs, vaultPick } from '../native'
 import { downloadRecovery } from '../../lib/recovery'
@@ -18,7 +18,7 @@ export async function recoveryAccount(pair: Pairing, drive: Drive) {
 async function remember(pair: Pairing, kit: PhoneKit, verified: boolean) {
   current(pair, kit.record.header.account)
   pair.recovery = { kit, verified }
-  secrets.set('bp-pair', JSON.stringify(pair))
+  secrets.set('bp-pair', JSON.stringify({ ...pairing(), recovery: pair.recovery }))
   await secretsSaved()
 }
 export async function discoverPhoneRecovery(drive: Drive): Promise<{ id: string; record: PhoneEnvelope }[]> {
@@ -42,22 +42,33 @@ async function remoteKit(drive: Drive, kit: PhoneKit) {
 }
 export async function preparePhoneRecovery(pair: Pairing, drive: Drive, password: string, confirmation: string) {
   reconnectGate()
+  const revision = cloudRevision()
+  beginCloudChange()
+  try {
   if (password !== confirmation) throw new Error('The recovery passphrases do not match.')
   const account = await recoveryAccount(pair, drive)
   const kit = await createPhoneKit(pair.k, password, account)
+  cloudCheckpoint(revision)
   current(pair, account)
   await drive.create(phoneRecoveryName(kit.record), new TextEncoder().encode(recoveryJSON(kit.record)))
   const record = await remoteKit(drive, kit)
   if (await unlockPhoneEnvelope(record, account, { password }) !== pair.k || await unlockPhoneEnvelope(record, account, { secret: kit.secret }) !== pair.k) throw new Error('Recovery verification failed. Keep your original recovery code.')
+  cloudCheckpoint(revision)
   await remember(pair, kit, false)
+  } finally { endCloudChange() }
 }
 export async function verifyPhoneRecovery(pair: Pairing, drive: Drive, text: string) {
   reconnectGate()
+  const revision = cloudRevision()
+  beginCloudChange()
+  try {
   const kit = readPhoneKit(text), account = await recoveryAccount(pair, drive)
   if (!pair.recovery || recoveryJSON(pair.recovery.kit) !== recoveryJSON(kit)) throw new Error('Select the recovery file saved for this setup.')
   const record = await remoteKit(drive, kit)
   if (await unlockPhoneEnvelope(record, account, { secret: kit.secret }) !== pair.k) throw new Error('This recovery file belongs to a different phone backup.')
+  cloudCheckpoint(revision)
   await remember(pair, kit, true)
+  } finally { endCloudChange() }
 }
 export async function restorePhoneKit(pair: Pairing, drive: Drive, text: string) {
   const kit = readPhoneKit(text), account = await recoveryAccount(pair, drive)
@@ -76,6 +87,7 @@ export async function restorePhonePassphrase(pair: Pairing, drive: Drive, id: st
 // the library and its setup are still the same; a browser can only ask for a download, which this session counts as
 // saved (recovery-fact.ts) and nothing records
 export async function savePhoneKit(pair: Pairing): Promise<'saved' | 'downloaded' | 'cancelled'> {
+  const revision = cloudRevision()
   const r = pair.recovery
   if (!r) throw new Error('Prepare recovery first.')
   const kit = r.kit, filename = `Brainamon-phone-recovery-kit-${kit.record.header.generation}.json`
@@ -84,6 +96,7 @@ export async function savePhoneKit(pair: Pairing): Promise<'saved' | 'downloaded
   try { folder = await vaultPick() } catch (e) { if ((e as Error).message === 'cancelled') return 'cancelled'; throw e }
   await vaultFs(folder.uri).write(filename, new TextEncoder().encode(recoveryJSON(kit)))
   reconnectGate()
+  cloudCheckpoint(revision)
   if (pairing()?.k !== pair.k || pair.recovery !== r) throw new Error('The phone library or its recovery changed while saving. Save the recovery file again.')
   pair.recovery = { ...r, saved: Date.now() }
   secrets.set('bp-pair', JSON.stringify(pair))

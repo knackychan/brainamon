@@ -14,13 +14,14 @@
   import { pickVaultFolder, runVault, setVaultOn, vault as vaultRun } from '../vault/auto.svelte'
   import { appInfo, isApp, secretsSaved } from '../native'
   import { setVaultName, vaultName } from '../obsidian'
-  import { setAiKeys } from '../mirror/pairing'
+  import { setAiKey } from '../mirror/pairing'
+  import { backup } from '../backup.svelte'
   import { freeSpace, keepCanvasesNeed, keepVideosNeed, offline, removeCanvas, removeItem, setKeep, setKeepVideos, type KeepVideos } from '../offline.svelte'
   import type { StoredItem } from '../store'
   import Vault from '../Vault.svelte'
   import SetupList from '../SetupList.svelte'
   import LegalDocuments from '../../components/LegalDocuments.svelte'
-  import { network, setWifiOnly, syncPaused } from '../network.svelte'
+  import { network, setSyncPaused, setWifiOnly, syncPaused } from '../network.svelte'
   import MBox from '../ui/MBox.svelte'
   import MButton from '../ui/MButton.svelte'
   import MHint from '../ui/MHint.svelte'
@@ -123,15 +124,20 @@
   // phones (screens/Backup.svelte)
   let keyIn = $state({ anthropic: '', openai: '' }), keysNote = $state('')
   const canSolo = isApp || devSolo                      // keys only in the app's encrypted storage
-  async function saveKeys() {
+  let savingKey = $state('')
+  async function saveKey(provider: 'openai' | 'anthropic') {
     if (!m) return
+    savingKey = provider
     try {
-      setAiKeys(m.pair, { ...(m.pair.ai || {}), ...Object.fromEntries(Object.entries(keyIn).filter(([, v]) => v.trim())) })
+      const previous = m.ai()
+      if (previous) m.setAi(previous.provider, previous.model)
+      setAiKey(m.pair, provider, keyIn[provider])
       await secretsSaved()
-      keyIn = { anthropic: '', openai: '' }
-      keysNote = Object.keys(m.pair.ai).length ? 'Saved in this phone\'s encrypted storage.' : 'No key saved.'
+      keyIn[provider] = ''
+      keysNote = `${provider === 'openai' ? 'OpenAI' : 'Anthropic'} key saved in this phone’s encrypted storage.`
       aiTick++
-    } catch { keysNote = 'Keys could not be saved securely. Retry before leaving this page.' }
+    } catch { keysNote = 'Key could not be saved securely. Retry before leaving this page.' }
+    finally { savingKey = '' }
   }
 </script>
 
@@ -154,6 +160,7 @@
       <h3>Sync<span class="m-sp"></span><span class="m-lamp" class:amber={syncPaused() || (!running && !queued && !drive.ok)} class:busy={running > 0}>{syncPaused() ? 'paused' : running ? `${running} running${queued ? ` · ${queued} queued` : ''}` : queued ? `${queued} queued` : drive.ok ? 'idle' : drive.lamp}</span></h3>
       <MHint>{solo ? 'Backs this phone up to Google Drive, without a PC or license.' : 'Pairing and sync are free. The paired PC renews signed access while online; it expires after one hour without renewal.'}</MHint>
       <MRow title="Wi-Fi only" desc={network.wifiOnly ? 'Uploads, sync and downloads wait for Wi-Fi. Edits stay on this phone.' : 'Uploads, sync and downloads can use mobile data.'}><MToggle label="Wi-Fi only" on={network.wifiOnly} onchange={on => setWifiOnly(on)} /></MRow>
+      <MRow title="Sync" desc={network.manualPause ? 'Paused until you resume, including after restart.' : 'Pause uploads and reads; local edits stay queued.'}><MButton size="sm" onclick={() => setSyncPaused(!network.manualPause)}>{network.manualPause ? 'Resume sync' : 'Pause sync'}</MButton></MRow>
       {#if network.wifiOnly && network.ready && network.type === 'unknown'}<MHint>Wi-Fi could not be confirmed. Use the Android app for network detection, or turn off Wi-Fi only to allow this connection.</MHint>{/if}
       {#each lanes as l (l.key)}
         <MRow desc="{l.text}{l.tag === 'running' && l.pct !== null ? ` · ${l.pct}%` : ''}">{#snippet title()}{l.name}{#if l.key !== 'network'} <span class="m-lbl">{l.tag}</span>{/if}{/snippet}{#if l.key === 'drive'}<MButton size="sm" onclick={driveSync} disabled={driveBusy || syncPaused()}>{driveBusy ? 'Syncing…' : 'Sync now'}</MButton>
@@ -264,8 +271,9 @@
       {#if solo}
         <!-- OpenAI first and marked recommended (decision 8); the aria-labels stay the accessible names -->
         <label class="m-fld"><span>OpenAI · recommended</span><input type="password" bind:value={keyIn.openai} placeholder={m.pair.ai?.openai ? 'saved · retype to replace' : 'sk-…'} aria-label="OpenAI API key" autocomplete="off" spellcheck="false" /></label>
+        <MButton size="sm" onclick={() => saveKey('openai')} disabled={!!savingKey || !keyIn.openai.trim()}>{savingKey === 'openai' ? 'Saving…' : 'Save OpenAI key'}</MButton>
         <label class="m-fld"><span>Anthropic · optional</span><input type="password" bind:value={keyIn.anthropic} placeholder={m.pair.ai?.anthropic ? 'saved · retype to replace' : 'sk-ant-…'} aria-label="Anthropic API key" autocomplete="off" spellcheck="false" /></label>
-        <div class="m-acts"><span class="m-sp"></span><MButton variant="dk" onclick={saveKeys} disabled={!keyIn.anthropic.trim() && !keyIn.openai.trim()}>Save keys</MButton></div>
+        <MButton size="sm" onclick={() => saveKey('anthropic')} disabled={!!savingKey || !keyIn.anthropic.trim()}>{savingKey === 'anthropic' ? 'Saving…' : 'Save Anthropic key'}</MButton>
         {#if keysNote}<MHint>{keysNote}</MHint>{/if}
       {/if}
       <MDisclosure summary="What is sent to the provider">

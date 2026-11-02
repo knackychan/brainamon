@@ -110,6 +110,7 @@ class PhoneBackupBrowser(unittest.TestCase):
                             output.mkdir(parents=True, exist_ok=True)
                             page.locator('#m-conn').screenshot(path=str(output / 'backup-light.png'))
                             page.get_by_role('button', name='Disconnect', exact=True).click()
+                            page.get_by_role('button', name='Confirm disconnect', exact=True).click()
                             expect(page.get_by_role('button', name='Back up to Google Drive', exact=True)).to_be_visible()
                             page.get_by_role('link', name='Recover a library…', exact=True).click()
                             page.get_by_role('group', name='Unlock with').get_by_role('button', name='Code', exact=True).click()

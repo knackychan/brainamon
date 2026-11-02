@@ -69,8 +69,37 @@ class PhoneStateTest(unittest.TestCase):
         block = re.search(r'export type StateId =(.*?)\nexport ', text, re.S).group(1)
         ids = set(re.findall(r"'([a-z-]+)'", block))
         reached = {c['expect']['id'] for c in json.loads(FIXTURE.read_text(encoding='utf-8'))['cases']}
-        self.assertEqual(len(ids), 25)
+        self.assertEqual(len(ids), 27)
         self.assertEqual(ids - reached, set())
+
+    def test_a_retry_shows_progress_until_the_current_read_finishes(self):
+        out = json.loads(test_phone_js.node("""
+            import fs from 'node:fs'
+            import { phoneState } from './web/src/mobile/mirror/phone-state.ts'
+            const { base } = JSON.parse(fs.readFileSync('tests/fixtures/phone_states.json', 'utf8'))
+            console.log(JSON.stringify(['pc', 'solo'].map(mode => {
+              const f = { ...base, mode, tried: true, reachable: false, recovery: 'checked' }
+              return {
+                failed: phoneState(f),
+                retrying: phoneState({ ...f, refreshing: true }),
+                failedAgain: phoneState({ ...f, refreshing: false }),
+                succeeded: phoneState({ ...f, reachable: true }),
+                offline: phoneState({ ...f, refreshing: true, online: false }),
+                refused: phoneState({ ...f, refreshing: true, signedIn: false }),
+              }
+            })))
+        """))
+        for mode, states in zip(('pc', 'solo'), out):
+            with self.subTest(mode=mode):
+                self.assertEqual(states['failed']['id'], 'unreachable')
+                self.assertEqual(states['retrying']['id'], 'connecting')
+                self.assertEqual(states['retrying']['tone'], 'busy')
+                self.assertEqual(states['retrying']['text'], 'Checking Google Drive…')
+                self.assertIsNone(states['retrying']['action'])
+                self.assertEqual(states['failedAgain']['id'], 'unreachable')
+                self.assertEqual(states['succeeded']['id'], 'in-sync' if mode == 'pc' else 'solo-ok')
+                self.assertEqual(states['offline']['id'], 'offline')
+                self.assertEqual(states['refused']['id'], 'sign-in-again')
 
     def test_rules_hold_for_any_facts(self):
         out = json.loads(test_phone_js.node(RULES, timeout=120))

@@ -8,7 +8,7 @@ import { secrets, secretsSaved } from '../native'
 import type { Changes, ChangeEntry } from './changes'
 import { CHANGE_PREFIX, MirrorKey, MirrorKeyError } from './crypto'
 import type { Drive } from './drive'
-import { cloudChanging, reconnectGate, setReconnecting } from './gate'
+import { cloudChanging, cloudCheckpoint, cloudRevision, reconnectGate, setReconnecting } from './gate'
 import { pairing, token, validateStoredPairing, type Pairing } from './pairing'
 import { RECOVERY_LIMIT, type PhoneKit } from './recovery-envelope'
 
@@ -150,6 +150,7 @@ export async function reconnectPhone(pair: Pairing, drive: Drive, changes: Chang
   reconnectGate()
   if (cloudChanging()) throw new Error(REFUSALS.busy)
   setReconnecting(true)
+  const revision = cloudRevision()
   let wrote = false
   try {
     const key = await MirrorKey.fromText(keyText.trim())
@@ -157,6 +158,7 @@ export async function reconnectPhone(pair: Pairing, drive: Drive, changes: Chang
     const live = pairing()
     if (!same(live)) throw new Error('The phone library or Google account changed. Reconnect and retry recovery.')
     const check = await reconnectCheck(key, drive, changes)
+    cloudCheckpoint(revision)
     if (!check.ok) throw new Error(check.message)
     if (!same(pairing())) throw new Error('The phone library or Google account changed. Reconnect and retry recovery.')
     // Everything above only read. The first write backs up the pairing this phone holds now (its key included).

@@ -7,6 +7,7 @@ import { isApp } from './native'
 import { driveStatus, driveWork, fmtAgo, mirrorSource, phone, pics, solo, source } from './state.svelte'
 import { PC_FIRST, pcLine, pcProgress, vault } from './vault/auto.svelte'
 import { syncPaused, syncPauseReason } from './network.svelte'
+import { backup } from './backup.svelte'
 
 export type LaneKey = 'network' | 'drive' | 'vault' | 'pc' | 'pics'
 export interface Lane { key: LaneKey; name: string; tag: string; active: boolean; text: string; pct: number | null }
@@ -19,7 +20,8 @@ export function syncLanes(): Lane[] {
   const paused = !!mirrorSource && syncPaused()
   if (paused) out.push({ key: 'network', name: 'Sync paused', tag: 'paused', active: true, pct: null,
                          text: syncPauseReason().split(' · ')[1] + ' · changes stay on this phone' })
-  if (paused) out.push({ key: 'drive', name: dname, tag: 'paused', active: false, text: 'Resumes automatically when the connection allows', pct: null })
+  if (backup.task && !backup.busy) out.push({ key: 'drive', name: dname, tag: backup.task.paused ? 'paused' : 'waiting', active: true, text: backup.error || 'Backup task saved. Open Backup & phones to continue.', pct: null })
+  else if (paused) out.push({ key: 'drive', name: dname, tag: 'paused', active: false, text: 'Resume sync when ready; network restrictions still apply', pct: null })
   else if (work) out.push({ key: 'drive', name: dname, tag: 'running', active: true, text: work.text, pct: work.pct })
   else out.push({ key: 'drive', name: dname, tag: drive.ok ? 'idle' : drive.lamp, active: false, pct: null,
                   text: drive.why || (phone.sync?.end ? phone.sync.msg : `Copy from ${fmtAgo(phone.synced)}`) })

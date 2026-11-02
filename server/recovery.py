@@ -7,7 +7,7 @@ import secrets
 import shutil
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -55,6 +55,8 @@ RESTORE_HINT = ('Use Recover a library with your passphrase, recovery file or a 
                 'If this folder matches the last backup, choose Keep this folder.')
 ACTIVITY_FAILED = 'This step did not finish. Retry it; existing recovery material was kept.'
 CHECK_QUEUED = 'Waiting for the current upload request, then checking recovery. Backup carries on.'
+ROTATION_PENDING = ('Your backup is being updated with a new security key. Recovery checks and passphrase changes '
+                    'are available after upload, verification and cleanup finish.')
 
 
 UPDATE_REFUSALS = {      # Update this folder is not offered (S9): the summary offers Get the newer library… instead (T14)
@@ -163,7 +165,11 @@ class RecoveryService:
         rotation = self.sync._rotation(readonly=True)
         pending = rotation.get('recovery') if rotation and rotation.get('stage') != 'complete' else None
         replaced = state if state and state.get('replaced') and not state.get('verified') else None
-        state = pending or state
+        # Once committed, the current record holds enrollment and recovery-file checks made during the upload.
+        if pending and (not state or state['record'] != pending['record']):
+            state = pending
+        elif pending:
+            state = {**state, 'saved_at': max(state.get('saved_at', 0), pending.get('saved_at', 0))}
         return {'configured': bool(state), 'enrolled': self._completed(state), 'verified': bool(state and state.get('verified')),
                 # the key was replaced when phones were removed and the new recovery file is not saved and read back yet (D1)
                 'file_outdated': bool(replaced), 'replaced_at': replaced.get('replaced_at', 0) if replaced else 0,
@@ -259,7 +265,8 @@ class RecoveryService:
         return R.PREFIX + 'owner-' + library + '.json'
 
     def _owner(self, client, key, library, listing=None):
-        found = [f for f in (client.list() if listing is None else listing) if f['name'] == self.owner_name(library)]
+        name = self.owner_name(library)
+        found = [f for f in (client.list(name=name) if listing is None else listing) if f['name'] == name]
         if len(found) != 1:
             raise R.RecoveryError('Uploader ownership is missing or ambiguous. Keep uploads off and retry recovery.')
         try:
@@ -283,14 +290,15 @@ class RecoveryService:
         """Only immutable vault blobs and status may reuse a recent remote check.
 
         Local recovery state is always reread. Index publication and destructive
-        operations use a fresh check; concurrent blob uploads share one check.
+        operations use a fresh check. Overlapping fresh checks share only an
+        in-flight result; later writes never reuse a completed check.
         """
         # Keep each account client's cache and lock separate from sign-in and recovery clients.
         from server.sync import _GuardedClient
         wrapper = client if isinstance(client, _GuardedClient) else None
         if wrapper:
             client = wrapper.client
-        with wrapper._guard_lock if wrapper else contextlib.nullcontext():
+        with wrapper._guard_lock if wrapper and cached else contextlib.nullcontext():
             try:
                 if self._optional(self.journal):
                     raise R.RecoveryError('Recovery activation is pending. Restart Brainamon before uploading.')
@@ -300,6 +308,8 @@ class RecoveryService:
                 epoch = self.sync.writer.read(lambda db: db.get_setting('cloud_epoch', ''))
                 key = mirror.MirrorKey.load(self.sync.key_path)
                 context = (client, state, epoch, key.fingerprint if key else '')
+                if wrapper and not cached:
+                    return self._guard_fresh(wrapper, context, key)
                 if cached and wrapper and context == wrapper._guard_cache and time.monotonic() < wrapper._guard_until:
                     return
                 if wrapper:
@@ -310,12 +320,39 @@ class RecoveryService:
                     wrapper._guard_until = time.monotonic() + VAULT_GUARD_SECONDS
             except R.RecoveryError as e:
                 if wrapper:
-                    wrapper._guard_cache = None
+                    with wrapper._guard_lock:
+                        wrapper._guard_cache = None
                 raise drive_client.DriveError(str(e)) from None
             except BaseException:
                 if wrapper:
-                    wrapper._guard_cache = None
+                    with wrapper._guard_lock:
+                        wrapper._guard_cache = None
                 raise
+
+    def _guard_fresh(self, wrapper, context, key):
+        with wrapper._guard_lock:
+            wrapper._guard_cache = None
+            flight = wrapper._guard_flight
+            leader = flight is None or flight[0] != context
+            if leader:
+                flight = wrapper._guard_flight = (context, Future())
+        if not leader:
+            return flight[1].result()
+        client, state, epoch, _ = context
+        try:
+            self._guard_remote(client, state, epoch, key)
+        except BaseException as e:
+            with wrapper._guard_lock:
+                wrapper._guard_cache = None
+                if wrapper._guard_flight is flight:
+                    wrapper._guard_flight = None
+                flight[1].set_exception(e)
+            raise
+        else:
+            with wrapper._guard_lock:
+                if wrapper._guard_flight is flight:
+                    wrapper._guard_flight = None
+                flight[1].set_result(None)
 
     def _guard_remote(self, client, state, epoch, key):
         try:
@@ -331,7 +368,11 @@ class RecoveryService:
                     raise NotUploader('Another PC became the backup PC. This PC stopped backing up so it does not overwrite newer changes.',
                                       at=int(owner.get('changed') or 0) * 1000)
                 return
-            listing = client.list()
+            listing = client.list(prefix=R.PREFIX) if epoch else client.list()
+            reset = self.sync.intents.find(intents.RESET)
+            if reset and reset.get('payload', {}).get('new') == (key.text() if key else ''):
+                retired = set(reset['payload'].get('ids', []))
+                listing = [f for f in listing if f['id'] not in retired]
             fingerprint = epoch or (key.fingerprint if key else '')
             if fingerprint:
                 for f in listing:
@@ -402,7 +443,7 @@ class RecoveryService:
             self._idle()
             rotation = sync._rotation()
             if rotation and rotation['stage'] != 'complete':
-                raise ReadinessError('rotation_pending', 'Finish the pending key rotation before changing recovery setup.')
+                raise ReadinessError('rotation_pending', ROTATION_PENDING)
             client = self._client()
             account = self._account(client)
             previous = self._load()
@@ -461,7 +502,7 @@ class RecoveryService:
     def _eligibility(self, client=None, account=None, *, readonly=False):
         rotation = self.sync._rotation(readonly=readonly)
         if rotation and rotation['stage'] != 'complete':
-            raise ReadinessError('rotation_pending', 'Finish the pending key rotation before changing recovery setup.')
+            raise ReadinessError('rotation_pending', ROTATION_PENDING)
         client = client or self._client(readonly=readonly)
         account = account or self._account(client)
         previous = self._load(readonly=readonly)

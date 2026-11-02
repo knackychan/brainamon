@@ -84,7 +84,7 @@ class Drive:
 
     def release(self):
         for r in self.held:
-            r.fulfill(json={'files': []})
+            self.route(r)
         self.held.clear()
 
 
@@ -290,7 +290,14 @@ def main():
                     assert len(passphrase) >= 12 and not drive.writes
                     tall(page, '.m-pad')
                     shoot(page, 'backup-solo-setup-form')
+                    drive.mode = 'hold'
                     recovery.get_by_role('button', name='Save passphrase', exact=True).click()
+                    expect(recovery.locator('#phone-recovery-wait')).to_have_text('Saving and checking your passphrase…')
+                    deadline = time.monotonic() + 30
+                    while not drive.held and time.monotonic() < deadline:
+                        page.wait_for_timeout(50)
+                    assert drive.held, 'Recovery setup never reached the held Drive check'
+                    drive.release()
                     expect(recovery.locator('.m-status b')).to_have_text(SET, timeout=60000)
                     expect(recovery.get_by_text('Passphrase set and checked against your backup. Now save the recovery file.', exact=True)).to_be_visible()
                     assert len(drive.writes) == 1 and drive.writes[0].startswith('vi-phone-recovery-'), drive.writes
@@ -305,9 +312,22 @@ def main():
                     kit = Path(folder) / 'kit.json'
                     download.value.save_as(kit)
                     expect(recovery.locator('.m-status b')).to_have_text('Recovery file saved, not checked')
+                    expect(recovery.get_by_text(re.compile(r'^Passphrase set \d{1,2} \w+\.$'))).to_be_visible()
                     expect(recovery.get_by_text('Download requested. A browser download is not confirmed until you open the file.', exact=True)).to_be_visible()
                     on_backup(page, 'solo: recovery file not checked', 'solo-check-file')
                     assert recovery.get_by_role('button', name='Check recovery file…', exact=True).count() == 0     # the Status has it
+                    drive.mode = 'hold'
+                    page.evaluate("async () => { const { refresh } = await import('/src/mobile/state.svelte.ts'); void refresh() }")
+                    expect(recovery.locator('#phone-recovery-wait')).to_have_text('Syncing your backup. Recovery setup and file checks become available when the current sync finishes.')
+                    expect(status.get_by_role('button', name='Check recovery file…', exact=True)).to_be_disabled()
+                    expect(recovery.get_by_text(re.compile(r'^Passphrase set \d{1,2} \w+\.$'))).to_be_visible()
+                    deadline = time.monotonic() + 10
+                    while not drive.held and time.monotonic() < deadline:
+                        page.wait_for_timeout(50)
+                    assert drive.held, 'Sync never reached the held Drive read'
+                    drive.release()
+                    page.wait_for_function(SETTLED)
+                    expect(status.get_by_role('button', name='Check recovery file…', exact=True)).to_be_enabled()
                     on_more(page, 'solo: recovery file not checked', 'solo-check-file')
 
                     # Check recovery file… from the card: the chooser opens in the tap, the outcome shows on Backup & phones

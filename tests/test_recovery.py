@@ -202,7 +202,7 @@ class RecoveryServiceTest(Library):
         self.db = Database(self.data / 'content_manager.db')
         super().tearDown()
 
-    def test_a_queued_enrollment_blocked_by_recovery_can_be_retried_without_stalling_uploads(self):
+    def test_a_queued_enrollment_retries_automatically_after_the_recovery_lock_is_free(self):
         with mock.patch.object(SyncService, 'running', new_callable=mock.PropertyMock, return_value=True), \
                 mock.patch.object(self.svc, 'ensure_running'):
             self.service.enroll(PASSWORD, PASSWORD)
@@ -210,9 +210,8 @@ class RecoveryServiceTest(Library):
             lock.acquire.return_value = False
             self.svc._run_intents(threading.Event())
         task = self.svc.intents.find('enroll')
-        self.assertEqual((task['stage'], task['code']), ('queued', 'busy'))
-        self.assertFalse(self.svc.intents.preempting())
-        self.service.enroll(PASSWORD, PASSWORD)
+        self.assertEqual((task['stage'], task['error']), ('queued', ''))
+        self.svc._run_intents(threading.Event())
         self.assertIsNone(self.svc.intents.find('enroll'))
         self.assertTrue(self.service.status()['enrolled'])
 
@@ -252,6 +251,131 @@ class RecoveryServiceTest(Library):
         self.assertEqual(self.drive.calls.count('list'), 3)
         client.upload('vb-existing', data=b'replacement', file_id=ids[1])
         self.assertEqual(self.drive.calls.count('list'), 4)
+
+    def test_mirror_workers_share_in_flight_owner_check_but_later_writes_refuse_takeover(self):
+        from concurrent.futures import Future, ThreadPoolExecutor
+        self.setup_recovery()
+        client = self.svc._factory({})
+        barrier = threading.Barrier(12)
+        flight = Future()
+        result = flight.result
+        def wait_result():
+            barrier.wait(timeout=5)
+            return result(timeout=5)
+        original = self.drive.list
+        state, key = self.service._load(), self.svc.mirror_key()
+        owner_name = self.service.owner_name(state['record']['header']['library'])
+
+        def listing(*args, **kwargs):
+            self.assertEqual(kwargs, {'name': owner_name})
+            barrier.wait(timeout=5)  # One remote check and eleven callers waiting for its result.
+            return original(*args, **kwargs)
+
+        with mock.patch.object(SR, 'Future', return_value=flight), \
+                mock.patch.object(flight, 'result', side_effect=wait_result), \
+                mock.patch.object(self.drive, 'list', side_effect=listing) as listings:
+            with ThreadPoolExecutor(12) as pool:
+                ids = list(pool.map(lambda i: client.upload(key.name(f'notes/{i}'), data=b'note'), range(12)))
+        self.assertEqual(listings.call_count, 1)
+        self.assertIsNone(client._guard_flight)
+        found, owner = self.service._owner(self.drive, key, state['record']['header']['library'])
+        owner['device'] = 'another-pc'
+        self.drive.files[found['id']] = owner_name, key.seal(SR.OWNER_LOGICAL, R.dump(owner))
+        before = dict(self.drive.files)
+        with self.assertRaisesRegex(drive_client.DriveError, 'Another PC'):
+            client.upload(key.name('notes/0'), data=b'overwrite', file_id=ids[0])
+        with self.assertRaisesRegex(drive_client.DriveError, 'Another PC'):
+            client.delete(ids[0])
+        self.assertEqual(self.drive.files, before)
+
+    def test_failed_shared_mirror_check_blocks_every_waiter_and_next_group_retries(self):
+        from concurrent.futures import Future, ThreadPoolExecutor
+        self.setup_recovery()
+        client = self.svc._factory({})
+        barrier, flight = threading.Barrier(4), Future()
+        result = flight.result
+        def wait_result():
+            barrier.wait(timeout=5)
+            return result(timeout=5)
+        def offline(*args, **kwargs):
+            barrier.wait(timeout=5)
+            raise drive_client.DriveError('synthetic offline check')
+        before = dict(self.drive.files)
+        with mock.patch.object(SR, 'Future', return_value=flight), \
+                mock.patch.object(flight, 'result', side_effect=wait_result), \
+                mock.patch.object(self.drive, 'list', side_effect=offline) as listings:
+            with ThreadPoolExecutor(4) as pool:
+                jobs = [pool.submit(client.upload, f'mirror-{i}', data=b'note') for i in range(4)]
+                for job in jobs:
+                    with self.assertRaisesRegex(drive_client.DriveError, 'synthetic offline'):
+                        job.result(timeout=10)
+        self.assertEqual(listings.call_count, 1)
+        self.assertEqual(self.drive.files, before)
+        self.assertIsNone(client._guard_flight)
+        self.assertIsNone(client._guard_cache)
+        client.upload('mirror-retry', data=b'note')
+
+    def test_in_flight_mirror_check_does_not_hide_local_recovery_blocker(self):
+        from concurrent.futures import ThreadPoolExecutor
+        self.setup_recovery()
+        client = self.svc._factory({})
+        entered, release = threading.Event(), threading.Event()
+        original = self.drive.list
+        def listing(*args, **kwargs):
+            entered.set()
+            self.assertTrue(release.wait(5))
+            return original(*args, **kwargs)
+        with ThreadPoolExecutor(1) as pool, mock.patch.object(self.drive, 'list', side_effect=listing):
+            job = pool.submit(client.upload, 'mirror-first', data=b'note')
+            try:
+                self.assertTrue(entered.wait(5))
+                private_storage.write(self.service.journal, R.dump({'pending': True}))
+                with self.assertRaisesRegex(drive_client.DriveError, 'activation is pending'):
+                    client.upload('mirror-blocked', data=b'note')
+            finally:
+                release.set()
+            job.result(timeout=5)
+        self.assertNotIn('upload mirror-blocked', self.drive.calls)
+
+    def test_filtered_owner_lookup_still_refuses_duplicates(self):
+        self.setup_recovery()
+        state, key = self.service._load(), self.svc.mirror_key()
+        found, _ = self.service._owner(self.drive, key, state['record']['header']['library'])
+        self.drive.put(found['name'], self.drive.download(found['id']))
+        with self.assertRaisesRegex(drive_client.DriveError, 'ambiguous'):
+            self.svc._factory({}).upload(key.name('notes/blocked'), data=b'note')
+
+    def test_changed_epoch_does_not_join_an_in_flight_check_for_previous_context(self):
+        from concurrent.futures import ThreadPoolExecutor
+        self.setup_recovery()
+        client = self.svc._factory({})
+        entered, barrier = threading.Event(), threading.Barrier(2)
+        original = self.drive.list
+        def listing(*args, **kwargs):
+            entered.set()
+            barrier.wait(timeout=5)
+            return original(*args, **kwargs)
+        with mock.patch.object(self.drive, 'list', side_effect=listing) as listings, ThreadPoolExecutor(2) as pool:
+            first = pool.submit(client.upload, 'mirror-first', data=b'note')
+            self.assertTrue(entered.wait(5))
+            self.writer.call(lambda db: db.set_setting('cloud_epoch', 'changed'))
+            second = pool.submit(client.upload, 'mirror-second', data=b'note')
+            first.result(timeout=10)
+            second.result(timeout=10)
+        self.assertEqual(listings.call_count, 2)
+        self.assertIsNone(client._guard_flight)
+
+    def test_unenrolled_backup_queries_only_recovery_records_and_refuses_matching_record(self):
+        key = self.svc.mirror_key()
+        self.writer.call(lambda db: db.set_setting('cloud_epoch', key.fingerprint))
+        client = self.svc._factory({})
+        with mock.patch.object(self.drive, 'list', wraps=self.drive.list) as listing:
+            client.upload(key.name('notes/allowed'), data=b'note')
+        listing.assert_called_once_with(prefix=R.PREFIX)
+        record, _ = R.create(key, PASSWORD, 'fred@example.com')
+        self.drive.put(R.name(record), R.dump(record))
+        with self.assertRaisesRegex(drive_client.DriveError, 'does not hold its key'):
+            client.upload(key.name('notes/blocked'), data=b'note')
 
     def test_vault_without_recovery_reuses_listing_and_rejects_new_legacy_blocker(self):
         self.svc.mirror_key()
@@ -655,8 +779,10 @@ class RecoveryServiceTest(Library):
         self.setup_recovery()
         self.svc.unpair(PASSWORD)
         pending = self.svc._rotation()
-        with self.assertRaisesRegex(R.RecoveryError, 'pending key rotation'):
+        with self.assertRaises(SR.ReadinessError) as refused:
             self.service.enroll(PASSWORD, PASSWORD)
+        self.assertEqual(refused.exception.state, 'rotation_pending')
+        self.assertIn('upload, verification and cleanup', str(refused.exception))
         self.assertEqual(self.svc._rotation(), pending)
 
     def test_pairing_control_created_before_enrollment_does_not_block_setup(self):
@@ -796,6 +922,28 @@ class RecoveryServiceTest(Library):
         status = self.service.status()
         self.assertTrue(status['verified'] and not status['file_outdated'])
 
+    def test_rotation_status_keeps_the_committed_passphrase_and_file_confirmation(self):
+        self.setup_recovery()
+        self.assertTrue(self.svc._publish())
+        self.svc.unpair(PASSWORD)
+        kit = self.service.export_kit()
+        self.assertFalse(self.service.status()['enrolled'])
+        with mock.patch.object(self.svc, '_rotation_finish', side_effect=sync_mod.ExportStopped()):
+            self.svc._publish()
+        self.assertEqual(self.svc._rotation()['stage'], 'publishing')
+        status = self.service.status()
+        self.assertTrue(status['rotation_pending'])
+        self.assertTrue(status['configured'])
+        self.assertTrue(status['enrolled'])
+        self.service._mark_saved()
+        self.assertTrue(self.service.status()['saved_at'])
+        self.service.verify_kit(R.dump(kit).decode())
+        status = self.service.status()
+        self.assertTrue(status['verified'])
+        self.assertTrue(status['verified_at'])
+        self.assertFalse(status['file_outdated'])
+        self.assertEqual(self.service.preflight()['state'], 'rotation_pending')
+
     def test_status_and_conflict_message_remain_available_during_kit_verification(self):
         kit = self.setup_recovery()
         entered, release = threading.Event(), threading.Event()
@@ -930,6 +1078,48 @@ class RecoveryServiceTest(Library):
         stages = [call.kwargs.get('upload_step', '') for call in updates.call_args_list]
         self.assertTrue(any('Verifying the uploaded library' in stage for stage in stages))
         self.assertTrue(any('Removing the old encrypted copies' in stage for stage in stages))
+        self.assertEqual(self.svc._rotation()['stage'], 'complete')
+
+    def test_rotation_failed_parallel_verification_keeps_old_copy_then_resumes(self):
+        self.setup_recovery()
+        self.assertTrue(self.svc._publish())
+        key = self.svc.mirror_key()
+        logical = next(iter(restore.manifests(self.drive, key)[0][3]['files']))
+        self.svc.unpair(PASSWORD)
+        record = self.svc._rotation_prepare(self.svc._factory({}), threading.Event())
+        old_ids = set(record['owned'])
+        self.assertTrue(old_ids)
+        new_key = self.svc._rotation_key(record['new'])
+        original = self.drive.download
+        def corrupted(fid):
+            if self.drive.files[fid][0] == new_key.name(logical):
+                return b'corrupted ciphertext'
+            return original(fid)
+        with mock.patch.object(self.drive, 'download', side_effect=corrupted):
+            self.assertFalse(self.svc._publish())
+        self.assertTrue(old_ids.issubset(self.drive.files))
+        self.assertNotEqual(self.svc._rotation()['stage'], 'complete')
+        self.assertTrue(self.svc._publish(), self.svc.status())
+        self.assertEqual(self.svc._rotation()['stage'], 'complete')
+
+    def test_rotation_failed_parallel_delete_records_successes_then_resumes(self):
+        self.setup_recovery()
+        self.assertTrue(self.svc._publish())
+        self.svc.unpair(PASSWORD)
+        owned = self.svc._rotation_prepare(self.svc._factory({}), threading.Event())['owned']
+        self.assertGreaterEqual(len(owned), 4)
+        original = self.drive.delete
+        def remove(fid):
+            if fid == owned[0]:
+                raise drive_client.DriveError('synthetic interrupted deletion')
+            original(fid)
+        with mock.patch.object(self.drive, 'delete', side_effect=remove):
+            self.assertFalse(self.svc._publish())
+        remaining = self.svc._rotation()['owned']
+        self.assertIn(owned[0], remaining)
+        self.assertTrue(all(fid not in remaining and fid not in self.drive.files for fid in owned[1:4]))
+        self.assertTrue(all(fid in remaining for fid in owned[4:]))
+        self.assertTrue(self.svc._publish(), self.svc.status())
         self.assertEqual(self.svc._rotation()['stage'], 'complete')
 
     def test_interrupted_activation_keeps_a_journal_and_retries_without_cloud_writes(self):
@@ -1436,11 +1626,15 @@ class RecoveryRoutesTest(unittest.TestCase):
             self.assertTrue(held.wait(5))
             for method, path, body in (('post', '/api/cloud/connect', None), ('post', '/api/cloud/pair', {}),
                                        ('put', '/api/cloud/options', {'vault': True}), ('post', '/api/cloud/switch', None),
-                                       ('post', '/api/cloud/sign-out', {}), ('post', '/api/cloud/unpair', {})):
+                                       ('post', '/api/cloud/unpair', {})):
                 with self.subTest(path=path):
                     result = getattr(self.c, method)(path, json=body, headers=W)
                     self.assertEqual(result.status_code, 409, result.text)
                     self.assertEqual(result.json()['detail'], SR.BUSY)       # a busy refusal, never a failed write
+            result = self.c.post('/api/cloud/sign-out', json={}, headers=W)
+            self.assertEqual(result.status_code, 200, result.text)
+            self.assertEqual(result.json()['task']['kind'], 'disconnect')
+            self.assertTrue(self.app.state.sync.signed_in())       # accepted, but no mutation until reconnect releases the lock
         finally:
             release.set()
             holder.join(5)

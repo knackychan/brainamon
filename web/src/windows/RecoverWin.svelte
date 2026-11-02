@@ -3,7 +3,10 @@
   // folder (put its key back) or copy the backup into a new folder. Drive is only read. The window pauses this PC's backup while it is
   // open and resumes it when it closes, unless a copy is on its way to becoming the library. Words and states W1 to W8 come from the
   // approved mockup (projects/backup-phones-mockup, web/src/previews/backup/RecoverWin.svelte).
-  import { onMount, untrack } from 'svelte'
+  import { onMount, untrack, tick } from 'svelte'
+  import ForgotPassphrase from '../components/ForgotPassphrase.svelte'
+  import BackupChoices from '../components/BackupChoices.svelte'
+  import { openSettings } from '../lib/io-commands.svelte'
   import { api } from '../lib/api'
   import { addSample, amount, day, gb, hm, long, num, timeLeft, W, type CloudView, type RecoveryView, type Sample } from '../lib/backup'
   import { on } from '../lib/events.svelte'
@@ -20,15 +23,16 @@
   import TextButton from '../components/ui/TextButton.svelte'
   import WinBody from '../components/ui/WinBody.svelte'
 
-  let { close }: { close: () => void } = $props()
+  let { close, initialMethod = 'pass' }: { close: () => void; initialMethod?: Method } = $props()
   type Method = 'pass' | 'file' | 'code'
 
   let cv = $state<CloudView | null>(null)
   let rec = $state<RecoveryView | null>(null)
-  let method = $state<Method>('pass'), pass = $state(''), code = $state(''), error = $state('')
-  let another = $state(false), wantCopy = $state(false), kept = $state(false), busy = $state(false)
+  let method = $state<Method>(untrack(() => initialMethod)), pass = $state(''), code = $state(''), error = $state('')
+  let another = $state(untrack(() => initialMethod !== 'pass')), wantCopy = $state(false), kept = $state(false), busy = $state(false)
   let folder = $state(''), newPass = $state(''), newPass2 = $state('')
   let finding = $state(false)          // Find backup is reading Drive: the newest recovery setup first (I5)
+  let noKey = $state(false), foreign = $state(false)
   let pausing = $state(false)         // this window paused the backup and the last upload request is still finishing
   let samples = $state<Sample[]>([])
   let now = $state(Date.now())
@@ -40,10 +44,11 @@
 
   // Backup is paused while this window is open; the pause is the window's own, so only the window undoes it.
   async function pauseBackup() {
-    if (!cv || !(cv.running || cv.vault_running)) return
-    vaultWasOn = cv.vault_running
+    if (finished || !cv || !(cv.running || cv.vault_running)) return
+    vaultWasOn = cv.vault.on
+    const resumeAfter = cv.on && !cv.error && !cv.task
     pausing = true
-    try { await api.post('/api/cloud/pause'); pausedByMe = true } catch (e) { error = message(e); pausing = false }
+    try { await api.post('/api/cloud/pause'); pausedByMe = resumeAfter } catch (e) { error = message(e); pausing = false }
   }
   // A copy that is running or ready to open must not be disturbed by this library's uploads; a restored library stays off until it takes over.
   const keepsOff = () => !!rec && (['restoring', 'complete', 'activated'].includes(rec.job.state) || rec.restored || rec.restart_required)
@@ -64,7 +69,7 @@
   }
 
   onMount(() => {
-    void (async () => { await Promise.all([readRec(), readCloud()]); await pauseBackup() })()
+    void (async () => { await Promise.all([readRec(), readCloud()]); foreign = cv?.error_code === 'foreign_backup'; await pauseBackup() })()
     const offs = [on('cloud', (d: Partial<CloudView>) => { if (cv && (d.seq ?? 0) >= cv.seq) cv = { ...cv, ...d } })]
     const status = setInterval(() => { now = Date.now(); void readRec(); if (pausing) void readCloud() }, 2000)     // the pause lands when the last upload request ends
     return () => { offs.forEach(off => off()); clearInterval(status); void finish() }
@@ -96,7 +101,18 @@
   async function cancelSignIn() {
     try { cv = await api.post<CloudView>('/api/cloud/cancel-sign-in') } catch (e) { error = message(e) }
   }
+  const methodWait = $derived(busy ? 'Wait for the current recovery check to finish.' : '')
+  function chooseMethod(next: Method) {
+    if (methodWait) return
+    method = next; another = true; wantCopy = false; error = ''; pass = ''; code = ''; newPass = newPass2 = ''
+  }
+  async function guideMethod(next: Method) {
+    chooseMethod(next)
+    await tick()
+    document.getElementById('rw-methods')?.focus()
+  }
   async function find(body: { password: string } | { material: string }) {
+    if (busy || pausing || methodWait) return
     another = false; wantCopy = false; finding = true
     try {
       if (await post('preview', body)) {
@@ -177,6 +193,11 @@
           {#if !signing}<Button variant="pri" size="sm" disabled={!cv || !cv.configured} aria-describedby={cv && !cv.configured ? 'rw-why' : undefined} onclick={signIn}>Sign in with Google</Button>
           {:else}<TextButton onclick={cancelSignIn}>Cancel sign-in</TextButton>{/if}
         </div></div>
+      {:else if noKey}
+        <div>
+          <BackupChoices account={cv?.account || rec?.account || ''} ondone={() => { finished = true; close(); openSettings('backup') }} />
+          <TextButton onclick={() => noKey = false}>Back to recovery methods</TextButton>
+        </div>
       {:else if found}
         <div>
           <Status on role="status">Found the backup from {day(found.published)}, {hm(found.published)}: {num(found.items)} items, {num(found.files)} files, {gb(found.bytes)} GB.</Status>
@@ -209,7 +230,7 @@
               <Button variant="pri" size="sm" disabled={busy} onclick={updateFolder}>Update this folder</Button>
               <TextButton onclick={() => (wantCopy = true)}>Copy into a new folder instead</TextButton>
             {:else if found.reconnect.ok && !wantCopy}
-              <Button variant="pri" size="sm" disabled={busy || pausing} aria-describedby={pausing ? 'rw-wait' : undefined} onclick={keep}>{W.keepFolder}</Button>
+              <Button variant="pri" size="sm" disabled={busy || pausing || !!methodWait} aria-describedby={pausing ? 'rw-wait' : undefined} onclick={keep}>{W.keepFolder}</Button>
               <TextButton onclick={() => (wantCopy = true)}>Copy into a new folder instead</TextButton>
             {:else}
               <Button variant="pri" size="sm" disabled={busy || pausing || !folder.trim()} aria-describedby={pausing ? 'rw-wait' : !folder.trim() ? 'rw-why-copy' : undefined} onclick={copy}>{retry ? 'Retry copy' : W.copyNew}</Button>
@@ -224,13 +245,13 @@
           {#if finding}<Status state="todo" role="status">Looking for your backup. Newest recovery setup first.</Status><Progress label="Finding your backup" />{/if}
         </div>
         <Label as="span">Unlock with</Label>
-        <div>
-          <Segmented label="Unlock with" options={[{ value: 'pass', label: 'Passphrase' }, { value: 'file', label: 'Recovery file' }, { value: 'code', label: 'Phone code' }]} bind:value={method} onchange={() => (error = '')} />
+        <div id="rw-methods" tabindex="-1" role="group" aria-label="Recovery method">
+          <Segmented disabled={!!methodWait} label="Unlock with" options={[{ value: 'pass', label: 'Passphrase' }, { value: 'file', label: 'Recovery file' }, { value: 'code', label: 'Phone code' }]} bind:value={method} onchange={chooseMethod} />
           {#if method === 'pass'}
             <input class="inp" aria-label="Recovery passphrase" type="password" bind:value={pass} autocomplete="off" onkeydown={e => { if (e.key === 'Enter' && pass && !pausing) void find({ password: pass }) }} />
             <Hint>The one you chose at setup. Forgot it? Use a {W.file} or a phone code instead.</Hint>
           {:else if method === 'file'}
-            <Hint>A saved {W.file}, or one exported from a paired phone.</Hint>
+            <Hint>A saved {W.file}, or one exported from a paired phone. It unlocks the backup; use the same Google account to retrieve it.</Hint>
           {:else}
             <input class="inp" aria-label="Phone code" type="password" bind:value={code} autocomplete="off" spellcheck="false" onkeydown={e => { if (e.key === 'Enter' && code && !pausing) void find({ material: code }) }} />
             <Hint>On a paired phone: More &gt; Backup &amp; phones &gt; Recovery code &gt; Show.</Hint>
@@ -240,13 +261,27 @@
         <div>
           {#if error}<Hint tone="error" role="alert">{error}</Hint>{/if}
           <div class="frow">
-            {#if method === 'file'}<Button variant="pri" size="sm" disabled={busy || pausing} aria-describedby={pausing ? 'rw-wait' : undefined} onclick={openFile}>Open {W.file}…</Button>
-            {:else if method === 'pass'}<Button variant="pri" size="sm" disabled={busy || pausing || !pass} aria-describedby={pausing ? 'rw-wait' : !pass ? 'rw-why-find' : undefined} onclick={() => find({ password: pass })}>{W.findBackup}</Button>
-            {:else}<Button variant="pri" size="sm" disabled={busy || pausing || !code} aria-describedby={pausing ? 'rw-wait' : !code ? 'rw-why-find' : undefined} onclick={() => find({ material: code })}>{W.findBackup}</Button>{/if}
+            {#if method === 'file'}<Button variant="pri" size="sm" disabled={busy || pausing || !!methodWait} aria-describedby={pausing ? 'rw-wait' : undefined} onclick={openFile}>Open {W.file}…</Button>
+            {:else if method === 'pass'}<Button variant="pri" size="sm" disabled={busy || pausing || !!methodWait || !pass} aria-describedby={pausing ? 'rw-wait' : !pass ? 'rw-why-find' : undefined} onclick={() => find({ password: pass })}>{W.findBackup}</Button>
+            {:else}<Button variant="pri" size="sm" disabled={busy || pausing || !!methodWait || !code} aria-describedby={pausing ? 'rw-wait' : !code ? 'rw-why-find' : undefined} onclick={() => find({ material: code })}>{W.findBackup}</Button>{/if}
+            <TextButton onclick={() => noKey = true}>I don’t have a key</TextButton>
             {#if !pass && method === 'pass' || !code && method === 'code'}<Hint id="rw-why-find">{method === 'pass' ? 'Type your passphrase first.' : 'Paste the phone code first.'}</Hint>{/if}
           </div>
         </div>
       {/if}
     </GroupBox>
+    {#if !copied && !kept && job?.state !== 'restoring'}
+      <GroupBox aria-label="Passphrase help">
+        <Label as="span">Help</Label>
+        <div>
+          <ForgotPassphrase workingLabel="Open passphrase settings…"
+            workingReason={methodWait || (cv?.key_missing || foreign ? 'This PC does not hold this backup’s key. Use the working PC, a recovery file or a code.' : '')}
+            methodReason={methodWait}
+            onworking={() => { close(); openSettings('backup', 'set-s-sync-recovery') }}
+            onfile={() => guideMethod('file')} oncode={() => guideMethod('code')} onnone={() => noKey = true} />
+          {#if methodWait}<Hint role="status">{methodWait}</Hint>{/if}
+        </div>
+      </GroupBox>
+    {/if}
   </div>
 </WinBody>

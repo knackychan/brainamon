@@ -51,6 +51,12 @@ class DevDriveTest(unittest.TestCase):
         # kept on disk: a restart sees the same files
         self.assertEqual(dev_drive.FakeDrive(self.root / 'drive').files(), [{'id': big, 'name': 'big', 'size': str(len(big_body))}])
 
+    def test_filtered_names_and_prefixes(self):
+        name = "owner's\\record"
+        ids = [self.c.upload(n, data=b'file') for n in (name, name, name + '-old', 'unrelated')]
+        self.assertEqual({f['id'] for f in self.c.list(name=name)}, set(ids[:2]))
+        self.assertEqual({f['id'] for f in self.c.list(prefix=name)}, set(ids[:3]))
+
 
 @unittest.skipUnless(_node_ok(), 'needs Node 22.6+ (type stripping)')
 class FakeAiTest(unittest.TestCase):

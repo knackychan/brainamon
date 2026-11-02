@@ -762,8 +762,6 @@
     <!-- tab:overview -->
     <div hidden={cur !== 'overview'}><div class="set-calm">
       <GroupBox tone="summary" aria-label="Your setup at a glance">
-        <Label as="span">General</Label>
-        <div><Status on={!!appv?.autostart}>{!appv ? 'Checking…' : appv.autostart ? 'Starts with Windows' : 'Starts by hand'}</Status><TextButton aria-label="Open General" onclick={() => openTab('general')}>Open</TextButton></div>
         <Label as="span">Wiskit & AI</Label>
         <div><Status state={wiskitOn ? 'done' : 'optional'}>{!v ? 'Checking…' : wiskitOn ? `${v.models.providers.find(p => p.id === wiskit.provider)?.label ?? wiskit.provider} key saved` : 'Needs a key'}</Status><TextButton aria-label="Open Wiskit & AI" onclick={() => openTab('ai')}>Open</TextButton></div>
         <Label as="span">Imports & downloads</Label>

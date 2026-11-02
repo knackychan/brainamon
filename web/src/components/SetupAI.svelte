@@ -13,12 +13,12 @@
   import ClaudeCodeSetup from './ClaudeCodeSetup.svelte'
 
   let view = $state<{ keys: Record<string, boolean>; models: ModelView } | null>(null)
-  let provider = $state(''), model = $state(''), key = $state('')
+  let provider = $state(''), model = $state('')
+  let keys = $state<Record<string, string>>({})
   let busy = $state(false), error = $state(''), message = $state('')
   let refreshing = $state(false)
   let defaults: Record<string, string> = {}
   const id = $props.id()
-  const saved = $derived(!!view?.keys[provider])
   const providerLabel = $derived(view?.models.providers.find(p => p.id === provider)?.label ?? provider)
   const modelChanged = $derived(provider !== view?.models.jarvis.provider || model !== view?.models.jarvis.model)
   async function load() {
@@ -32,21 +32,21 @@
   onMount(() => {
     void load()
     const off = on('settings_changed', load)
-    return () => { off(); key = '' }
+    return () => { off(); keys = {} }
   })
   function changeProvider() {
-    key = ''; message = ''; error = ''
+    message = ''; error = ''
     const models = view?.models.models[provider] ?? []
     model = models.find(m => m.id === defaults[provider])?.id ?? models[0]?.id ?? ''
   }
-  async function save(kind: 'key' | 'model') {
+  async function save(kind: 'key' | 'model', keyProvider = provider) {
     if (busy || !view) return
     busy = true; error = ''; message = ''
     try {
       const result = await api.put<NonNullable<typeof view>>('/api/settings', kind === 'key'
-        ? { keys: { [provider]: key.trim() } } : { models: { jarvis: { provider, model } } })
+        ? { keys: { [keyProvider]: (keys[keyProvider] || '').trim() } } : { models: { jarvis: { provider, model } } })
       view = result
-      if (kind === 'key') key = ''
+      if (kind === 'key') keys[keyProvider] = ''
       message = kind === 'key' ? 'Key saved on this PC. Provider access has not been tested.' : 'Wiskit model saved.'
       void refreshAskOptions()
       void loadOnboarding().catch(() => {})
@@ -66,8 +66,8 @@
     } catch (e) { error = (e as Error).message }
     finally { refreshing = false }
   }
-  async function getKey() {
-    try { await api.post('/api/app/setup/link', { name: provider }) }
+  async function getKey(keyProvider: string) {
+    try { await api.post('/api/app/setup/link', { name: keyProvider }) }
     catch (e) { error = (e as Error).message }
   }
 </script>
@@ -75,21 +75,26 @@
 <div class="setup-ai-form">
   {#if view}
     <Hint><strong>OpenAI is recommended.</strong> One key covers Wiskit, Whisper transcription and the default search embeddings. Anthropic supports Wiskit, but does not provide transcription or embeddings.</Hint>
+    <Hint>Save a key for each provider you use, then choose Wiskit’s provider and model below.</Hint>
+    {#each view.models.providers.filter(p => p.id === 'openai' || p.id === 'anthropic' || p.id === provider) as item (item.id)}
+      <Field label={`${item.label} API key`} for={`${id}-key-${item.id}`}>
+        <div>
+          <div class="frow">
+            <input class="inp" id={`${id}-key-${item.id}`} type="password" bind:value={keys[item.id]} disabled={busy} autocomplete="off" spellcheck="false" placeholder={view.keys[item.id] ? 'Saved on this PC. Paste a replacement if needed' : `Paste your ${item.label} key`} />
+            <div class="key-actions">
+              <Button class="save-key" size="sm" disabled={busy || !keys[item.id]?.trim()} onclick={() => save('key', item.id)}>Save key</Button>
+              {#if item.id === 'anthropic' || item.id === 'openai'}<Button size="sm" disabled={busy} onclick={() => getKey(item.id)}>Get a provider key</Button>{/if}
+            </div>
+          </div>
+          <Status on={!!view.keys[item.id]}>{view.keys[item.id] ? `${item.label} key saved on this PC` : `No ${item.label} key saved`}</Status>
+        </div>
+      </Field>
+    {/each}
     <Field label="AI provider" for={`${id}-provider`}>
       <select class="inp" id={`${id}-provider`} bind:value={provider} onchange={changeProvider} disabled={busy}>
         {#each view.models.providers as item (item.id)}<option value={item.id}>{item.label}{item.id === 'openai' ? ' (recommended)' : ''}</option>{/each}
       </select>
     </Field>
-    <Field label="API key" for={`${id}-key`}>
-      <div class="frow">
-        <input class="inp" id={`${id}-key`} type="password" bind:value={key} disabled={busy} autocomplete="off" spellcheck="false" placeholder={saved ? 'Saved on this PC. Paste a replacement if needed' : 'Paste your provider key'} />
-        <div class="key-actions">
-          <Button class="save-key" size="sm" disabled={busy || !key.trim()} onclick={() => save('key')}>{busy ? 'Saving…' : 'Save key'}</Button>
-          {#if provider === 'anthropic' || provider === 'openai'}<Button size="sm" disabled={busy} onclick={getKey}>Get a provider key</Button>{/if}
-        </div>
-      </div>
-    </Field>
-    <Status on={saved}>{saved ? 'Key saved on this PC' : 'No key saved for this provider'}</Status>
     <Field label="Wiskit model" for={`${id}-model`}>
       <div class="frow">
         <select class="inp" id={`${id}-model`} bind:value={model} disabled={busy || refreshing || !view.models.models[provider]?.length}>

@@ -8,6 +8,7 @@ disabled control, no dead end, no link off the page, no horizontal overflow, in 
 import importlib.util
 import tempfile
 import re
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlparse
@@ -72,7 +73,7 @@ STATES = [
     ('t2-signing-in', dict(SIGNED_OUT, state='signing-in', account='', last_publish=0), {},
      ['Finish signing in in the browser window that opened.', "Choose the Google account for this library's backup.", 'Cancel sign-in'], ['Done'], []),
     ('t3-foreign-backup', dict(state='error', last_publish=0, error='x', error_code='foreign_backup', error_action='recover', error_at=NOW - 3 * DAY), dict(REC_OK),
-     [f'{ACCOUNT} already holds a Brainamon backup from another PC (last backup', 'Get it back on this PC, or use another Google account for this library.', 'Use another account…'],
+     [f'{ACCOUNT} already holds a Brainamon backup from another PC (last backup', 'Recover it, replace it with this PC’s library, or use another Google account.', 'Use another account…', 'Replace cloud backup with this PC’s library…'],
      ['Recover this backup…'], ['Recover a library…']),
     ('t4-first-backup', dict(last_publish=0, state='publishing', done=1204, total=5678, bytes_done=2_100_000_000, bytes_total=9_800_000_000), dict(configured=False),
      ['Backing up for the first time: 1,204 of 5,678 files (2.0 of 9.1 GB).', 'You can close Settings. Quitting Brainamon pauses this; it continues at the next start.',
@@ -134,6 +135,11 @@ STATES = [
       'How to sign a phone out', 'Pause backup', 'Add a phone'], ['Done'], ['Remove all phones…', 'Reset backup…']),
     ('t16b-removing-needs-the-new-file', dict(rotation='pending', rotation_locked_at=NOW, state='publishing', task=REMOVING), dict(REC_OK, file_outdated=True, replaced_at=NOW // 1000),
      ['Removing all phones · step 3 of 5.', 'Save new recovery file…'], ['Save new recovery file…'], []),
+    ('t16c-passphrase-created-during-rotation', dict(rotation='pending', state='publishing', task=REMOVING), dict(REC_OK, enrolled=False, verified=False, rotation_pending=True),
+     ['Passphrase created', 'Recovery checks and passphrase changes are available after upload, verification and cleanup finish.',
+      'Available after the backup update finishes. Progress is shown above.'], ['Done'], ['Recovery setup not finished', 'Check recovery']),
+    ('t16d-first-backup-rotation-without-recovery', dict(rotation='pending', state='publishing', last_publish=0, task=REMOVING), {},
+     ['Recovery setup waits for the backup update', 'Available after the backup update finishes. Progress is shown above.'], ['Done'], ['Choose a recovery passphrase']),
     ('t18-phones-removed', dict(rotation='complete', rotation_locked_at=NOW - HOUR), dict(REC_OK),
      ['All phones removed at 11:00.', 'Add each phone you keep again: its unsent edits arrive then.', 'Hide'], ['Add a phone'], []),
     ('t19-old-file', dict(), dict(REC_OK, file_outdated=True, replaced_at=NOW // 1000),
@@ -374,6 +380,54 @@ class Review(shots.Run):
             return [path for path, _ in calls[n:]]
 
         # ── A15: every state keeps the rules; each says its words and offers its one primary (README: T, G, B, R, P) ──
+        open_view({}, REC_OK)
+        card = panel.get_by_role('region', name='Recovery', exact=True)
+        guide = card.locator('details').first
+        guide.locator('summary').first.focus()
+        page.keyboard.press('Enter')
+        before = len(calls)
+        for situation in ('I can still open my library', 'I have a recovery file', 'I have a recovery code or a paired phone', 'I have none of these'):
+            guide.get_by_text(situation, exact=True).click()
+        expect(guide.get_by_text('Google sign-in alone cannot unlock', exact=False)).to_be_visible()
+        assert len(calls) == before
+        guide.get_by_role('button', name='Change passphrase…', exact=True).click()
+        expect(card.get_by_text("You don't need the old one.", exact=False)).to_be_visible()
+        expect(card.get_by_text('Recovery file checked.', exact=False)).to_be_visible()
+        card.get_by_role('button', name='Cancel', exact=True).click()
+        assert len(calls) == before
+        # A previous preview must not override an explicitly selected method.
+        recovery.update(preview=FOUND, job={'state': 'preview', 'done': 0, 'total': 3, 'error': '', 'destination': ''})
+        guide.get_by_role('button', name='Use recovery file', exact=True).click()
+        rw = page.get_by_role('dialog', name='Recover a library', exact=True)
+        expect(rw.get_by_role('button', name='Recovery file', exact=True)).to_have_attribute('aria-pressed', 'true')
+        rw.get_by_text('Forgot passphrase?', exact=True).click()
+        rw.get_by_text('I have a recovery code or a paired phone', exact=True).click()
+        before = len(calls)
+        rw.get_by_role('button', name='Use recovery code', exact=True).click()
+        rw.get_by_label('Phone code', exact=True).fill('synthetic-unsent-code')
+        rw.get_by_role('button', name='Recovery file', exact=True).click()
+        rw.get_by_role('button', name='Phone code', exact=True).click()
+        expect(rw.get_by_label('Phone code', exact=True)).to_have_value('')
+        assert len(calls) == before
+        for width in (390, 1440):
+            page.set_viewport_size({'width': width, 'height': 844})
+            rw.get_by_text('I have none of these', exact=True).click()
+            assert rw.evaluate('(e)=>e.scrollWidth<=e.clientWidth+1')
+            self.shot(page, f'forgot-{theme}-{width}')
+            rw.get_by_text('I have none of these', exact=True).click()
+        open_view({'rotation': 'pending', 'task': REMOVING}, dict(REC_OK, rotation_pending=True))
+        card = panel.get_by_role('region', name='Recovery', exact=True)
+        card.get_by_text('Forgot passphrase?', exact=True).click()
+        card.get_by_text('I can still open my library', exact=True).click()
+        expect(card.locator('details').get_by_role('button', name='Change passphrase…', exact=True)).to_be_disabled()
+        expect(card.get_by_text('Passphrase changes wait until', exact=False)).to_be_visible()
+
+        if '--guide-only' in sys.argv:
+            assert not errors, errors
+            ctx.close()
+            print(f'{theme}: forgot-passphrase navigation, cancellation, rotation and layouts passed')
+            return
+
         for name, cloud_changes, recovery_changes, see, pri, absent in STATES:
             open_view(cloud_changes, recovery_changes)
             window = page.locator('.set-win')
@@ -485,7 +539,7 @@ class Review(shots.Run):
         assert calls_since(count) == [], 'Asking must not disconnect or delete'
         panel.get_by_role('switch', name='Also delete the backup from Google Drive').check()
         expect(button('Delete and disconnect')).to_be_visible()
-        expect(panel.get_by_text('Your passphrase, recovery file and phones then have nothing to open.', exact=True)).to_be_visible()
+        expect(panel.get_by_text('All Brainamon desktop backup data in', exact=False)).to_be_visible()
         panel.get_by_role('switch', name='Also delete the backup from Google Drive').uncheck()
         button('Disconnect').click()
         assert last() == ('/api/cloud/sign-out', {'delete_mirror': False})
@@ -495,7 +549,7 @@ class Review(shots.Run):
         button('Disconnect Google Drive…').click()
         panel.get_by_role('switch', name='Also delete the backup from Google Drive').check()
         button('Delete and disconnect').click()
-        assert last() == ('/api/cloud/sign-out', {'delete_mirror': True})
+        assert last() == ('/api/cloud/sign-out', {'delete_mirror': True, 'delete_existing': True})
         open_view(dict(), dict(REC_OK))
         button('Switch account…').click()
         panel.get_by_role('switch', name='Delete the copy in sample@example.com once the new backup is complete').check()
@@ -605,7 +659,7 @@ class Review(shots.Run):
         failed_removal = dict(id='r', kind='remove_phones', stage='prepared', title='Removing all phones', step=3, of=5, steps=[], done=0, total=0, bytes_done=0, bytes_total=0,
                               since=NOW, error=reason, code='offline', lock='')
         open_view(dict(rotation='pending', task=failed_removal, rotation_locked_at=NOW), dict(REC_OK))
-        expect(panel.get_by_text('Removing all phones · step 3 of 5.', exact=False).first).to_be_visible()
+        expect(panel.get_by_text('Removing all phones stopped.', exact=True)).to_be_visible()
         expect(panel.get_by_role('alert').filter(has_text=reason).first).to_be_visible()
         failed_enroll = dict(id='e', kind='enroll', stage='uploading', title='Saving the recovery passphrase', step=2, of=3, steps=[], done=0, total=0, bytes_done=0, bytes_total=0,
                              since=NOW, error='Google Drive sign-in for sample@example.com expired or was removed. Choose Sign in again and pick the same account. Your backup and settings stay as they are.',
@@ -617,10 +671,54 @@ class Review(shots.Run):
         expect(button('Create recovery passphrase')).to_be_visible()      # no dead end: a save that stopped is retried by typing the passphrase again
 
         # the passphrase check that met an upload waits for a slot instead of refusing (S8)
+        open_view(dict(rotation='pending', state='publishing', task=REMOVING), dict(REC_OK, enrolled=False, verified=False, rotation_pending=True))
+        expect(button('Change passphrase…')).to_be_disabled()
+        expect(button('Check recovery')).to_have_count(0)
+        expect(panel.get_by_text('Passphrase created', exact=False)).to_be_visible()
+
         open_view(dict(), dict(configured=True, enrolled=False, account='sample@example.com'))
         expect(panel.get_by_text('Recovery setup not finished', exact=True)).to_be_visible()
+        expect(panel.get_by_text('Passphrase created.', exact=False)).to_be_visible()
         button('Check recovery').click()
         assert last()[0] == '/api/cloud/recovery/preflight'
+
+        # Saved reset: pause and failure take precedence over an apparently live progress bar.
+        resetting = task('reset_backup', 'Resetting the backup', 2, 3)
+        open_view(dict(task=resetting, on=False, running=False, state='off', paused_since=NOW), dict(REC_OK))
+        expect(panel.get_by_text('Resetting the backup is paused too.', exact=False)).to_be_visible()
+        expect(button('Resume backup')).to_be_visible()
+        expect(button('Pause backup')).to_have_count(0)
+        open_view(dict(task=dict(resetting, error='Synthetic reset failure.'), state='error'), dict(REC_OK))
+        expect(panel.get_by_text('Resetting the backup stopped.', exact=True)).to_be_visible()
+        expect(button('Try again')).to_be_visible()
+
+        # No key has real exits; neither opening nor cancelling the confirmation mutates Drive.
+        foreign = dict(state='error', error='Existing cloud backup', error_code='foreign_backup', last_publish=0)
+        open_view(foreign, {})
+        count = len(calls)
+        button('Replace cloud backup with this PC’s library…').click()
+        expect(panel.get_by_role('alert').filter(has_text='Replace the desktop backup')).to_be_visible()
+        expect(button('Recover this backup…')).to_have_count(0)
+        expect(panel.get_by_text('First backup running (progress above)', exact=True)).to_have_count(0)
+        self.shot(page, f'desktop-{theme}-replace-backup-confirm')
+        button('Cancel').click()
+        expect(button('Recover this backup…')).to_be_visible()
+        assert len(calls) == count
+        button('Delete cloud backup and disconnect…').click()
+        button('Delete and disconnect').click()
+        assert last() == ('/api/cloud/sign-out', {'delete_mirror': True, 'delete_existing': True})
+
+        open_view(foreign, {})
+        button('Recover this backup…').click()
+        recovery_window = page.get_by_role('dialog', name='Recover a library', exact=True)
+        recovery_window.get_by_role('button', name='I don’t have a key', exact=True).click()
+        recovery_window.get_by_role('button', name='Replace cloud backup with this PC’s library…', exact=True).click()
+        count = len(calls)
+        self.shot(page, f'desktop-{theme}-recover-without-key')
+        recovery_window.get_by_role('button', name='Replace with this PC’s library', exact=True).click()
+        expect(recovery_window).to_have_count(0)
+        assert ('/api/cloud/reset', {'replace_existing': True}) in calls[count:]
+        assert '/api/cloud/resume' not in calls_since(count)
 
         # narrow: no horizontal scroll in a busy state and a long one (A15 at 390 px)
         page.set_viewport_size({'width': 390, 'height': 844})

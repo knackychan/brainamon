@@ -33,11 +33,14 @@
   const cl = $derived(live.cloud)
   let now = $state(Date.now())
   onMount(() => { const t = setInterval(() => { now = Date.now() }, 15000); return () => clearInterval(t) })
-  const drive = $derived.by((): { row: string; step: string; pct: number | null; kind: 'paused' | 'pausing' | 'busy' } | null => {
+  const drive = $derived.by((): { row: string; step: string; pct: number | null; kind: 'paused' | 'pausing' | 'busy' | 'error' } | null => {
     if (!cl?.signed_in) return null
     const task = cl.task ?? null
+    if (task?.kind === 'disconnect' && task.error) return { row: `${task.title} stopped`, step: task.error, pct: null, kind: 'error' }
+    if (task?.kind === 'disconnect' || cl.state === 'disconnecting') return null
     if ((cl.paused_since ?? 0) > 0 && !cl.running) return { row: `Backup paused · ${long(Math.max(0, now - cl.paused_since!))}`, step: `Changes since ${hm(cl.last_publish || cl.paused_since!)} are only on this PC.`, pct: null, kind: 'paused' }
     if (cl.state === 'stopping') return { row: 'Pausing after the current upload request', step: '', pct: null, kind: 'pausing' }
+    if (task?.error || (task && task.kind !== 'update_folder' && cl.state === 'error')) return { row: `${task.title} stopped`, step: task.error || cl.error, pct: null, kind: 'error' }
     if (task && task.kind !== 'enroll') {
       const frac = task.total ? task.done / task.total : 0
       if (task.kind === 'remove_phones') return task.step >= 3 ? { row: `Removing phones · step ${task.step} of 5`, step: '', pct: task.step === 3 ? 70 * frac : task.step === 4 ? 70 + 30 * frac : 100, kind: 'busy' } : null
@@ -52,7 +55,7 @@
     return null
   })
   // Disconnect waits for the upload threads to end: said at once, no bar
-  const mirrorMove = $derived(cl?.state === 'disconnecting' ? 'Disconnecting from Google Drive' : '')
+  const mirrorMove = $derived(cl?.state === 'disconnecting' || (cl?.task?.kind === 'disconnect' && !cl.task.error) ? 'Disconnecting from Google Drive' : '')
   // the vault sync has its own On / Off (vault_running), not the mirror's
   const vaultBusy = $derived(!!cl?.vault_running && (cl.vault_state === 'syncing' || cl.vault_state === 'starting'))
   const vaultMove = $derived(cl?.vault_state === 'stopping' ? 'Stopping the vault sync' : '')
@@ -106,7 +109,7 @@
     {#if drive.kind !== 'pausing'}
       <div class="rj-keys">
         {#if drive.kind === 'paused'}<Button onclick={() => call('resume')}><KeyIcon name="play" />Resume backup</Button>
-        {:else}<Button onclick={() => call('pause')}><KeyIcon name="pause" />Pause backup</Button>{/if}
+        {:else if drive.kind === 'busy'}<Button onclick={() => call('pause')}><KeyIcon name="pause" />Pause backup</Button>{/if}
         <Button onclick={() => openSettings('backup', 'set-s-sync-uploads')}>Progress</Button>
       </div>
     {/if}

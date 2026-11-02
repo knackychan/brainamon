@@ -2,7 +2,15 @@
 
 Every release bumps `core/version.py` and adds a section here in the same commit. Newest first.
 
-## 1.1.0 - Unreleased
+## 1.1.1 - 2026-11-02
+
+- Desktop: recovery help offers confirmed replacement or deletion of an inaccessible Drive backup, while keeping local content and independent phone backups.
+- Desktop: disconnect and deletion stop conflicting backup work automatically; saved tasks retain pause, retry and restart state.
+- Phone: manage a selected standalone backup without its old key, with verified replacement uploads and deletion limited to confirmed files.
+- Phone: disconnect preserves local content, manual sync pause persists, and interrupted backup management waits for Resume or Retry.
+- Desktop and phone: save each AI provider's key independently, with clearer backup and recovery navigation.
+
+## 1.1.0 - 2026-11-02
 
 - Application-owned source is GPL-3.0-only, with editable artwork, independent build instructions and isolated tests. Historical releases keep their original terms.
 - All current features, including phone pairing and vault sync, are available without payment or activation. Support is optional; legacy receipts remain usable with older phone apps.

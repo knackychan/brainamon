@@ -512,6 +512,7 @@ html.kb .m-cap-form:has(.m-cap-editor :is(textarea,input):focus) .m-cap-dock{pad
 .m-more-body{display:flex;flex-direction:column;gap:10px;padding:2px 0 4px}
 .m-link.danger{color:var(--m-danger)}
 .m-calm .m-srow .m-btn.sm,.m-calm .m-srow .m-link,.m-calm .m-row .m-btn.sm,.m-calm .m-row .m-link,.m-calm .m-box>.m-btn{min-height:44px}
+.m-calm .m-link{min-height:44px}
 .m-calm .m-srow .m-tg{min-height:44px;padding:0 6px}
 .m-calm .m-srow .m-seg button{min-height:44px}
 

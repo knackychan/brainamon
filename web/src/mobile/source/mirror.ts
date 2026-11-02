@@ -39,7 +39,7 @@ import { deviceName, isApp, linkGet, linkImage, vaultFs } from '../native'
 import { imageUrl, linkInfo } from '../linkinfo'
 import { importChanges, type Saved } from '../imports'
 import { pcStatus, removeLegacy, vaultRound, type PcStatus, type Result as VaultResult } from '../vault/sync'
-import { beginCloudChange, endCloudChange, reconnecting } from '../mirror/gate'
+import { beginCloudChange, CloudCancelled, cloudCheckpoint, cloudRevision, cloudStopped, endCloudChange, reconnecting, stopCloudWork } from '../mirror/gate'
 import { finishReconnect, recordPublish } from '../mirror/phone-reconnect'
 import { resendPending } from '../mirror/resend'
 import { dropPhoneRecord as dropRecord, syncPhoneRecord } from '../mirror/phone-record'
@@ -199,11 +199,12 @@ export class MirrorSource implements MobileSource {
   // Unpair (More): the record goes first, best effort and at most 3 s; Unpair goes on whatever happens here
   async dropPhoneRecord(): Promise<void> {
     if (this.solo) return
-    try { await dropRecord(this.drive, await this.key, this.pair, deviceId()) } catch { /* Unpair goes on */ }
+    try { await dropRecord(new Drive(this.pair.d || GOOGLE_DRIVE, () => token(this.pair), dropToken), await this.key, this.pair, deviceId()) } catch { /* Unpair goes on */ }
   }
 
   constructor(pair: Pairing) {
     this.pair = pair
+    if (pair.backupTask) void stopCloudWork()
     this.drive = new Drive(pair.d || GOOGLE_DRIVE, () => token(pair), () => dropToken())
     this.key = MirrorKey.fromText(pair.k)
     navigator.serviceWorker?.addEventListener('message', e => this.onWorker(e))
@@ -217,6 +218,7 @@ export class MirrorSource implements MobileSource {
     const f = await this.drive.find(await key.name('manifest.json'))
     if (!f) throw await this.noLibrary(key)
     const m = await key.openJSON<Manifest>('manifest.json', await this.drive.get(f.id))
+    this.drive.checkpoint()
     // Sent changes still overlay the cached copy; retain them until a compatible refresh.
     if ((m.reader ?? 1) > READER) { tooOld.fn(); throw new PhoneTooOld() }
     this.manifest = m
@@ -282,6 +284,7 @@ export class MirrorSource implements MobileSource {
     return this.once(logical, async () => {
       const raw = await this.fetchFile(logical)
       const text = logical.endsWith('.gz') ? await gunzip(raw) : new TextDecoder().decode(raw)
+      this.drive.checkpoint()
       await files.set(logical, { v: f!.v, data: text })
       return text
     })
@@ -295,7 +298,9 @@ export class MirrorSource implements MobileSource {
   health() { return this.loadManifest().then(m => ({ ok: true, items: m.items })) }
 
   async rows(step?: (key: 'read' | 'lib', note?: string) => void, progress?: (done: number, total: number) => void) {
+    const revision = cloudRevision()
     await this.ready()
+    if (cloudStopped()) return { rows: this.rowsNow as Row[], cats: this.cats() }
     step?.('read')
     if (this.solo) {
       let note = 'not connected to Google Drive: the library stays on this phone'
@@ -308,11 +313,13 @@ export class MirrorSource implements MobileSource {
           this.round = { at: Date.now(), ok: sent, error: sent ? '' : this.lastError }
         }
       } catch (e) {
+        if (e instanceof CloudCancelled) throw e
         // the library is on the phone either way; a refused sign-in drops the token, so Backup & phones asks to sign in again
         note = `Google Drive not read (${(e as Error).message})`
         this.round = { at: Date.now(), ok: false, error: (e as Error).message }
       }
       step?.('lib', note)
+      cloudCheckpoint(revision)
       this.manifest = SOLO_MANIFEST
       this.setRows()
       this.looked = Date.now()
@@ -330,6 +337,7 @@ export class MirrorSource implements MobileSource {
       progress?.(++got, names.length)
       return part
     })
+    this.drive.checkpoint()
     this.base = parts.flat().map(r => ({ ...r, nd: r.nd ?? 0 }))
     this.setRows()
     await this.reconcileCanvas()
@@ -363,6 +371,7 @@ export class MirrorSource implements MobileSource {
           return null
         }
       })
+      this.drive.checkpoint()
       return await this.changes.merge(docs.filter((d): d is NonNullable<typeof d> => !!d))
     } finally {
       endCloudChange()
@@ -758,6 +767,7 @@ export class MirrorSource implements MobileSource {
 
   // send what is queued as one change file
   async flush(): Promise<number> {
+    if (cloudStopped()) throw new CloudCancelled()
     if (syncPaused()) throw new SyncPaused()
     if (!navigator.onLine || !token(this.pair)) return 0
     // paired again (mirror/resend.ts): first a fresh manifest says what the PC has (it throws while there is none)
@@ -766,10 +776,12 @@ export class MirrorSource implements MobileSource {
     beginCloudChange()
     try {
       const n = await this.changes.flush(async doc => {
+        this.drive.checkpoint()
         const key = await this.key
         const [name, blob] = await key.sealChange(doc, this.solo)
         this.mine.add(name)                        // solo: never read back as someone else's
         const id = await this.drive.create(name, blob)
+        this.drive.checkpoint()
         // solo: the proof a later reconnect checks (mirror/phone-reconnect.ts); sealChange sealed exactly this JSON
         if (this.solo) await recordPublish(key, name, id, doc as { at: number; changes: unknown[] })
         return name
@@ -1743,7 +1755,7 @@ export class MirrorSource implements MobileSource {
   watch(onItems: (ids: number[]) => void, onNotes: () => void) {
     // a pull to refresh counts as a look: no second read of Drive right after it
     const look = async () => {
-      if (document.hidden || !navigator.onLine || syncPaused() || reconnecting() || Date.now() - this.looked < 60_000) return
+      if (document.hidden || !navigator.onLine || syncPaused() || reconnecting() || cloudStopped() || Date.now() - this.looked < 60_000) return
       this.looked = Date.now()
       const before = this.manifest?.published, old = new Map(this.rowsNow.map(r => [r.id, JSON.stringify(r)]))
       try {

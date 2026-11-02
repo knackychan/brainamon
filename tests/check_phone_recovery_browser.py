@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from library import mirror  # noqa: E402  (the fixture's batch file is sealed by the desktop's MirrorKey)
 
-ART = ROOT / 'local/ui-blocks/shots/phone-recovery'
+ART = Path(tempfile.mkdtemp(prefix='brainamon-phone-recovery-shots-'))
 RAW = bytes([7]) * 32
 KEY = base64.urlsafe_b64encode(RAW).decode().rstrip('=')
 FP = hashlib.sha256(b'brainamon-mirror-1 id' + RAW).hexdigest()[:12]
@@ -83,7 +83,7 @@ def main():
                             route.fulfill(json={'id': file_id})
                         elif path.endswith('/files'):
                             q = query.get('q', [''])[0]
-                            found = [f for f in records.values() if not q or ('vi-phone-recovery-' in q and f['name'].startswith('vi-phone-recovery-'))]
+                            found = [f for f in records.values() if 'vi-phone-recovery-' not in q or f['name'].startswith('vi-phone-recovery-')]
                             route.fulfill(json={'files': [{k: f[k] for k in ('id', 'name', 'size')} for f in found]})
                         elif path.rsplit('/', 1)[-1] in records:
                             route.fulfill(body=records[path.rsplit('/', 1)[-1]]['body'], content_type='application/json')
@@ -99,6 +99,59 @@ def main():
                     box = page.locator('#m-recovery')
                     status = page.locator('#m-backup-status')
                     button = lambda name: box.get_by_role('button', name=name, exact=True)
+                    page.wait_for_function("async()=> !(await import('/src/mobile/state.svelte.ts')).phone.refreshing")
+                    guide = box.locator('details').first
+                    guide.locator('summary').first.focus()
+                    page.keyboard.press('Enter')
+                    for situation in ('I can still open my library', 'I have a recovery file', 'I have a recovery code or a paired phone', 'I have none of these'):
+                        guide.get_by_text(situation, exact=True).click()
+                    expect(guide.get_by_text('Earlier phone passphrases remain valid.', exact=False)).to_be_visible()
+                    expect(guide.get_by_text('Google sign-in alone cannot unlock', exact=False)).to_be_visible()
+                    for width in (320, 390):
+                        page.set_viewport_size({'width': width, 'height': 844})
+                        for theme in ('light', 'dark'):
+                            page.evaluate('(v)=>document.documentElement.dataset.theme=v', theme)
+                            guide.scroll_into_view_if_needed()
+                            assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+                            page.screenshot(path=ART / f'forgot-{width}-{theme}.png')
+                    page.set_viewport_size({'width': 390, 'height': 844})
+                    guide.get_by_role('button', name='Create another passphrase…', exact=True).click()
+                    expect(box.get_by_label('Recovery passphrase', exact=True)).to_be_visible()
+                    button('Cancel').click()
+                    assert not writes
+                    guide.get_by_role('button', name='Use recovery code', exact=True).click()
+                    expect(box.locator('#phone-original-code')).to_contain_text(KEY)
+                    assert page.evaluate("async()=> (await import('/src/mobile/mirror/pairing.ts')).pairing().k") == KEY
+                    page.evaluate("async()=>{(await import('/src/mobile/state.svelte.ts')).phone.refreshing=true}")
+                    expect(guide.get_by_role('button', name='Create another passphrase…', exact=True)).to_be_disabled()
+                    expect(guide.get_by_text('Syncing your backup.', exact=False)).to_be_visible()
+                    page.evaluate("async()=>{(await import('/src/mobile/state.svelte.ts')).phone.refreshing=false}")
+                    page.evaluate("async()=>{(await import('/src/mobile/state.svelte.ts')).phone.connecting=true}")
+                    expect(guide.get_by_role('button', name='Create another passphrase…', exact=True)).to_be_disabled()
+                    expect(guide.get_by_text('Connecting Google Drive.', exact=False)).to_be_visible()
+                    page.evaluate("async()=>{(await import('/src/mobile/state.svelte.ts')).phone.connecting=false}")
+                    guide.get_by_role('button', name='Use recovery file', exact=True).click()
+                    recover = page.locator('#m-recover')
+                    expect(recover.get_by_role('button', name='File', exact=True)).to_have_attribute('aria-pressed', 'true')
+                    recover.get_by_text('Forgot passphrase?', exact=True).click()
+                    recover.get_by_text('I have a recovery code or a paired phone', exact=True).click()
+                    recover.get_by_role('button', name='Use recovery code', exact=True).click()
+                    recover.get_by_label('Original recovery code', exact=True).fill('synthetic-unsent-code')
+                    recover.get_by_role('button', name='File', exact=True).click()
+                    recover.get_by_role('button', name='Code', exact=True).click()
+                    expect(recover.get_by_label('Original recovery code', exact=True)).to_have_value('')
+                    recover.get_by_label('Original recovery code', exact=True).fill(KEY)
+                    recover.get_by_role('button', name='Find backup', exact=True).click()
+                    expect(recover.locator('#phone-recovery-keep')).to_be_visible()
+                    recover.get_by_role('button', name='Cancel', exact=True).click()
+                    expect(recover.get_by_label('Original recovery code', exact=True)).to_have_value('')
+                    recover.get_by_role('button', name='File', exact=True).click()
+                    with page.expect_file_chooser() as cancelled_file:
+                        recover.get_by_role('button', name='Open recovery file…', exact=True).click()
+                    cancelled_file.value.set_files([])
+                    expect(recover.locator('#phone-recovery-keep')).not_to_be_visible()
+                    assert not writes
+                    page.evaluate("location.hash='#/backup'")
                     # the Status offers the one next step; the Recovery group leaves that key out
                     expect(status.get_by_text('Backed up, but if this phone is lost nothing can unlock the backup.', exact=True)).to_be_visible()
                     expect(status.get_by_role('button', name='Set up recovery', exact=True)).to_be_enabled()
@@ -298,7 +351,7 @@ def main():
                         button('Confirm reconnect').click()
                     assert len(writes) == before_reconnect, 'reconnect wrote Drive'
                     box = page.locator('#m-recovery')                      # back on Backup & phones: the Recovery group
-                    expect(box.get_by_role('button', name='Set up recovery again', exact=True)).to_be_enabled()      # the recovery file was remembered: a passphrase set, the file not saved from here yet
+                    expect(box.get_by_role('button', name='Create another passphrase…', exact=True)).to_be_enabled()      # the recovery file was remembered: a passphrase set, the file not saved from here yet
                     expect(box.get_by_text(re.compile(r'^Passphrase set \d{1,2} \w+$'))).to_be_visible()
                     state = page.evaluate("""async()=>{
                       const p=await import('/src/mobile/mirror/pairing.ts');
@@ -316,7 +369,7 @@ def main():
                     assert all(w.startswith(('vi-phone-recovery-', PREFIX)) for w in writes), writes
                     page.evaluate("sessionStorage.removeItem('reconnect-offline')")
                     page.reload()
-                    expect(box.get_by_role('button', name='Set up recovery again', exact=True)).to_be_enabled()
+                    expect(box.get_by_role('button', name='Create another passphrase…', exact=True)).to_be_enabled()
                     page.wait_for_function("async()=> {const {phone}=await import('/src/mobile/state.svelte.ts');return phone.tried && !phone.refreshing}")
                     page.wait_for_function("async()=> (await (await import('/src/mobile/store.ts')).changes.all()).every(e=>e.state==='sent')")
                     assert len(writes) == before_reconnect + 1, (before_reconnect, len(writes), [w.split('-')[0] for w in writes])
@@ -353,6 +406,13 @@ def main():
                     assert paired_page.locator('#m-pair-setup').count()==0
                     card.get_by_role('link',name='Backup & phones').click()
                     expect(paired_page).to_have_url(base+'/mobile.html#/backup')
+                    recovery_guide = paired_page.locator('#m-recovery details').first
+                    recovery_guide.locator('summary').first.click()
+                    recovery_guide.get_by_text('I can still open my library', exact=True).click()
+                    expect(recovery_guide.get_by_text('The desktop passphrase is managed on the PC.', exact=False)).to_be_visible()
+                    recovery_guide.get_by_text('I have a recovery code or a paired phone', exact=True).click()
+                    recovery_guide.get_by_role('button', name='Show recovery code', exact=True).click()
+                    expect(paired_page.get_by_label('Recovery code', exact=True)).to_have_value(KEY)
                     guide=paired_page.locator('#m-pair-setup')
                     status=paired_page.locator('#m-backup-status')
                     expect(guide.get_by_text('Finish connecting your PC',exact=True)).to_be_visible()

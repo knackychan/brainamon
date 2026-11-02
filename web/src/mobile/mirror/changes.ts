@@ -345,6 +345,15 @@ export class Changes {
   // the change files this phone already holds (its own, and those read back)
   known(): Set<string> { return new Set(this.list.map(e => e.chg ?? '').filter(Boolean)) }
 
+  async acceptBackup(snapshot: ChangeEntry[], name: string, at: number) {
+    await this.load()
+    return this.serial(async () => {
+      const same = this.list.filter(e => snapshot.some(old => old.id === e.id && JSON.stringify(old) === JSON.stringify(e)))
+      await this.commit(same, e => { e.state = 'sent'; e.chg = name; e.sentAt = at })
+      this.changed()
+    })
+  }
+
   // change files read back from Drive (another phone on the same recovery code, or this phone after
   // a reset), oldest first; they count as sent, so they never go up again
   async merge(docs: { name: string; doc: { at?: number; changes?: Omit<ChangeEntry, 'id' | 'state'>[] } }[]): Promise<number> {

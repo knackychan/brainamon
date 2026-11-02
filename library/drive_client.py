@@ -309,11 +309,14 @@ class DriveClient:
         return {'email': u.get('emailAddress', ''), 'name': u.get('displayName', ''),
                 'used': int(q.get('usage') or 0), 'limit': int(q.get('limit') or 0)}
 
-    def list(self) -> list[dict]:
-        """Every file in the app data folder: [{'id', 'name', 'size'}]."""
+    def list(self, name: str | None = None, *, prefix: str | None = None) -> list[dict]:
+        """Files in the app data folder, optionally matching a name or its prefix."""
         out, page = [], ''
         while True:
             q = {'spaces': SPACE, 'pageSize': '1000', 'fields': 'nextPageToken,files(id,name,size,version,modifiedTime)'}
+            if name is not None or prefix is not None:
+                escaped = (name if name is not None else prefix).replace('\\', '\\\\').replace("'", "\\'")
+                q['q'] = f"name {'=' if name is not None else 'contains'} '{escaped}'"
             if page:
                 q['pageToken'] = page
             _, _, body = self._call('GET', API + '/files?' + urllib.parse.urlencode(q))

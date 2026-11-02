@@ -13,13 +13,14 @@ class PhoneConnection(unittest.TestCase):
           const memory = new Map()
           globalThis.localStorage = globalThis.sessionStorage = {getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)}
           globalThis.window = new EventTarget()
-          globalThis.location = {hash:'#/more',hostname:'fixture.invalid'}
+          globalThis.location = {hash:'#/more',hostname:'fixture.invalid',reload:()=>{globalThis.__reloads=(globalThis.__reloads||0)+1}}
           Object.defineProperty(navigator,'onLine',{value:true})
           globalThis.$state = Object.assign(x=>x,{raw:x=>x})
           globalThis.$derived = Object.assign(x=>x,{by:f=>f()})
           globalThis.__pair = {e:'pc@example.com',g:'',l:'synthetic-verifier'}
           globalThis.__test = {signed:false,redirect:false,saveFail:false,wrong:false,cancel:false,rows:0,accountSaves:0}
           const modules = {
+            './backup.svelte': 'export const backup={busy:false,task:null}',
             '../lib/md': 'export const setCardLookup=()=>{}',
             './source/desktop': 'export class DesktopSource {}',
             './source/mirror': `export class MirrorSource {constructor(pair){this.pair=pair;this.kind='mirror'} async rows(){globalThis.__test.rows++;throw globalThis.__readError} } export class NeedsSignIn extends Error {} export class NoMirror extends Error {} export class PhoneTooOld extends Error {} export const tooOld={}`,
@@ -45,13 +46,14 @@ class PhoneConnection(unittest.TestCase):
           await S.connectDrive()
           assert.match(S.phone.note,/Google Drive connected/)
           assert.equal(S.driveLinked(),true)
-          assert.equal(t.rows,1)
-          assert.match(S.phone.error,/synthetic refresh failure/)
+          assert.equal(t.rows,0)
+          assert.equal(globalThis.__reloads,1) // the next page reads with a new Drive instance
+          assert.equal(S.phone.error,'')
           t.wrong=true
           await S.connectDrive(true)
           assert.match(S.phone.note,/Choose pc@example.com/)
           assert.equal(S.driveLinked(),false)
-          assert.equal(t.rows,1)
+          assert.equal(t.rows,0)
           t.wrong=false;t.cancel=true
           await S.connectDrive()
           assert.match(S.phone.note,/chooser cancelled/)
@@ -59,16 +61,16 @@ class PhoneConnection(unittest.TestCase):
           t.cancel=false;t.saveFail=true
           await S.connectDrive()
           assert.match(S.phone.note,/could not be saved securely/)
-          assert.equal(t.rows,1)
+          assert.equal(t.rows,0)
           t.saveFail=false;t.redirect=true
           await S.connectDrive()
-          assert.equal(t.rows,1) // browser redirects before account/refresh completion
+          assert.equal(t.rows,0) // browser redirects before account/refresh completion
           t.redirect=false
           globalThis.__readError=new LicenseRequired(LICENSE_REQUIRED)
           network.licenseLocked=true;network.licenseProblem=LICENSE_REQUIRED
           await S.connectDrive()
           assert.match(S.phone.note,/Google Drive connected/)
-          assert.equal(S.phone.error,LICENSE_REQUIRED)
+          assert.equal(S.phone.error,'') // loading after reload cannot undo Google authorization
           assert.equal(S.driveStatus().lamp,'access pending')
           assert.ok(t.accountSaves>=3) // retries persist confirmation even when memory already holds it
           delete p.g;t.signed=false

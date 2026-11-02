@@ -451,15 +451,15 @@ class PhoneSideTest(unittest.TestCase):
         mirror = (ROOT / 'web/src/mobile/source/mirror.ts').read_text(encoding='utf-8')
         # the phone without a PC is removed on Backup & phones (sub-plan 05), behind the same gate
         backup = (ROOT / 'web/src/mobile/screens/Backup.svelte').read_text(encoding='utf-8')
-        self.assertIn("import { reconnecting, RECONNECT_BUSY } from './mirror/gate'", state)
-        self.assertEqual(state.count('if (reconnecting()) { phone.note = RECONNECT_BUSY; return }'), 3)       # connectDrive, changeAccount, pairFrom
+        self.assertIn("reconnecting, RECONNECT_BUSY, stopCloudWork } from './mirror/gate'", state)
+        self.assertEqual(state.count('if (reconnecting()) { phone.note = RECONNECT_BUSY; return }'), 1)       # pairFrom; Connect drains work before switching accounts
         self.assertIn('if (reconnecting()) { phone.note = RECONNECT_BUSY; return false }', state)              # useWithoutPc
         self.assertIn('if (reconnecting()) return RECONNECT_BUSY', state)                                      # refresh
-        self.assertIn('if (reconnecting()) return\n', state[state.index('export async function syncNow'):])     # syncNow
-        self.assertIn("import { beginCloudChange, endCloudChange, reconnecting } from '../mirror/gate'", mirror)
+        self.assertIn('if (reconnecting() || cloudStopped()) return\n', state[state.index('export async function syncNow'):])     # syncNow
+        self.assertIn("endCloudChange, reconnecting, stopCloudWork } from '../mirror/gate'", mirror)
         self.assertIn('    beginCloudChange()\n    try {\n      const n = await this.changes.flush(', mirror)
         self.assertIn('private async readBack(): Promise<number> {\n    beginCloudChange()\n    try {', mirror)
         self.assertEqual(mirror.count('      endCloudChange()'), 2)
-        self.assertIn('|| syncPaused() || reconnecting() || Date.now() - this.looked < 60_000) return', mirror)
+        self.assertIn('|| syncPaused() || reconnecting() || cloudStopped() || Date.now() - this.looked < 60_000) return', mirror)
         self.assertIn('if (this.solo && await finishReconnect(this.changes, await this.key)) this.flushSoon()', mirror)
         self.assertIn('RECONNECT_BUSY', backup)

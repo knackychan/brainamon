@@ -3,6 +3,7 @@ import { confirmAccessV2, pairing } from './pairing'
 import { CHANGE_PREFIX, MirrorKey } from './crypto'
 import { ACCESS_EXPIRED, ACCESS_LOGICAL, LICENSE_LOGICAL, LICENSE_REQUIRED, LicenseRequired, noteAccess, verifyAccess, verifyGrant } from './license'
 import { PHONE_RECOVERY_PREFIX, RECOVERY_LIMIT } from './recovery-envelope'
+import { CloudCancelled, cloudCheckpoint, cloudReadSignal, cloudRevision } from './gate'
 
 // The phone's Google Drive calls: the app data folder only (scope drive.appdata), the same REST
 // calls as the desktop's library/drive_client.py, plus `about` (which account signed in). Reads go by
@@ -42,6 +43,7 @@ function multipart(meta: object, data: Uint8Array): [Uint8Array<ArrayBuffer>, st
 }
 
 export class Drive {
+  private revision = cloudRevision()
   private base: string
   private token: () => string | null
   private onAuthFail: () => void
@@ -58,9 +60,12 @@ export class Drive {
     if (p) this.bound = `${p.k}:${p.l}:${!!p.solo}`
   }
 
+  checkpoint() { cloudCheckpoint(this.revision) }
+
   // `timeout`: how long Google may take to start answering (ms). A call that gets no answer used to wait for
   // the WebView's own limit, minutes per try and four tries, so a button could look stuck for good.
   async authorize(backup = false): Promise<number> {
+    this.checkpoint()
     const p = pairing()
     if (!p || (p.solo ? !backup : !p.l)) throw refused(new LicenseRequired())
     const identity = `${p.k}:${p.l}:${!!p.solo}`
@@ -129,19 +134,30 @@ export class Drive {
   }
 
   private async call(path: string, init: RequestInit = {}, retries = 3, timeout = CALL_TIMEOUT, access: 'paired' | 'backup' | 'control' = 'paired'): Promise<Response> {
+    this.checkpoint()
     const t = this.token()
+    const p = pairing()
+    const identity = (p: ReturnType<typeof pairing>) => p ? `${p.k}:${p.l}:${!!p.solo}:${p.g ?? ''}` : ''
+    const original = identity(p)
+    const current = () => {
+      this.checkpoint()
+      if (identity(pairing()) !== original || this.token() !== t) throw new CloudCancelled()
+    }
     if (!t) throw new NeedsSignIn('Connect Google Drive to read your library.', 401)
     let delay = 800
     for (let i = 0; ; i++) {
+      current()
       init.signal?.throwIfAborted()               // the caller stopped it (Unpair): no further try
       const allowed = await syncSignal()
       const expires = access === 'control' || path.startsWith('/drive/v3/about?') ? Infinity : await this.authorize(access === 'backup')
+      current()
       if (expires <= Date.now() / 1000) throw new LicenseRequired()
       let r: Response
       const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), timeout)
       try {
-        r = await fetch(this.base + path, { ...init, redirect: 'error', signal: AbortSignal.any([ctl.signal, allowed, ...(init.signal ? [init.signal] : [])]), headers: { ...(init.headers || {}), Authorization: `Bearer ${t}` } })
+        r = await fetch(this.base + path, { ...init, redirect: 'error', signal: AbortSignal.any([ctl.signal, allowed, ...(!init.method || init.method === 'GET' ? [cloudReadSignal()] : []), ...(init.signal ? [init.signal] : [])]), headers: { ...(init.headers || {}), Authorization: `Bearer ${t}` } })
       } catch (e) {
+        current()
         if (init.signal?.aborted) throw e
         if (allowed.aborted || syncPaused()) throw new SyncPaused()
         const why = ctl.signal.aborted ? `no answer in ${Math.round(timeout / 1000)} s` : (e as Error).message
@@ -149,6 +165,7 @@ export class Drive {
         await new Promise(res => setTimeout(res, delay)); delay *= 2
         continue
       } finally { clearTimeout(timer) }
+      try { current() } catch (e) { await r.body?.cancel(); throw e }
       if (r.ok) return r
       if (r.status === 401) { this.onAuthFail(); throw new NeedsSignIn('Google Drive wants you to sign in again.', 401) }
       let why = '', reason = ''
@@ -169,6 +186,7 @@ export class Drive {
   // the signed-in Google account's address (the drive.appdata scope is enough, as on the desktop)
   async about(): Promise<string> {
     const d = await (await this.call('/drive/v3/about?fields=user(emailAddress)', {}, 1, 10_000)).json() as { user?: { emailAddress?: string } }
+    this.checkpoint()
     return d.user?.emailAddress ?? ''
   }
 
@@ -191,6 +209,7 @@ export class Drive {
       if (files.length > 100 || page) throw new DriveError('Too many phone recovery records. Keep your saved recovery file or original code.')
     } while (page)
     for (const f of files) this.recoveryFiles.add(f.id)
+    this.checkpoint()
     return files
   }
 
@@ -213,6 +232,7 @@ export class Drive {
     const bytes = new Uint8Array(size)
     let at = 0
     for (const chunk of chunks) { bytes.set(chunk, at); at += chunk.length }
+    this.checkpoint()
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
   }
 
@@ -242,9 +262,11 @@ export class Drive {
     const out: (DriveFile & { name: string })[] = []
     let page = ''
     for (;;) {
-      const q = new URLSearchParams({ spaces: 'appDataFolder', fields: 'nextPageToken,files(id,name,size)', pageSize: '1000' })
+      const q = new URLSearchParams({ spaces: 'appDataFolder', q: 'trashed = false', fields: 'nextPageToken,incompleteSearch,files(id,name,size)', pageSize: '1000' })
       if (page) q.set('pageToken', page)
-      const d = await (await this.call(`/drive/v3/files?${q}`, {}, 3, CALL_TIMEOUT, 'backup')).json() as { nextPageToken?: string; files?: { id: string; name: string; size?: string }[] }
+      const d = await (await this.call(`/drive/v3/files?${q}`, {}, 3, CALL_TIMEOUT, 'backup')).json() as { nextPageToken?: string; incompleteSearch?: boolean; files?: { id: string; name: string; size?: string }[] }
+      this.checkpoint()
+      if (!Array.isArray(d.files) || d.incompleteSearch) throw new DriveError('Google Drive returned an incomplete listing. Retry before changing a backup.')
       for (const f of d.files ?? []) {
         out.push({ id: f.id, name: f.name, size: +(f.size || 0) })
         this.listed.set(f.id, f.name)
@@ -258,12 +280,17 @@ export class Drive {
 
   async get(id: string, onProgress?: (got: number, total: number) => void): Promise<Uint8Array> {
     const r = await this.call(`/drive/v3/files/${encodeURIComponent(id)}?alt=media`, {}, 3, CALL_TIMEOUT, this.backups.has(id) ? 'backup' : 'paired')
-    if (!onProgress || !r.body) return new Uint8Array(await r.arrayBuffer())
+    if (!onProgress || !r.body) {
+      const bytes = new Uint8Array(await r.arrayBuffer())
+      this.checkpoint()
+      return bytes
+    }
     const total = +(r.headers.get('Content-Length') || 0), parts: Uint8Array[] = []
     const rd = r.body.getReader()
     let got = 0
     for (;;) {
       const { value, done } = await rd.read()
+      this.checkpoint()
       if (done) break
       parts.push(value); got += value.length
       onProgress(got, total)
@@ -280,7 +307,31 @@ export class Drive {
     const name = this.listed.get(id)
     if (!pairing()?.solo || !name || !(name.startsWith(await key.soloPrefix()) || name.startsWith(CHANGE_PREFIX))) throw new DriveError('Find the backup first.')
     const r = await this.call(`/drive/v3/files/${encodeURIComponent(id)}?alt=media`, {}, 3, CALL_TIMEOUT, 'backup')
-    return new Uint8Array(await r.arrayBuffer())
+    const bytes = new Uint8Array(await r.arrayBuffer())
+    this.checkpoint()
+    return bytes
+  }
+
+  // Explicit standalone management only: a PC pairing can never use this deletion capability.
+  async removeSolo(id: string, prefix: string): Promise<void> {
+    this.checkpoint()
+    const name = this.listed.get(id)
+    if (!pairing()?.solo || !/^solo-[a-f0-9]{32}-$/.test(prefix) || !name ||
+        !name.startsWith(prefix) || !/^[a-f0-9]{32}$/.test(name.slice(prefix.length))) throw new DriveError('List and select a standalone phone backup first.')
+    try { await this.call(`/drive/v3/files/${encodeURIComponent(id)}`, { method: 'DELETE' }, 1, CALL_TIMEOUT, 'backup') }
+    catch (e) { if (!(e instanceof DriveError) || e.status !== 404) throw e }
+  }
+
+  // A replacement uses a fresh key and keeps the selected old copy until read-back verification.
+  async createReplacement(key: MirrorKey, name: string, data: Uint8Array): Promise<string> {
+    if (!pairing()?.solo || !name.startsWith(await key.soloPrefix()) || !/^solo-[a-f0-9]{32}-[a-f0-9]{32}$/.test(name)) throw new DriveError('Only standalone phone backups can be replaced here.')
+    const [body, b] = multipart({ name, parents: ['appDataFolder'] }, data)
+    const r = await this.call('/upload/drive/v3/files?uploadType=multipart&fields=id', {
+      method: 'POST', body, headers: { 'Content-Type': `multipart/related; boundary=${b}` },
+    }, 0, CALL_TIMEOUT + Math.ceil(body.length / 50_000) * 1000, 'backup')
+    const result = await r.json() as { id: string }
+    this.checkpoint()
+    return result.id
   }
 
   async remove(id: string, signal?: AbortSignal): Promise<void> {
@@ -306,7 +357,9 @@ export class Drive {
     const r = await this.call('/upload/drive/v3/files?uploadType=multipart&fields=id', {
       method: 'POST', body, headers: { 'Content-Type': `multipart/related; boundary=${b}` }, signal,
     }, retries, CALL_TIMEOUT + Math.ceil(body.length / 50_000) * 1000, 'backup')
-    return ((await r.json()) as { id: string }).id
+    const result = await r.json() as { id: string }
+    this.checkpoint()
+    return result.id
   }
 
   // replaces a file's bytes in place (files.update, multipart PATCH; metadata {} keeps its name and folder): this phone's

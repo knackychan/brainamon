@@ -31,6 +31,7 @@ FACTS = r"""
       noLibrary: null, reachable: true, tooOld: false, checked: '2 min ago', pend: { unsent: 0, waiting: 0, resending: 0 }, now: at(15, 30) }
     const pend = (unsent, waiting = 0, resending = 0) => ({ pend: { unsent, waiting, resending } })
     const APP = {
+      'sync paused by user': { pause: 'Sync paused by you.' },
       'PH4 in sync, all sent': {},
       'PH4 in sync, edits not sent': pend(2, 1),
       'PH4 in sync, edits waiting for the PC': pend(0, 1),
@@ -72,6 +73,7 @@ FACTS = r"""
     const solo = { app: true, online: true, paused: false, refreshing: false, started: true, token: true, account: 'a@example.com',
       round: { ok: true, ago: '2 min ago' }, recovery: 'none', unsent: 0 }
     const SOLO = {
+      'solo: saved backup task': { backupTask: { busy: false, text: 'Backup task paused.', detail: 'Local content and queued edits stay here. Open the saved task to continue.' } },
       'solo: only on this phone': { token: false, account: '' },
       'solo: Google asks to sign in again': { token: false },
       'solo: no recovery yet': {},
@@ -268,12 +270,12 @@ class PhoneScreensTest(unittest.TestCase):
         self.assertEqual(order, sorted(order))
         unpair = backup[backup.index('async function unpair()'):]
         unpair = unpair[:unpair.index('\n  }\n')]
-        self.assertLess(unpair.index('reconnectGate()'), unpair.index('await m?.dropPhoneRecord()'))
+        self.assertLess(unpair.index('await stopCloudWork()'), unpair.index('await m?.dropPhoneRecord()'))
         self.assertLess(unpair.index('await m?.dropPhoneRecord()'), unpair.index('unpairPhone()'))
         self.assertNotIn('changesDb', unpair)                              # Unpair keeps the journal (plan P10)
         remove = backup[backup.index('async function removeSolo()'):]
         remove = remove[:remove.index('\n  }\n')]
-        self.assertLess(remove.index('reconnectGate()'), remove.index('unpairPhone()'))
+        self.assertLess(remove.index('await stopCloudWork()'), remove.index('unpairPhone()'))
         self.assertIn('await Promise.all([wipe(), changesDb.clear()])', remove)   # Remove takes the phone's own library
 
     def test_the_phone_without_a_pc_has_backup_and_recover(self):

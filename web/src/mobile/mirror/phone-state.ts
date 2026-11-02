@@ -7,6 +7,8 @@ import type { NoLibraryCause } from './diagnose'
 import type { AccessKind } from './license'
 
 export interface PhoneFacts {
+  pause?: string
+  backupTask?: { busy: boolean; text: string; detail: string }
   mode: 'pc' | 'solo'          // paired with a PC, or a phone without one
   app: boolean                 // the Android app: Scan works (a phone browser pairs from the link instead)
   online: boolean
@@ -33,9 +35,9 @@ export interface PhoneFacts {
 }
 
 export type Tone = 'done' | 'todo' | 'next' | 'busy'
-export type ActionId = 'scan' | 'connect' | 'sign-in-again' | 'change-account' | 'retry' | 'send' | 'back-up' | 'set-up-recovery' | 'check-file'
+export type ActionId = 'scan' | 'connect' | 'sign-in-again' | 'change-account' | 'retry' | 'send' | 'back-up' | 'set-up-recovery' | 'check-file' | 'manage-backup' | 'resume-sync'
 export interface PhoneAction { id: ActionId; label: string; primary: boolean }
-export type StateId = 'offline' | 'wifi' | 'update-app' | 'account-mismatch' | 'sign-in-again' | 'connect' | 'replaced' | 'removed'
+export type StateId = 'paused' | 'backup-task' | 'offline' | 'wifi' | 'update-app' | 'account-mismatch' | 'sign-in-again' | 'connect' | 'replaced' | 'removed'
   | 'confirming' | 'waiting-pc' | 'license' | 'access-invalid' | 'webview' | 'first-backup' | 'key' | 'backup-off' | 'no-library'
   | 'connecting' | 'unreachable' | 'resending' | 'in-sync' | 'solo-local' | 'solo-recovery' | 'solo-check-file' | 'solo-ok'
 export interface PhoneState {
@@ -61,6 +63,8 @@ const say = (id: StateId, tone: Tone, text: string, detail = '', action: PhoneAc
 const key = (id: ActionId, label: string, primary: boolean): PhoneAction => ({ id, label, primary })
 
 export function phoneState(f: PhoneFacts): PhoneState {
+  if (f.backupTask) return say('backup-task', f.backupTask.busy ? 'busy' : 'next', f.backupTask.text, f.backupTask.detail, key('manage-backup', 'View backup task', false))
+  if (f.pause) return say('paused', 'todo', f.pause, 'Local edits stay on this phone.', key('resume-sync', 'Resume sync', false))
   const pending = f.unsent + f.waiting
   if (!f.online) return say('offline', 'todo', 'Offline.', pending
     ? `${count(pending, 'edit waits', 'edits wait')} on this phone and go${pending === 1 ? 'es' : ''} out when you're back online.`
@@ -109,6 +113,7 @@ function pc(f: PhoneFacts, pending: number): PhoneState {
       f.noLibrary === 'account' ? key('change-account', 'Change account', false) : f.noLibrary === 'unknown' ? key('retry', 'Retry', false) : null)
   }
   if (!f.tried) return say('connecting', 'busy', 'Connecting to Google Drive…')
+  if (f.refreshing && !f.reachable) return say('connecting', 'busy', 'Checking Google Drive…', 'Checking PC access and loading your library.')
   if (!f.reachable) return say('unreachable', 'next', 'Google Drive could not be reached.', held(pending) || 'Saved content stays on this phone.', key('retry', 'Retry', true))
   if (f.resending) return say('resending', 'busy', 'Paired again.', `Sending ${count(f.resending, 'edit', 'edits')} made while access was removed.`)
   return say('in-sync', f.refreshing ? 'busy' : 'done', f.refreshing ? 'Syncing…' : f.checked ? `In sync · checked ${f.checked}.` : 'In sync.',
@@ -119,6 +124,7 @@ function pc(f: PhoneFacts, pending: number): PhoneState {
 function solo(f: PhoneFacts, pending: number): PhoneState {
   if (!f.signedIn) return say('solo-local', 'next', 'Your library is only on this phone.', 'Back it up to your own Google Drive, encrypted: Google cannot read it.', key('back-up', 'Back up to Google Drive', true))
   if (!f.tried) return say('connecting', 'busy', 'Connecting to Google Drive…')
+  if (f.refreshing && !f.reachable) return say('connecting', 'busy', 'Checking Google Drive…', 'Reading your backup and saving changes.')
   if (!f.reachable) return say('unreachable', 'next', 'Google Drive could not be reached.', held(pending) || 'Saved content stays on this phone.', key('retry', 'Retry', true))
   if (f.recovery === 'none') return say('solo-recovery', 'next', 'Backed up, but if this phone is lost nothing can unlock the backup.', 'A recovery passphrase or recovery file unlocks it on a new phone.', key('set-up-recovery', 'Set up recovery', true))
   if (f.recovery === 'saved') return say('solo-check-file', 'next', 'Recovery file saved, not checked yet.', 'Check it so you know it opens your backup.', key('check-file', 'Check recovery file…', true))

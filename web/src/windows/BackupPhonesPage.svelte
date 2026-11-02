@@ -5,6 +5,9 @@
   // (projects/backup-phones-mockup, web/src/previews/backup/BackupPage.svelte); this page reads the real status of /api/cloud and
   // /api/cloud/recovery. Restoring is the Recover a library window (RecoverWin.svelte), never a control here.
   import { onMount, tick, untrack } from 'svelte'
+  import ForgotPassphrase from '../components/ForgotPassphrase.svelte'
+  import BackupChoices from '../components/BackupChoices.svelte'
+  import { openRecoveryMethod } from '../lib/recover'
   import { api } from '../lib/api'
   import { addSample, amount, day, dur, gb, hm, HOUR, num, sameAccount, timeLeft, W, DAY, type CloudView, type RecoveryView, type Sample, type Sizes } from '../lib/backup'
   import { GOOGLE_SIGN_OUT_URL, GOOGLE_SIGNIN_IN_TESTING } from '../lib/product-links'
@@ -47,6 +50,7 @@
   let recError = $state('')
   let now = $state(Date.now())
   let form = $state<Form>('')
+  let noKey = $state(false), choicesOpen = $state(false)
   let pass = $state(''), pass2 = $state(''), show = $state(false), current = $state(''), removeMode = $state<'keep' | 'new'>('keep')
   let del = $state(false), formError = $state(''), cardError = $state(''), note = $state('')
   let dismissedOther = $state(false)
@@ -80,6 +84,7 @@
 
   function openForm(f: Form) { form = f; pass = ''; pass2 = ''; current = ''; show = false; del = false; formError = ''; removeMode = 'keep' }
   function closeForm() { form = ''; formError = ''; pass = ''; pass2 = ''; current = '' }
+  async function guidePassphrase() { openForm(rec?.configured ? 'change' : 'pass'); await tick(); document.getElementById('bp-pass')?.focus() }
   function passError(): string {
     if (pass.length < 12) return 'Use at least 12 characters.'
     if (pass !== pass2) return 'The two passphrases are different.'
@@ -101,6 +106,7 @@
     try { const r = await api.post<T>('/api/cloud/recovery/' + action, body); void loadRec(); return r } catch (e) { if (card) cardError = message(e); else formError = message(e); return null }
   }
   async function savePass() {
+    if (passWait) { formError = passWait; return }
     if (form !== 'pass' && form !== 'change') return
     const e = passError()
     if (e) { formError = e; return }
@@ -187,6 +193,7 @@
     const done = c.last_publish > 0
     const since = c.last_publish ? hm(c.last_publish) : hm(now)
     const removal = task?.kind === 'remove_phones' || c.rotation === 'pending'
+    const rotating = removal || !!rec?.rotation_pending
     // a passphrase save that stopped has no retry of its own (its task keeps the reason): the passphrase is typed again
     const enrollFailed = task?.kind === 'enroll' && !!task.error
     const enrolling = task?.kind === 'enroll' && !enrollFailed
@@ -210,11 +217,14 @@
     else if (rec?.restored) s = { dot: 'next', text: 'This restored library is not backed up yet.', detail: 'Make this PC the backup PC once the old PC is off or closed.', primary: asked('takeover', W.takeOver, () => openForm('takeover')) }
     else if (c.error_code === 'other_copy') s = { dot: 'todo', text: c.error }
     else if (c.state === 'signing-in') s = { dot: 'todo', text: 'Finish signing in in the browser window that opened.', detail: "Choose the Google account for this library's backup.", quiet: [asked('cancel-sign-in', 'Cancel sign-in', cancelSignIn)] }
-    else if (c.state === 'disconnecting' && !task) s = { dot: 'todo', text: 'Disconnecting from Google Drive…', detail: c.total ? `Deleting the copy: ${num(c.done)} of ${num(c.total)} files.` : undefined, pct: c.total ? 100 * c.done / c.total : undefined, bar: 'Disconnecting' }
+    else if (task?.kind === 'disconnect' && task.error) s = { dot: 'next', text: 'Disconnecting stopped. Your Google account is still connected.', alert: task.error, primary: c.token_expired ? asked('again', W.signInAgain, signInAgain) : asked('try-again', 'Try again', tryAgain) }
+    else if (c.state === 'disconnecting' || task?.kind === 'disconnect') s = { dot: 'todo', text: 'Disconnecting from Google Drive…', detail: c.total ? `Deleting the copy: ${num(c.done)} of ${num(c.total)} files.` : 'Stopping current work automatically, then completing your request.', pct: c.total ? 100 * c.done / c.total : undefined, bar: 'Disconnecting' }
     else if (!c.signed_in) s = c.account
       ? { dot: 'next', text: `Google Drive disconnected. Backup is off. The copy in ${c.account}${c.last_publish ? ` from ${day(c.last_publish)}` : ''} stays in Drive.`, primary: backUp }
       : { dot: 'next', text: 'Your library is only on this PC.', detail: 'Back it up to your own Google Drive, encrypted: Google cannot read it.', primary: backUp }
-    else if (c.error_code === 'foreign_backup') s = { dot: 'next', text: `${c.account} already holds a Brainamon backup from another PC${c.error_at ? ` (last backup ${day(c.error_at)}, ${hm(c.error_at)})` : ''}.`, detail: 'Get it back on this PC, or use another Google account for this library.', primary: asked('recover', 'Recover this backup…', onrecover), quiet: [asked('other-account', 'Use another account…', () => openForm('switch'))] }
+    else if (pausing) s = { dot: 'todo', text: 'Pausing after the current upload request (up to a minute).', quiet: [asked('keep-going', 'Keep backing up', resume, { icon: 'play' })] }
+    else if (paused) s = { dot: 'next', text: done ? `${pausedLine} Changes since ${since} are only on this PC.` : `${pausedLine} The first backup is not finished.`, detail: task ? `${task.title} is paused too. Resume continues from its saved step.` : undefined, primary: resumeAct }
+    else if (c.error_code === 'foreign_backup') s = { dot: 'next', text: `${c.account} already holds a Brainamon backup from another PC${c.error_at ? ` (last backup ${day(c.error_at)}, ${hm(c.error_at)})` : ''}.`, detail: 'Recover it, replace it with this PC’s library, or use another Google account.', primary: asked('recover', 'Recover this backup…', onrecover), quiet: [asked('recheck', 'Check and back up again', tryAgain), asked('other-account', 'Use another account…', () => openForm('switch'))] }
     else if (c.key_missing) s = { dot: 'next', text: `${c.account} already holds this library's backup${c.last_publish ? ` (last backup ${day(c.last_publish)}, ${hm(c.last_publish)})` : ''}, but this PC no longer has the key that opens it.`, detail: "Unlock it with your passphrase, recovery file or a phone code: nothing uploads again and backup continues from where it stopped. Each phone then scans this PC's new code once (Add a phone).", primary: asked('recover', 'Unlock backup…', onrecover), quiet: [asked('fresh', 'Reset backup instead…', () => openForm('fresh'))] }
     else if (c.error_code === 'wrong_account') {
       const got = c.error_account || 'the other account'      // from the status (server/sync.py), never parsed out of the sentence
@@ -233,6 +243,7 @@
     else if (c.error_code === 'not_owner') s = dismissedOther
       ? { dot: 'todo', text: 'Not backed up: another PC is the backup PC.', quiet: [asked('recover', 'Get the newer library…', onrecover)] }
       : { dot: 'next', text: `Another PC became the backup PC${c.error_at ? ` on ${day(c.error_at)}, ${hm(c.error_at)}` : ''}. This PC stopped backing up so it does not overwrite newer changes.`, primary: asked('recover', 'Get the newer library…', onrecover), quiet: [asked('keep-local', 'Keep working on this PC only', () => { dismissedOther = true })] }
+    else if (task && task.kind !== 'enroll' && (task.error || (c.state === 'error' && c.error))) s = { dot: 'next', text: `${task.title} stopped.`, alert: task.error || c.error, primary: asked('try-again', 'Try again', tryAgain), quiet: [pauseAct] }
     else if (task && task.kind !== 'enroll') {
       const frac = task.total ? task.done / task.total : 0
       if (task.kind === 'remove_phones') {
@@ -253,16 +264,12 @@
     else if (!done) {
       const n = c.total, upBytes = c.bytes_done ?? 0, whole = c.bytes_total ?? 0
       if (!c.on && !paused) s = { dot: 'next', text: `Google Drive connected (${c.account}). Backup is off.`, primary: asked('turn-on', W.turnOn, connect) }
-      else if (pausing) s = { dot: 'todo', text: 'Pausing after the current upload request (up to a minute).', quiet: [asked('keep-going', 'Keep backing up', resume, { icon: 'play' })] }
-      else if (paused) s = { dot: 'next', text: `${pausedLine} The first backup is not finished.`, primary: resumeAct }
       else if (!online) s = { dot: 'todo', text: "Can't reach Google Drive. The first backup continues when the connection returns.", detail: 'Your library stays on this PC meanwhile.' }
       else if (c.error_code === 'drive_full') s = { dot: 'next', text: `Google Drive is full${c.limit ? ` (${gb(c.used)} of ${gb(c.limit)} GB)` : ''}.${n ? ` ${num(Math.max(0, n - c.done))} files are not backed up yet.` : ''}`, detail: 'Free space in Google Drive, or back up fewer videos in Backup below. Brainamon tries again every 5 minutes.', primary: asked('try-again', 'Try again', tryAgain) }
       else if (c.state === 'error' && c.error) s = { dot: 'next', text: c.error, primary: asked('try-again', 'Try again', tryAgain) }
       else if (n) s = { dot: 'todo', text: `Backing up for the first time: ${num(c.done)} of ${num(n)} files${whole ? ` (${gb(upBytes)} of ${gb(whole)} GB)` : ''}.`, detail: `${left !== null ? `About ${dur(left)} left · ` : ''}${dur(elapsed)} so far.`, pct: whole ? 100 * upBytes / whole : 100 * c.done / n, bar: 'First backup', leave: true, quiet: [pauseAct] }
       else s = { dot: 'todo', text: 'Backing up for the first time.', detail: c.upload_step || 'Checking the Google account and what to send…', leave: true, quiet: [pauseAct] }
     }
-    else if (pausing) s = { dot: 'todo', text: 'Pausing after the current upload request (up to a minute).', quiet: [asked('keep-going', 'Keep backing up', resume, { icon: 'play' })] }
-    else if (paused) s = { dot: 'next', text: `${pausedLine} Changes since ${since} are only on this PC.`, primary: resumeAct }
     else if (!c.on) s = { dot: 'next', text: `Backup is off. Last backup: ${day(c.last_publish)}, ${hm(c.last_publish)}.`, primary: asked('turn-on', W.turnOn, connect) }
     else if (!online) s = { dot: 'todo', text: "Can't reach Google Drive. Changes stay on this PC and back up when the connection returns.", detail: 'Phones keep syncing for up to an hour; after that their edits wait on the phone.' }
     else if (c.error_code === 'drive_full') s = { dot: 'next', text: 'Google Drive is full. Recent changes are not backed up yet.', detail: 'Free space in Google Drive, or back up fewer videos in Backup below.', primary: asked('try-again', 'Try again', tryAgain) }
@@ -281,16 +288,17 @@
 
     // During a task the needed action can sit in a card (the replacement recovery file after a removal)
     const cardPrimary = !s.primary && removal && fileOutdated ? 'save-file' : ''
-    const pri = form !== '' ? 'form' : s.primary ? s.primary.id : cardPrimary
-    const firstRunning = c.signed_in && c.on && !done && !c.key_missing && !c.token_expired && !['foreign_backup', 'not_owner', 'other_copy', 'wrong_account'].includes(c.error_code ?? '')
-    return { s, pri, task, online, paused, pausing, done, removal, enrolling, enrollFailed, recOk, fileOutdated, firstRunning, phones, reason, since }
+    const pri = form !== '' || choicesOpen ? 'form' : s.primary ? s.primary.id : cardPrimary
+    const firstRunning = c.signed_in && c.on && !done && !c.key_missing && !c.token_expired && task?.stage !== 'queued' && !['foreign_backup', 'not_owner', 'other_copy', 'wrong_account'].includes(c.error_code ?? '')
+    return { s, pri, task, online, paused, pausing, done, removal, rotating, enrolling, enrollFailed, recOk, fileOutdated, firstRunning, phones, reason, since }
   })
+  const passWait = $derived(!rec ? 'Checking recovery status…' : m.rotating ? 'Passphrase changes wait until the security key update finishes uploading, verification and cleanup.' : m.enrolling ? 'Wait for the current passphrase save to finish.' : c.key_missing ? 'This PC no longer holds the backup key. Use a recovery file or code.' : !c.signed_in ? 'Connect Google Drive before changing the passphrase.' : '')
   const v = (id: string) => (m.pri === id ? 'pri' : 'default') as 'pri' | 'default'
   // A card repeats no action the summary already offers
   const shown = (id: string) => m.s.primary?.id !== id
 
   $effect(() => { onrecoverprimary?.(m.s.primary?.id === 'recover') })
-  $effect(() => { onform?.(form !== '') })
+  $effect(() => { onform?.(form !== '' || choicesOpen) })
   // another PC is the backup PC: ask once whether this folder can take its newer backup in place (T14b); reads only
   $effect(() => {
     if (c.error_code === 'not_owner' && rec && !rec.update && !c.task && !updateAsked) untrack(() => { updateAsked = true; void recCall('update-preview', {}, true) })
@@ -303,7 +311,7 @@
   })
   // D10: the passphrase form opens by itself while the first backup runs (once per page, not a stored setting)
   $effect(() => {
-    if (m.firstRunning && rec && !m.recOk && !m.enrolling && !autoOpened && untrack(() => form) === '') { autoOpened = true; openForm('pass') }
+    if (m.firstRunning && rec && !m.recOk && !m.enrolling && !m.rotating && !autoOpened && untrack(() => form) === '') { autoOpened = true; openForm('pass') }
   })
   // the pace of the last minute (T4)
   $effect(() => {
@@ -337,19 +345,22 @@
 
 <div class="set-calm">
   <!-- Summary: is my library safe? -->
-  <GroupBox tone="summary" aria-label="Is my library safe" active={form === 'takeover' || form === 'fresh' || form === 'update'}>
+  <GroupBox tone="summary" aria-label="Is my library safe" active={choicesOpen || form === 'takeover' || form === 'fresh' || form === 'update'}>
     <Label as="span">Status</Label>
     <div><div>
       <Status state={m.s.dot} role="status" aria-live="polite">{m.s.text}</Status>
       {#if m.s.steps}<Hint as="ol">{#each m.s.steps as step, i (i)}<li>{step}</li>{/each}</Hint>{/if}
       {#if m.s.pct !== undefined}<Progress label={m.s.bar ?? 'Progress'} pct={Math.round(m.s.pct)} />{/if}
       {#if m.s.detail}<Hint>{m.s.detail}</Hint>{/if}
+      {#if c.signed_in && (noKey || c.error_code === 'foreign_backup' || c.key_missing)}
+        <div id="bp-backup-choices"><BackupChoices account={c.account} onform={open => choicesOpen = open} ondone={() => { noKey = choicesOpen = false; reload(); void loadRec() }} /></div>
+      {/if}
       {#if m.s.leave}<Hint>{LEAVE}</Hint>{/if}
       {#if m.s.alert}<Hint tone="error" role="alert">{m.s.alert}</Hint>{/if}
       {#if m.reason && !m.s.alert}<Hint tone="error" role="alert">{m.reason}</Hint>{/if}
       {#if m.s.primary?.why}<Hint id="bp-why">{m.s.primary.why}</Hint>{/if}
       {#if form === 'fresh'}
-        <Hint role="alert">Reset the backup? Brainamon backs up this library again from scratch with a new key{c.files ? ` (${num(c.files)} files, ${gb(c.size)} GB)` : ''}. The old backup is deleted once the new one is complete. Your old passphrase, {W.file} and phones stop working: set a new passphrase and add your phones again.</Hint>
+        <Hint role="alert">Reset the backup in {c.account}? Brainamon backs up this PC’s library again with a new key. Existing desktop backups in this account are deleted only after the new backup is complete. Content that exists only in those backups will be lost. Your local library and standalone phone backups stay intact. Close Brainamon on other PCs first; then set a new passphrase and add your phones again.</Hint>
       {/if}
       {#if form === 'update' && rec?.update?.eligible}
         {@const u = rec.update}
@@ -361,7 +372,7 @@
       {/if}
     </div></div>
     {#if form === 'takeover' && !rec?.takeover_ready}{@render passFields('Recovery passphrase')}{/if}
-    {#if m.s.primary || m.s.quiet?.length || form === 'takeover' || form === 'fresh' || form === 'update'}
+    {#if !choicesOpen && (m.s.primary || m.s.quiet?.length || form === 'takeover' || form === 'fresh' || form === 'update')}
       <span></span>
       <div>
         {#if form === 'takeover'}{@render formErrorLine()}{/if}
@@ -374,7 +385,7 @@
             <Button variant="pri" size="sm" onclick={startUpdate}>Update this folder</Button>
             <TextButton onclick={closeForm}>Cancel</TextButton>
           {:else if form === 'fresh'}
-            <Button variant="danger" size="sm" onclick={() => { closeForm(); void run('/api/cloud/reset', undefined, undefined, 'backup').then(() => reload()) }}>Reset backup</Button>
+            <Button variant="danger" size="sm" onclick={() => { closeForm(); void run('/api/cloud/reset', { replace_existing: true }, undefined, 'backup').then(() => reload()) }}>Reset backup</Button>
             <TextButton onclick={closeForm}>Cancel</TextButton>
           {:else}
             {#if m.s.primary}<Button variant={m.s.primary.why ? 'default' : v(m.s.primary.id)} size="sm" disabled={!!m.s.primary.why} aria-describedby={m.s.primary.why ? 'bp-why' : undefined} onclick={m.s.primary.run}>{#if m.s.primary.icon}<KeyIcon name={m.s.primary.icon} />{/if}{m.s.primary.label}</Button>{/if}
@@ -400,7 +411,7 @@
       {:else if form === 'stop'}
         <Hint role="alert">Disconnect Google Drive? Brainamon signs this PC out of Google and stops backing up. Your library stays on this PC. Phones stop syncing within an hour.</Hint>
         <ToggleRow label="Also delete the backup from Google Drive" bind:checked={del} />
-        {#if del}<Hint tone="error">Your passphrase, {W.file} and phones then have nothing to open.</Hint>{/if}
+        {#if del}<Hint tone="error">All Brainamon desktop backup data in {c.account} will be deleted, including inaccessible backups. Your passphrase, {W.file} and paired phones then have nothing to open. Your local library and standalone phone backups stay intact.</Hint>{/if}
       {/if}
       {#if (form === 'switch' || form === 'stop') && err?.where === 'account'}<Hint tone="error" role="alert">{err.msg}</Hint>{/if}
     </div>
@@ -413,7 +424,7 @@
             <TextButton onclick={closeForm}>Cancel</TextButton>
             {#if !c.configured}<Hint id="bp-why-switch">Google sign-in is not set up in this build.</Hint>{/if}
           {:else if form === 'stop'}
-            <Button variant="danger" size="sm" onclick={() => { const d = del; closeForm(); void run('/api/cloud/sign-out', { delete_mirror: d }, { state: 'disconnecting' }, 'account').then(() => reload()) }}>{del ? 'Delete and disconnect' : W.stopGo}</Button>
+            <Button variant="danger" size="sm" onclick={() => { const d = del; closeForm(); void run('/api/cloud/sign-out', { delete_mirror: d, ...(d ? { delete_existing: true } : {}) }, { state: 'disconnecting' }, 'account').then(() => reload()) }}>{del ? 'Delete and disconnect' : W.stopGo}</Button>
             <TextButton onclick={closeForm}>Cancel</TextButton>
           {:else}
             {#if c.configured}<TextButton onclick={() => openForm('switch')}>{W.switchAccount}</TextButton>{/if}
@@ -429,12 +440,15 @@
     <Label as="span" id="set-s-sync-uploads" tabindex={-1}>{W.backupTitle}</Label>
     <div>
       {#if !c.signed_in}<Status state="todo">Off</Status><Hint>Starts when you back up to Google Drive.</Hint>
-      {:else if m.removal}<Status state="todo">Re-encrypting with the new key (progress above)</Status>
       {:else if m.paused}<Status state="next">Paused</Status>
+      {:else if c.error_code === 'foreign_backup'}<Status state="next">Waiting: choose what to do with the existing backup</Status>
+      {:else if c.key_missing}<Status state="next">Waiting: backup key missing</Status>
+      {:else if m.removal}<Status state="todo">Re-encrypting with the new key (progress above)</Status>
       {:else if c.token_expired}<Status state="todo">Waiting: sign-in expired</Status>
       {:else if !m.online}<Status state="todo">Waiting: offline</Status>
       {:else if c.error_code === 'drive_full'}<Status state="todo">Waiting: Google Drive full</Status>
       {:else if c.error_code === 'not_owner'}<Status state="todo">Stopped: another PC backs up</Status>
+      {:else if c.state === 'error'}<Status state="next">Stopped: backup needs attention</Status>
       {:else if !c.on}<Status state="todo">Off</Status>
       {:else if !m.done}<Status state="todo">First backup running (progress above)</Status>
       {:else if ['starting', 'publishing'].includes(c.state)}<Status on>Backing up {c.total || 'recent'} change{c.total === 1 ? '' : 's'}</Status>
@@ -463,7 +477,8 @@
       <div>
         <Status state="next">Reset the backup?</Status>
         <Hint role="alert">Brainamon backs up this library again from scratch with a new key{c.files ? ` (${num(c.files)} files, ${gb(c.size)} GB)` : ''}, then deletes the current backup in {c.account}. There is always one to restore until the new one is complete. Your library on this PC is not touched.</Hint>
-        <Hint>Afterwards your passphrase, {W.file} and phone codes no longer open anything: choose a new passphrase while it runs, and add your phones again. To remove it from Google Drive without a new one: {W.stop} above, then Delete and disconnect.</Hint>
+        <Hint role="alert">This replaces all Brainamon desktop backups in {c.account}, including inaccessible ones. Content found only in those backups will be lost. Your local library and standalone phone backups stay intact. Close Brainamon on other PCs first.</Hint>
+        <Hint>Afterwards your passphrase, {W.file} and phone codes no longer open the old backup: choose a new passphrase and add your phones again. To remove it from Google Drive without a new one: {W.stop} above, then Delete and disconnect.</Hint>
       </div>
     {/if}
     {#if c.signed_in && !c.key_missing && !m.removal && !rec?.restored}
@@ -471,7 +486,7 @@
       <div>
         <div class="frow">
           {#if form === 'erase'}
-            <Button variant="danger" size="sm" onclick={() => { closeForm(); void run('/api/cloud/reset', undefined, undefined, 'backup').then(() => reload()) }}>Reset backup</Button>
+            <Button variant="danger" size="sm" onclick={() => { closeForm(); void run('/api/cloud/reset', { replace_existing: true }, undefined, 'backup').then(() => reload()) }}>Reset backup</Button>
             <TextButton onclick={closeForm}>Cancel</TextButton>
           {:else}
             {#if c.on && m.done && !m.paused && !m.pausing && !c.token_expired && !c.error_code}
@@ -496,7 +511,8 @@
       <span></span>
       <div>
         {@render formErrorLine()}
-        <div class="frow"><Button variant="pri" size="sm" onclick={savePass}>Save passphrase</Button><TextButton onclick={closeForm}>{m.firstRunning ? 'Later' : 'Cancel'}</TextButton></div>
+        {#if passWait}<Hint id="bp-pass-wait" role="status">{passWait}</Hint>{/if}
+        <div class="frow"><Button variant="pri" size="sm" disabled={!!passWait} aria-describedby={passWait ? "bp-pass-wait" : undefined} onclick={savePass}>Save passphrase</Button><TextButton onclick={closeForm}>{m.firstRunning ? 'Later' : 'Cancel'}</TextButton></div>
       </div>
     {:else}
       <div>
@@ -511,13 +527,14 @@
           <Hint>The passphrase itself never leaves this PC. Backup pauses for these few seconds, then continues.</Hint>
           {#if m.task.error}<Hint tone="error" role="alert">{m.task.error}</Hint>{/if}
         {:else if !c.signed_in || c.key_missing}<Status state="todo">Not set up</Status><Hint>Available once the backup has started.</Hint>
-        {:else if m.fileOutdated}<Status state="next">Recovery file outdated since {day(rec!.replaced_at ? rec!.replaced_at * 1000 : now)}</Status><Hint>Removing phones made a new key. The old {W.file} no longer opens your backup; your passphrase still does.</Hint>
-        {:else if rec?.configured && !m.recOk}<Status state="next">Recovery setup not finished</Status><Hint>Brainamon could not confirm it in Google Drive yet. Check it, or create the passphrase again.</Hint>
+        {:else if m.fileOutdated}<Status state="next">Recovery file outdated since {day(rec!.replaced_at ? rec!.replaced_at * 1000 : now)}</Status><Hint>Passphrase set{rec?.setup_at ? ` ${day(rec.setup_at * 1000)}` : ''}. Removing phones made a new key. The old {W.file} no longer opens your backup; your passphrase still does.</Hint>
+        {:else if m.rotating}<Status state="todo">{rec?.configured ? `Passphrase created${rec.setup_at ? ` ${day(rec.setup_at * 1000)}` : ''}` : 'Recovery setup waits for the backup update'}</Status><Hint>The backup is being updated with a new security key. Recovery checks and passphrase changes are available after upload, verification and cleanup finish.</Hint>
+        {:else if rec?.configured && !m.recOk}<Status state="next">Recovery setup not finished</Status><Hint>Passphrase created{rec.setup_at ? ` ${day(rec.setup_at * 1000)}` : ''}. Brainamon could not confirm it in Google Drive yet. Check it, or create the passphrase again.</Hint>
           {#if waitingCheck}<Hint role="status">Waiting for the current upload request, then checking recovery. Backup carries on.</Hint>{/if}
           {#if checkNote}<Hint role="status">{checkNote}</Hint>{/if}
         {:else if !m.recOk}<Status state="next">Not set up</Status><Hint>If this PC is lost, your passphrase or a {W.file} unlocks the backup on another PC.</Hint>
         {:else if !rec?.saved_at && !kitSaved && !rec?.verified_at}<Status on>Passphrase set {day((rec?.setup_at ?? 0) * 1000 || now)}</Status><Hint>Recommended: also save a {W.file}, in case you forget the passphrase.</Hint>
-        {:else if !rec?.verified_at}<Status state="next">Recovery file saved{rec?.saved_at ? ` ${day(rec.saved_at * 1000)}` : ''}, not checked</Status><Hint>Open it once so you know it unlocks your backup.</Hint>
+        {:else if !rec?.verified_at}<Status state="next">Recovery file saved{rec?.saved_at ? ` ${day(rec.saved_at * 1000)}` : ''}, not checked</Status><Hint>{rec?.setup_at ? `Passphrase set ${day(rec.setup_at * 1000)}. ` : ''}Open it once so you know it unlocks your backup.</Hint>
         {:else}<Status on>Passphrase set {day((rec.setup_at ?? 0) * 1000 || now)} · {W.file} checked {day(rec.verified_at * 1000)}</Status><Hint>Keep the file outside this PC.</Hint>{/if}
         {#if note}<Hint role="status">{note}</Hint>{/if}
         {#if cardError}<Hint tone="error" role="alert">{cardError}</Hint>{/if}
@@ -527,7 +544,8 @@
         <span></span>
         <div>
           <div class="frow">
-            {#if m.fileOutdated}{#if shown('save-file')}<Button variant={v('save-file')} size="sm" onclick={saveKit}>{W.saveNewFile}</Button>{/if}
+            {#if m.rotating && !m.fileOutdated}<Button size="sm" disabled aria-describedby="bp-why-rotation">{rec?.configured ? W.changePass : W.createPass}</Button><Hint id="bp-why-rotation">Available after the backup update finishes. Progress is shown above.</Hint>
+            {:else if m.fileOutdated}{#if shown('save-file')}<Button variant={v('save-file')} size="sm" onclick={saveKit}>{W.saveNewFile}</Button>{/if}
             {:else if rec?.configured && !m.recOk}<Button size="sm" disabled={waitingCheck} aria-describedby={waitingCheck ? 'bp-why-check' : undefined} onclick={checkRecovery}>Check recovery</Button><TextButton onclick={() => openForm('pass')}>{W.createPass}</TextButton>
               {#if waitingCheck}<Hint id="bp-why-check">Checking between two upload requests.</Hint>{/if}
             {:else if !m.recOk}{#if shown('create-pass')}<Button size="sm" onclick={() => openForm('pass')}>{W.createPass}</Button>{/if}
@@ -538,6 +556,14 @@
         </div>
       {/if}
     {/if}
+    <span></span>
+    <div>
+      {#if (form === 'pass' || form === 'change') && rec?.setup_at}<Hint>Passphrase set {day(rec.setup_at * 1000)}. Recovery file {rec.file_outdated ? 'outdated' : rec.verified_at ? 'checked' : rec.saved_at ? 'saved, not checked' : 'not saved'}.</Hint>{/if}
+      <ForgotPassphrase workingLabel="Change passphrase…" workingReason={passWait}
+        onnone={async () => { noKey = true; await tick(); document.getElementById('bp-backup-choices')?.scrollIntoView({ block: 'nearest' }) }}
+        onworking={guidePassphrase}
+        onfile={() => openRecoveryMethod('file')} oncode={() => openRecoveryMethod('code')} />
+    </div>
   </GroupBox>
 
   <!-- Phones -->

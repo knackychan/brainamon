@@ -374,13 +374,13 @@ class SourceWiring(unittest.TestCase):
             Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true })
             const sync = async (drive, key, pair, device, name) => { calls.push([pair.f, device, name]); if (fail) throw new Error(fail); return 'written' }
             const Source = new Function('token', 'SOLO_MANIFEST', 'pool', 'syncPhoneRecord', 'deviceId', 'deviceName', 'syncPaused',
-              'reconnecting', stripTypeScriptTypes('class Source {\n' + body + '\n}') + ';return Source')(
+              'cloudRevision', 'cloudCheckpoint', 'cloudStopped', 'reconnecting', stripTypeScriptTypes('class Source {\n' + body + '\n}') + ';return Source')(
               () => 'synthetic', { published: 0, files: {} }, (list, n, f) => Promise.all(list.map(f)), sync, () => 'p0123456789',
-              async () => 'Pixel 8', () => false, () => false)
+              async () => 'Pixel 8', () => false, () => 0, () => {}, () => false, () => false)
             const s = new Source()
             const part = 'library/part-0001.json'
             let manifest = { published: 5, files: { [part]: { v: '1' } } }
-            Object.assign(s, { pair: { f: 'f'.repeat(12) }, drive: {}, key: Promise.resolve({}), manifest: null, base: [], rowsNow: [],
+            Object.assign(s, { pair: { f: 'f'.repeat(12) }, drive: { checkpoint: () => {} }, key: Promise.resolve({}), manifest: null, base: [], rowsNow: [],
               byId: new Map(), looked: 0, lastError: '', ready: async () => {}, setRows() {}, cats: () => [],
               reconcileCanvas: async () => {}, background() {}, flushSoon() {}, names: () => [part],
               cached: async k => { if (k === part && parts) throw new Error(parts); return k === part ? '[]' : '{}' },

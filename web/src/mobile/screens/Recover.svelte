@@ -4,7 +4,8 @@
   // the original code. Then Keep this phone's content (Reconnect, when this phone's latest backup is in Drive under
   // that key) or Restore on an empty phone. Nothing here writes Drive; what was typed or unlocked is forgotten when the
   // screen closes. A phone paired with a PC recovers its library on the PC.
-  import { onMount } from 'svelte'
+  import ForgotPassphrase from '../../components/ForgotPassphrase.svelte'
+  import { onMount, tick } from 'svelte'
   import MBox from '../ui/MBox.svelte'
   import MButton from '../ui/MButton.svelte'
   import MDisclosure from '../ui/MDisclosure.svelte'
@@ -20,6 +21,8 @@
   import { keyFromMaterial, KIT_IN_CODE, reconnectCheck, reconnectPhone, REFUSALS, type Eligibility } from '../mirror/phone-reconnect'
   import { recoveryFileText } from '../recovery.svelte'
   import { mirrorSource, phone, useWithoutPc } from '../state.svelte'
+  import { cloudCheckpoint, cloudRevision } from '../mirror/gate'
+  import PhoneBackupChoices from '../PhoneBackupChoices.svelte'
 
   let { scroller }: { scroller?: HTMLElement } = $props()
   const m = mirrorSource
@@ -29,32 +32,41 @@
   type Method = 'password' | 'kit' | 'code'
   let busy = $state(false), error = $state(''), message = $state('')
   let password = $state(''), code = $state('')
-  let method = $state<Method>(m ? 'password' : 'code')
+  let method = $state<Method>(location.hash.endsWith('/file') ? 'kit' : m ? 'password' : 'code')
   let setups = $state<Awaited<ReturnType<typeof discoverPhoneRecovery>>>([]), selected = $state('')
   // the key a method unlocked, held in memory until Reconnect, Restore on an empty phone or Cancel; never stored
   let found = $state<{ key: string; account: string; kit?: PhoneKit; check: Eligibility } | null>(null)
   let sure = $state(false)      // Reconnect asks twice (the phone's two-tap confirmation, as Remove and Unpair)
+  let alive = true, revision = cloudRevision()
+  let choices = $state(false)
+  function current() { cloudCheckpoint(revision); if (!alive) throw new Error('Recovery screen closed.') }
   const available = $derived(signedIn && !!m && !busy && !working)
   $effect(() => { void signedIn; found = null; sure = false })     // a sign-in change makes a found key stale
 
   function clearSecrets() { password = ''; code = '' }
   function forget() { found = null; sure = false }
-  function choose(next: string) { method = next as Method; error = ''; message = ''; clearSecrets(); forget() }
+  function choose(next: string) { if (busy) return; method = next as Method; error = ''; message = ''; clearSecrets(); forget() }
+  async function guideMethod(next: Method) {
+    choose(next)
+    await tick()
+    document.getElementById('phone-unlock-method')?.focus()
+  }
   // the screen opens at its top; leaving it forgets what was typed, unlocked or found
   onMount(() => {
     scroller?.scrollTo(0, 0)
-    return () => { clearSecrets(); forget(); setups = [] }
+    return () => { alive = false; clearSecrets(); forget(); setups = [] }
   })
   async function run(action: () => Promise<void>) {
     if (busy) return
-    busy = true; error = ''; message = ''
+    revision = cloudRevision(); busy = true; error = ''; message = ''
     try { await action() }
-    catch (e) { error = (e as Error).message }
+    catch (e) { if (alive) error = (e as Error).message }
     finally { busy = false }
   }
   async function discover() {
     await recoveryAccount(m!.pair, m!.drive)
-    setups = await discoverPhoneRecovery(m!.drive)
+    const found = await discoverPhoneRecovery(m!.drive)
+    current(); setups = found
     selected = setups[0]?.id ?? ''
     if (!selected) message = 'No phone passphrase setup was found. Use your recovery file or original recovery code. Desktop libraries are restored on a PC.'
   }
@@ -64,6 +76,7 @@
       let key: string, account: string, kit: PhoneKit | undefined
       if (method === 'kit') {
         const text = await recoveryFileText()
+        current()
         if (text === null) return
         kit = readPhoneKit(text)
         ;({ key, account } = await restorePhoneKit(m!.pair, m!.drive, text))
@@ -76,7 +89,7 @@
       const check: Eligibility = signedIn && m
         ? await reconnectCheck(await MirrorKey.fromText(key), m.drive, m.changes)
         : { ok: false, reason: 'not_connected', message: REFUSALS.not_connected }
-      found = { key, account, kit, check }; sure = false
+      current(); found = { key, account, kit, check }; sure = false
     } finally { clearSecrets() }
   }
   async function reconnect() {
@@ -100,6 +113,12 @@
 <div class="m-pad m-calm">
   <MBox id="m-recover">
     <h3>Phone backup in Google Drive</h3>
+    <ForgotPassphrase mobile workingLabel="Open passphrase settings…"
+      workingReason={busy ? 'Wait for the recovery check to finish.' : working ? 'Wait for the current sync or connection to finish.' : !m ? 'Open Backup & phones on the phone that still holds the library key.' : ''}
+      methodReason={busy ? 'Wait for the recovery check to finish.' : ''}
+      onworking={() => { location.hash = '#/backup' }}
+      onfile={() => guideMethod('kit')} oncode={() => guideMethod('code')}
+      onnone={() => { forget(); clearSecrets(); choices = true }} />
     <MHint>Find the backup first. If this phone matches it, you can keep everything here and reconnect; otherwise restore on an empty phone. Desktop libraries are restored on a PC.</MHint>
     {#if !m}
       <MHint>The original recovery code works right away. A passphrase or recovery file needs Google Drive: start Brainamon without a PC first (No PC? on More), then Back up to Google Drive with the account that holds the backup.</MHint>
@@ -107,7 +126,7 @@
       <MHint>A passphrase or recovery file needs Google Drive: Back up to Google Drive on Backup &amp; phones first, with the account that holds the backup. The original code works without it.</MHint>
     {/if}
     {#if working}<MHint>Wait for the current sync or connection to finish before restoring.</MHint>{/if}
-    <MRow title="Unlock with" desc={method === 'password' ? 'A recovery setup in Google Drive, unlocked with its passphrase' : method === 'kit' ? 'The recovery file you saved' : 'The original code, a pairing link or an exported phone file'}><MSeg label="Unlock with" size="sm" options={[['password', 'Passphrase'], ['kit', 'File'], ['code', 'Code']]} value={method} disabled={busy} onchange={choose} /></MRow>
+    <MRow id="phone-unlock-method" tabindex={-1} title="Unlock with" desc={method === 'password' ? 'A recovery setup in Google Drive, unlocked with its passphrase' : method === 'kit' ? 'The recovery file you saved' : 'The original code, a pairing link or an exported phone file'}><MSeg label="Unlock with" size="sm" options={[['password', 'Passphrase'], ['kit', 'File'], ['code', 'Code']]} value={method} disabled={busy} onchange={choose} /></MRow>
     {#if !found}
       {#if method === 'password'}
         <MButton size="sm" disabled={!available} onclick={() => run(discover)}>Find recovery setups</MButton>
@@ -147,4 +166,6 @@
       <MHint>The original 43-character code is the library key, not a passphrase. The code field also takes a pairing link or the text of an exported phone recovery file.</MHint>
     </MDisclosure>
   </MBox>
+  {#if choices && m}<PhoneBackupChoices onclose={() => choices = false} />
+  {:else if choices}<MBox><MHint>Start Brainamon without a PC on More, then connect the Google account that holds the backup.</MHint><MButton as="a" href="#/more">Open More</MButton></MBox>{/if}
 </div>

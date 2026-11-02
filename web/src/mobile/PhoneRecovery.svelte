@@ -4,7 +4,8 @@
   // whether the file was checked), the one next step, the passphrase form, the original recovery code and the way to
   // Recover a library… (screens/Recover.svelte, #/recover). The state it shares with the status keys is in
   // recovery.svelte.ts; a key is left out while the Status above offers the same one.
-  import { onMount } from 'svelte'
+  import ForgotPassphrase from '../components/ForgotPassphrase.svelte'
+  import { onMount, tick } from 'svelte'
   import MBox from './ui/MBox.svelte'
   import MButton from './ui/MButton.svelte'
   import MDisclosure from './ui/MDisclosure.svelte'
@@ -32,10 +33,16 @@
   const set = $derived(fact !== 'none' && setup ? day(setup.kit.record.header.created * 1000) : '')
   const savedAt = $derived(setup?.saved ? ` ${day(setup.saved)}` : '')
   const available = $derived(signedIn && !!m && !rec.busy && !working)
+  const waitReason = $derived(rec.busy ? rec.activity : phone.connecting
+    ? 'Connecting Google Drive. Recovery setup and file checks become available when the connection finishes.'
+    : working ? 'Syncing your backup. Recovery setup and file checks become available when the current sync finishes.'
+    : !signedIn ? 'Connect Google Drive to create a passphrase or check a recovery file.' : '')
 
   let password = $state(''), confirmation = $state(''), showPassword = $state(false)
   function clearSecrets() { password = ''; confirmation = ''; showPassword = false }
   function open(mode: '' | 'setup') { rec.mode = mode; rec.error = ''; rec.message = ''; clearSecrets() }
+  async function guidePassphrase() { open('setup'); await tick(); document.getElementById('phone-recovery-password')?.focus() }
+  async function guideCode() { open(''); showCode = true; await tick(); document.getElementById('phone-original-code')?.focus() }
   // leaving the screen closes the form and forgets what it said; the passphrase never outlives it
   onMount(() => () => { rec.mode = ''; rec.message = ''; rec.error = ''; clearSecrets() })
   async function prepare() {
@@ -53,10 +60,15 @@
 
 <MBox id="m-recovery">
   <h3>Recovery</h3>
+  <ForgotPassphrase mobile workingLabel="Create another passphrase…" workingReason={waitReason}
+    methodReason={rec.busy ? rec.activity : ''}
+    onworking={guidePassphrase} onfile={() => { location.hash = '#/recover/file' }} oncode={guideCode}
+    onnone={() => { location.hash = '#/backup/manage' }} />
   {#if fact === 'prepared'}
     <MStatus tone="done" text="Passphrase set {set}" detail="Recommended: also save a recovery file, in case you forget the passphrase." />
   {:else if fact === 'saved'}
     <MStatus tone="next" text="Recovery file saved{savedAt}, not checked" detail="Open it once so you know it unlocks your backup." />
+    <MHint>Passphrase set {set}.</MHint>
   {:else if fact === 'checked'}
     <MStatus tone="done" text="Passphrase set {set} · recovery file checked" detail="Keep the file outside this phone." />
   {:else}
@@ -65,16 +77,16 @@
   {#if !rec.mode && (fact !== 'none' || (signedIn && !above('set-up-recovery')))}
     <div class="m-row" style="flex-wrap:wrap">
       {#if fact === 'none'}
-        <MButton variant="pri" size="sm" disabled={!available} onclick={() => open('setup')}>Set up recovery</MButton>
+        <MButton variant="pri" size="sm" disabled={!available} aria-describedby={waitReason ? 'phone-recovery-wait' : undefined} onclick={() => open('setup')}>Set up recovery</MButton>
       {:else if fact === 'prepared'}
         <MButton variant="pri" size="sm" disabled={rec.busy} onclick={() => saveFile()}>Save recovery file…</MButton>
-        <MTextButton disabled={!available} onclick={() => open('setup')}>Set up recovery again</MTextButton>
+        <MTextButton disabled={!available} aria-describedby={waitReason ? 'phone-recovery-wait' : undefined} onclick={() => open('setup')}>Create another passphrase…</MTextButton>
       {:else if fact === 'saved'}
-        {#if !above('check-file')}<MButton variant="pri" size="sm" disabled={!available} onclick={() => checkFile()}>Check recovery file…</MButton>{/if}
+        {#if !above('check-file')}<MButton variant="pri" size="sm" disabled={!available} aria-describedby={waitReason ? 'phone-recovery-wait' : undefined} onclick={() => checkFile()}>Check recovery file…</MButton>{/if}
         <MTextButton disabled={rec.busy} onclick={() => saveFile()}>Save another copy…</MTextButton>
       {:else}
         <MTextButton disabled={rec.busy} onclick={() => saveFile()}>Save another copy…</MTextButton>
-        <MTextButton disabled={!available} onclick={() => open('setup')}>Set up recovery again</MTextButton>
+        <MTextButton disabled={!available} aria-describedby={waitReason ? 'phone-recovery-wait' : undefined} onclick={() => open('setup')}>Create another passphrase…</MTextButton>
       {/if}
     </div>
   {/if}
@@ -84,20 +96,19 @@
       <MButton size="sm" disabled={!available} onclick={() => { password = generateRecoveryPassphrase(); confirmation = password; showPassword = true }}>Generate passphrase</MButton>
       <MButton size="sm" disabled={!available || !password} aria-controls="phone-recovery-password" aria-pressed={showPassword} onclick={() => showPassword = !showPassword}>{showPassword ? 'Hide passphrase' : 'Show passphrase'}</MButton>
     </div>
-    <MHint id="phone-recovery-help">Generate a random passphrase, or enter at least 12 characters. Generation fills both fields. Write the passphrase down outside this phone, separately from your recovery file. It protects your existing key; it does not replace a lost key.</MHint>
+    <MHint id="phone-recovery-help">Generate a random passphrase, or enter at least 12 characters. Generation fills both fields. Write the passphrase down outside this phone, separately from your recovery file. It protects your existing key; it does not replace a lost key. Earlier phone passphrases remain valid.</MHint>
     <label class="m-fld"><span>Confirm passphrase</span><input type="password" bind:value={confirmation} maxlength="1024" autocomplete="new-password" disabled={!available} /></label>
     <div class="m-row" style="flex-wrap:wrap">
-      <MButton variant="pri" size="sm" disabled={!available || password.length < 12 || password !== confirmation} onclick={() => recoveryRun(prepare)}>Save passphrase</MButton>
+      <MButton variant="pri" size="sm" disabled={!available || password.length < 12 || password !== confirmation} aria-describedby={waitReason ? 'phone-recovery-wait' : 'phone-recovery-help'} onclick={() => recoveryRun(prepare, 'Saving and checking your passphrase…')}>Save passphrase</MButton>
       <MTextButton disabled={rec.busy} onclick={() => open('')}>Cancel</MTextButton>
     </div>
   {/if}
-  {#if working}<MHint>Wait for the current sync or connection to finish before changing recovery.</MHint>{/if}
-  {#if rec.busy}<MHint role="status">Checking recovery… This may take a few seconds.</MHint>{/if}
+  {#if waitReason}<MHint id="phone-recovery-wait" role="status">{waitReason}</MHint>{/if}
   {#if rec.message}<MHint role="status">{rec.message}</MHint>{/if}
   {#if rec.error}<MHint tone="error" role="alert">{rec.error}</MHint>{/if}
   {#if m && !rec.mode}
     <MRow title="Restore from Google Drive" desc="A phone backup, unlocked with its passphrase, recovery file or original code"><MButton as="a" size="sm" href="#/recover">Recover a library…</MButton></MRow>
-    <MDisclosure summary="Original recovery code">
+    <MDisclosure summary="Original recovery code" open={showCode} id="phone-original-code" tabindex={-1}>
       <MRow title="Original recovery code" desc="Your 43-character library key still works, with or without a passphrase and recovery file. Key {m.pair.f}{m.pair.d ? ' · development Drive' : ''}"><MTextButton onclick={() => (showCode = !showCode)}>{showCode ? 'Hide' : 'Show'}</MTextButton></MRow>
       {#if showCode}
         <MRow desc={codeNote || 'Restore with this code and the same Google account. It still unlocks this backup after setting up a passphrase. Keep it private and outside this phone.'}>{#snippet title()}<span style="font-family:var(--mono, monospace);word-break:break-all;font-size:12px">{m.pair.k}</span>{/snippet}<MButton size="sm" onclick={copyCode}>Copy</MButton></MRow>

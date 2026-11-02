@@ -5,17 +5,21 @@
   // what is on this phone), Google account (its own backup), This phone (pairing with a PC, Remove) and Recovery
   // (PhoneRecovery.svelte, with Recover a library…, #/recover). Every row was More's before; a row's key is left out
   // while the Status offers the same one.
+  import ForgotPassphrase from '../../components/ForgotPassphrase.svelte'
   import { onMount } from 'svelte'
   import { changes as changesDb, wipe } from '../store'
-  import { changeAccount, connectDrive, driveStatus, fmtAgo, mirrorSource, pairFrom, parseRoute, phone, phoneStatus, refresh, solo } from '../state.svelte'
+  import { changeAccount, connectDrive, driveStatus, fmtAgo, mirrorSource, pairFrom, parseRoute, phone, phoneStatus, refresh, solo, syncNow } from '../state.svelte'
   import { actionBusy, actionLabel, runPhoneAction } from '../actions'
   import { deviceName, isApp, secretsSaved } from '../native'
-  import { disconnectDrive, forget as unpairPhone, token } from '../mirror/pairing'
-  import { RECONNECT_BUSY, reconnectGate } from '../mirror/gate'
+  import { forget as unpairPhone, token } from '../mirror/pairing'
+  import { disconnectPhoneBackup } from '../mirror/phone-backup'
+  import { backup } from '../backup.svelte'
+  import PhoneBackupChoices from '../PhoneBackupChoices.svelte'
+  import { allowCloudWork, RECONNECT_BUSY, stopCloudWork } from '../mirror/gate'
   import { exportPhoneRecovery } from '../mirror/recovery'
   import { unpairEdits, unpairWarning } from '../mirror/phone-facts'
   import { ACCESS_STATES, type ActionId } from '../mirror/phone-state'
-  import { network, syncPaused } from '../network.svelte'
+  import { network, setSyncPaused, syncPaused } from '../network.svelte'
   import MBox from '../ui/MBox.svelte'
   import MButton from '../ui/MButton.svelte'
   import MDisclosure from '../ui/MDisclosure.svelte'
@@ -56,7 +60,7 @@
   async function sendNow() {
     if (!m) return
     sending = true; sendNote = ''
-    try { const n = await m.flush(); sendNote = !n ? 'Nothing to send.' : solo ? `Backed up ${n} change${n > 1 ? 's' : ''} in Google Drive.` : `Sent ${n} change${n > 1 ? 's' : ''}. The PC applies them when it runs.` } catch (e) { sendNote = (e as Error).message } finally { sending = false }
+    try { await syncNow(); sendNote = phone.sync?.msg ?? '' } catch (e) { sendNote = (e as Error).message } finally { sending = false }
   }
 
   // Unpair (plan P10): the first tap says which edits never reach the PC; the journal stays on this phone
@@ -65,8 +69,9 @@
   async function unpair() {
     if (!confirmUnpair) { confirmUnpair = true; return }
     try {
-      reconnectGate()                              // a reconnect running refuses before anything changes
+      await stopCloudWork()
       await m?.dropPhoneRecord()                   // D13: off the PC's Phones list first (best effort, at most 3 s)
+      allowCloudWork()
       unpairPhone()
       await secretsSaved()
       // Clear local copies only after protected storage confirmed removal of the connection.
@@ -91,15 +96,22 @@
   const hasPcMirror = $derived((phone.synced, m?.pcMirror ?? false))
   async function disconnectBackup() {
     if (!m) return
-    try { disconnectDrive(m.pair); await secretsSaved(); location.reload() }
+    if (!confirmDisconnect) { confirmDisconnect = true; return }
+    disconnecting = true
+    try { await disconnectPhoneBackup(); location.reload() }
     catch (e) { phone.note = (e as Error).message }
+    finally { disconnecting = false }
   }
+  let confirmDisconnect = $state(false), disconnecting = $state(false)
+  const manage = $derived((phone.route, location.hash.endsWith('/manage')))
   // Remove (two taps): the phone's library, its queued changes and its key leave this phone; independent copies stay
   let confirmRemove = $state(false)
   async function removeSolo() {
+    if (backup.task || backup.busy) { phone.note = 'Finish the saved backup task, or disconnect backup before removing this phone’s content.'; return }
     if (!confirmRemove) { confirmRemove = true; return }
     try {
-      reconnectGate()                              // a reconnect running refuses before anything changes
+      await stopCloudWork()
+      allowCloudWork()
       unpairPhone()
       await secretsSaved()
       // Clear local copies only after protected storage confirmed removal of the connection.
@@ -145,7 +157,7 @@
     {@render stateRow()}
     {#if phone.note}<MHint role="status">{phone.note}</MHint>{/if}
     {#if st?.id === 'unreachable' && phone.error && !phone.refreshing}<MHint tone="error" role="alert">{phone.error}</MHint>{/if}
-    <MRow id="m-library" title="Library in Google Drive" desc={man ? `${man.items.toLocaleString('en')} items · the PC uploaded ${fmtAgo(man.published)}` : 'Nothing read from Drive yet'} />
+    <MRow id="m-library" title="Library in Google Drive" desc={man ? `${man.items.toLocaleString('en')} items · the PC uploaded ${fmtAgo(man.published)}` : phone.refreshing ? 'Loading your library…' : 'Nothing read from Drive yet'} />
   </MBox>
 
   {#if pairingGuide || !phone.reachable}
@@ -155,7 +167,7 @@
       <MRow title="2. Connect Google Drive" desc={signedIn ? `Google Drive connected: ${m.pair.g || 'signed in'}.` : phone.connecting ? phone.connectStep : phone.account ? `Choose ${m.pair.e}; the selected account does not match.` : 'Connect this phone to the account your PC uses.'} />
       <MRow role="status" title="3. Check PC access" desc={!signedIn ? 'After connecting Google Drive.' : pcAccess ? 'PC access confirmed.' : phone.refreshing ? 'Checking the signed PC access confirmation…' : st && ACCESS_STATES.includes(st.id) ? st.text : 'Waiting to read PC access confirmation. Missing confirmation does not prove the PC is offline or unlicensed.'} />
       <MRow title="4. Load library" desc={phone.reachable ? `Ready: ${phone.rows.length.toLocaleString('en')} items loaded.` : phone.noLibraryWhy?.message || (pcAccess ? 'Waiting for the PC’s first library upload. Google Drive stays connected.' : 'Library loading follows PC access confirmation.')} />
-      {#if signedIn && !phone.reachable && !above('retry')}<MButton size="sm" disabled={driveBusy || phone.connecting || syncPaused()} onclick={() => refresh()}>Retry</MButton>{/if}
+      {#if signedIn && !phone.reachable && !above('retry') && !driveBusy}<MButton size="sm" disabled={phone.connecting || syncPaused()} onclick={() => refresh()}>Retry</MButton>{/if}
       {#if phone.reachable}<MButton variant={st?.action?.primary ? 'default' : 'pri'} onclick={finishPairing}>Done, open library</MButton>{/if}
     </MBox>
   {/if}
@@ -185,7 +197,11 @@
 
   <MBox id="m-recovery">
     <h3>Recovery</h3>
-    <MHint>This phone is paired with a desktop library: its passphrase and recovery file live in the PC's Settings &gt; Backup &amp; phones.</MHint>
+    <ForgotPassphrase mobile paired workingLabel="" oncode={() => { showCode = true }} />
+    <MStatus tone="todo" text="Recovery managed on your PC" detail="This phone does not receive the PC's passphrase status. Check it in the PC's Settings > Backup & phones > Recovery." />
+    <MDisclosure summary="If the PC is updating its security key">
+      <MHint>On the PC, recovery checks and passphrase changes wait for the replacement backup to finish uploading, verification and old-copy cleanup. An ordinary backup upload allows passphrase setup while it runs.</MHint>
+    </MDisclosure>
     <MRow title="Recovery code" desc="For getting the library back on a new PC."><MTextButton onclick={() => { showCode = !showCode }} aria-expanded={showCode}>{showCode ? 'Hide' : 'Show'}</MTextButton></MRow>
     {#if showCode}
       <label class="m-fld"><input readonly value={m.pair.k} aria-label="Recovery code" autocomplete="off" spellcheck="false" /></label>
@@ -217,8 +233,13 @@
     <MDisclosure summary="What Google sees">
       <MHint>The backup does not sync with a desktop library in the same account. Google sees account, connection and file size/timing metadata. Google account/storage terms apply.</MHint>
     </MDisclosure>
-    {#if signedIn}<MRow title="Disconnect backup" desc="Stops new uploads. Local content and existing Drive backups stay."><MTextButton onclick={disconnectBackup} disabled={driveBusy || sending}>Disconnect</MTextButton></MRow>{/if}
+    {#if signedIn || disconnecting}<MRow title="Disconnect backup" desc="Stops cloud work after the current request. Local content, queued edits and existing Drive backups stay."><MTextButton onclick={disconnectBackup} disabled={disconnecting}>{disconnecting ? 'Stopping cloud work…' : confirmDisconnect ? 'Confirm disconnect' : 'Disconnect'}</MTextButton></MRow>{/if}
+    {#if confirmDisconnect && !disconnecting}{#if backup.task}<MHint>Disconnect stops the saved task and keeps remaining cloud copies. Files already deleted cannot be restored.</MHint>{/if}<MTextButton onclick={() => confirmDisconnect = false}>Cancel</MTextButton>{/if}
+    <MRow title="Sync" desc={network.manualPause ? 'Paused until you resume, including after restart.' : 'Changes stay on this phone while sync is paused.'}><MButton size="sm" onclick={() => setSyncPaused(!network.manualPause)}>{network.manualPause ? 'Resume sync' : 'Pause sync'}</MButton></MRow>
+    <MTextButton onclick={() => { location.hash = '#/backup/manage' }}>Manage phone backups…</MTextButton>
   </MBox>
+
+  {#if manage || backup.task || backup.busy}<PhoneBackupChoices onclose={() => { location.hash = '#/backup' }} />{/if}
 
   <MBox id="m-phone">
     <h3>This phone</h3>

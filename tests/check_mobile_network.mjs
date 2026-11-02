@@ -6,13 +6,13 @@ import ts from '../web/node_modules/typescript/lib/typescript.js'
 
 function load(path, deps, globals) {
   const exports = {}
-  const js = ts.transpileModule(readFileSync(new URL('../' + path, import.meta.url), 'utf8'), {
+  const js = ts.transpileModule(readFileSync(new URL('../' + path, import.meta.url), 'utf8').replaceAll('import.meta.env?.DEV === true', 'false'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText
   vm.runInNewContext(js, { exports, require: s => {
     assert.ok(s in deps, `unexpected import ${s}`)
     return deps[s]
-  }, AbortController, AbortSignal, Event, setTimeout, clearTimeout, setInterval, clearInterval, URLSearchParams, TextEncoder, Uint8Array, ...globals })
+  }, AbortController, AbortSignal, Event, setTimeout, clearTimeout, setInterval, clearInterval, URL, URLSearchParams, TextEncoder, Uint8Array, ...globals })
   return exports
 }
 
@@ -26,11 +26,19 @@ async function setup(isApp, saved) {
     isApp, networkStatus: async () => status, onNetworkChange: async fn => { change = fn },
   } }, { $state: x => x, navigator, document, window: browser,
     localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) } })
-  const { Drive } = load('web/src/mobile/mirror/drive.ts', { '../network.svelte': policy }, {
+  const pairing = { k: 'synthetic', l: 'synthetic', solo: false }
+  const { Drive } = load('web/src/mobile/mirror/drive.ts', {
+    '../network.svelte': policy,
+    './pairing': { pairing: () => pairing },
+    './crypto': {}, './license': { LicenseRequired: class extends Error {} }, './recovery-envelope': {},
+    './gate': { cloudRevision: () => 0, cloudCheckpoint: () => {}, cloudReadSignal: () => new AbortController().signal },
+  }, {
     fetch: (...args) => { requests++; return transport(...args) },
   })
+  // This fixture isolates network policy; signed-grant authorization has its own phone access suites.
+  Drive.prototype.authorize = async () => Infinity
   await policy.initNetwork()
-  return { policy, storage, browser, connection, navigator, drive: new Drive('https://drive.test', () => 'test-token', () => {}),
+  return { policy, storage, browser, connection, navigator, drive: new Drive('https://www.googleapis.com', () => 'test-token', () => {}),
     get requests() { return requests }, transport(fn) { transport = fn },
     change(type, connected = true) {
       status = { connected, type }
@@ -103,6 +111,11 @@ for (const isApp of [false, true]) {
 }
 const allowed = await setup(true, 'off')
 assert.equal(allowed.policy.network.wifiOnly, false)
+assert.equal(allowed.policy.syncPaused(), false)
+allowed.policy.setSyncPaused(true)
+assert.equal(allowed.storage.get('bp-sync-paused'), 'on')
+assert.equal(allowed.policy.syncPaused(), true)
+allowed.policy.setSyncPaused(false)
 assert.equal(allowed.policy.syncPaused(), false)
 
 // Manual/forced vault rounds and PC status reads share the gate; reconnect waits for a prior round to end.

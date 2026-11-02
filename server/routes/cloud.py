@@ -96,10 +96,10 @@ def switch(request: Request, body: dict = Body(default={})):
 
 
 @router.post('/api/cloud/reset')
-def reset(request: Request):
+def reset(request: Request, body: dict = Body(default={})):
     """Reset backup: a new key and a new first backup; the old backup is deleted once the new one is complete."""
     try:
-        request.app.state.sync.reset_backup()
+        request.app.state.sync.reset_backup(replace_existing=body.get('replace_existing') is True)
     except (recovery.RecoveryError, drive_client.DriveError) as e:
         return refuse(request, e)
     return _view(request)
@@ -157,8 +157,8 @@ def cancel_sign_in(request: Request):
 @router.post('/api/cloud/sign-out')
 def sign_out(request: Request, body: dict = Body(default={})):
     try:
-        request.app.state.sync.sign_out(delete_mirror=bool(body.get('delete_mirror')))
-    except Busy as e:
+        request.app.state.sync.request_disconnect(delete_mirror=body.get('delete_mirror') is True, delete_existing=body.get('delete_existing') is True)
+    except (Busy, recovery.RecoveryError) as e:
         return refuse(request, e)
     except drive_client.DriveError as e:
         return refuse(request, e, fallback=f'Could not delete the mirror: {e}')

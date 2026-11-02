@@ -15,6 +15,8 @@ class SyncAccessErrors(unittest.TestCase):
             const setup = `
               class LicenseRequired extends Error {}
               class SyncPaused extends Error {}
+              class CloudCancelled extends Error {}
+              const cloudStopped=()=>false, cloudRevision=()=>0, cloudCheckpoint=()=>{}; const backup={busy:false}
               class PhoneTooOld extends Error {}
               class NoMirror extends Error {}
               class NeedsSignIn extends Error {}

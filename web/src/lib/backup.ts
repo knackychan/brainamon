@@ -15,7 +15,7 @@ export const W = {
 
 // the long task of server/sync.py `_task_view`: removing phones, saving a passphrase, switching account, resetting, a one-time backup
 export interface CloudTask {
-  id: string; kind: 'remove_phones' | 'enroll' | 'switch_account' | 'reset_backup' | 'one_shot_publish' | 'update_folder'; stage: string; title: string
+  id: string; kind: 'remove_phones' | 'enroll' | 'switch_account' | 'reset_backup' | 'one_shot_publish' | 'update_folder' | 'disconnect'; stage: string; title: string
   step: number; of: number; steps: { label: string; state: 'done' | 'active' | 'waiting' }[]
   done: number; total: number; bytes_done: number; bytes_total: number; since: number; error: string; code: string; lock: string
 }

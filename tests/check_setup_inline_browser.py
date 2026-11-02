@@ -181,7 +181,7 @@ class Review(shots.Run):
             expect(setup.locator('#setup-stage')).to_have_text('Your setup, at a glance')
             assert abs(setup.bounding_box()['height'] - height) < 1
             visit('Wiskit AI')
-            actions = setup.locator('.key-actions')
+            actions = setup.locator('.key-actions').first
             expect(actions.get_by_role('button', name='Save key', exact=True)).to_have_css('background-color', 'rgb(43, 209, 126)')
             save_box = actions.get_by_role('button', name='Save key', exact=True).bounding_box()
             get_box = actions.get_by_role('button', name='Get a provider key', exact=True).bounding_box()
@@ -205,20 +205,29 @@ class Review(shots.Run):
         assert refresh_box['x'] > model_box['x'] + model_box['width'] - 1
         assert abs(refresh_box['y'] - model_box['y']) < model_box['height']
         provider = setup.get_by_label('AI provider', exact=True)
+        anthropic_key = setup.get_by_label('Anthropic API key', exact=True)
+        anthropic_key.fill('synthetic-anthropic-draft')
         provider.select_option('openai')
-        key = setup.get_by_label('API key', exact=True)
+        key = setup.get_by_label('OpenAI API key', exact=True)
+        expect(key).to_have_value('')
+        expect(anthropic_key).to_have_value('synthetic-anthropic-draft')
         key.fill('synthetic-test-key')
-        setup.get_by_role('button', name='Save key', exact=True).click()
+        save_key = key.locator('..').get_by_role('button', name='Save key', exact=True)
+        save_key.click()
         expect(setup.get_by_role('alert')).to_have_text('Synthetic save failure. Retry.')
         expect(key).to_have_value('synthetic-test-key')
         fail_key = False
-        setup.get_by_role('button', name='Save key', exact=True).evaluate('e=>{e.click();e.click()}')
+        save_key.evaluate('e=>{e.click();e.click()}')
         expect(key).to_have_value('')
         assert key_calls == [{'keys': {'openai': 'synthetic-test-key'}}] * 2
         setup.get_by_role('button', name='Use this model', exact=True).click()
         expect(setup.get_by_text('Wiskit model saved.', exact=True)).to_be_visible()
         assert list(key_calls[-1]) == ['models']
         assert key_calls[-1]['models']['jarvis']['provider'] == 'openai'
+        expect(anthropic_key).to_have_value('synthetic-anthropic-draft')
+        anthropic_key.locator('..').get_by_role('button', name='Save key', exact=True).click()
+        expect(anthropic_key).to_have_value('')
+        assert key_calls[-1] == {'keys': {'anthropic': 'synthetic-anthropic-draft'}}
         assert page.locator('.set-win').count() == 0
 
         visit('Drive & recovery')

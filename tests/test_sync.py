@@ -32,10 +32,11 @@ class FakeDrive:
     def about(self):
         return {'email': 'fred@example.com', 'name': 'Fred', 'used': 1, 'limit': 2}
 
-    def list(self):
+    def list(self, name=None, *, prefix=None):
         with self._lock:
             self.calls.append('list')
-            return [{'id': i, 'name': n, 'size': len(b)} for i, (n, b) in self.files.items()]
+            return [{'id': i, 'name': n, 'size': len(b)} for i, (n, b) in self.files.items()
+                    if (name is None or n == name) and (prefix is None or n.startswith(prefix))]
 
     def upload(self, name, data=None, path=None, file_id='', progress=None):
         body = data if data is not None else Path(path).read_bytes()
@@ -2008,6 +2009,7 @@ class ServiceTest(Library):
                 mock.patch.object(drive_client, 'revoke'), mock.patch.object(sync_mod, 'POLL', 0.1), \
                 mock.patch.object(self.svc, '_raw_factory', side_effect=lambda tok: bob if tok.get('refresh_token') == 'new' else self.drive):
             self.svc.switch(True)
+            self.assertTrue(self.wait(lambda: self.svc._signin_thread and self.svc.status()['state'] == 'signing-in'))
             self.svc.cancel_sign_in()
             self.assertTrue(self.wait(lambda: not self.svc._signin_thread.is_alive()))
             self.assertEqual(self.svc.intents.find('switch_account')['stage'], 'signing-in')
@@ -2040,7 +2042,7 @@ class ServiceTest(Library):
 
     def test_switch_account_keeps_the_old_copy_when_not_asked_to_delete_it(self):
         old_ids, bob, revoked = self.switch_account(False, fail_first_upload=False)
-        self.assertEqual(revoked, ['old'])                                    # the old sign-in is revoked at once
+        self.assertTrue(self.wait(lambda: revoked == ['old']))               # the worker revokes the old sign-in before connecting
         self.assertTrue(self.wait(lambda: not self.svc.intents.all() and self.has_manifest(bob) and self.svc.status()['state'] == 'idle'),
                         self.svc.status())
         self.assertTrue(old_ids <= set(self.drive.files))
@@ -2060,6 +2062,7 @@ class ServiceTest(Library):
             return real_upload(*args, **kwargs)
         with mock.patch.object(sync_mod, 'POLL', 0.1), mock.patch.object(self.drive, 'upload', side_effect=upload):
             self.svc.reset_backup()
+            self.assertTrue(self.wait(lambda: (self.svc.intents.find('reset_backup') or {}).get('stage') == 'backing-up'))
             self.assertNotEqual(self.svc._key().master, old_key.master)
             self.assertEqual(self.writer.read(lambda db: db.get_setting('cloud_upload', '')), 'on')
             self.assertTrue(self.wait(lambda: self.svc.status()['state'] == 'idle'), self.svc.status())
@@ -2391,6 +2394,23 @@ if __name__ == '__main__':
     unittest.main()
 
 
+class RotationBatchTest(unittest.TestCase):
+    def test_pause_drains_in_flight_successes_without_starting_another_batch(self):
+        service = sync_mod.SyncService.__new__(sync_mod.SyncService)
+        stop, barrier = threading.Event(), threading.Barrier(4)
+        started, completed = [], []
+        def work(item):
+            started.append(item)
+            barrier.wait(timeout=5)
+            stop.set()
+            return item * 2
+        with self.assertRaises(ExportStopped):
+            for item, result in service._rotation_files(range(20), work, stop):
+                completed.append((item, result))
+        self.assertEqual(sorted(started), list(range(4)))
+        self.assertEqual(sorted(completed), [(i, i * 2) for i in range(4)])
+
+
 class DriveClientTest(unittest.TestCase):
     """The REST calls against a scripted fake of Google's endpoints (no network)."""
 
@@ -2399,6 +2419,19 @@ class DriveClientTest(unittest.TestCase):
         self.store = {}
         self.session_got = bytearray()
         self.drop_once = True
+
+    def test_filtered_listing_escapes_name_and_keeps_all_pages_and_duplicates(self):
+        import urllib.parse
+        client = drive_client.DriveClient('dev', 'dev', {})
+        name = "owner's\\record"
+        pages = [(200, {}, json.dumps({'files': [{'id': 'a', 'name': name}], 'nextPageToken': 'next'}).encode()),
+                 (200, {}, json.dumps({'files': [{'id': 'b', 'name': name}]}).encode())]
+        with mock.patch.object(client, '_call', side_effect=pages) as request:
+            self.assertEqual([f['id'] for f in client.list(name=name)], ['a', 'b'])
+        queries = [urllib.parse.parse_qs(urllib.parse.urlsplit(c.args[1]).query) for c in request.call_args_list]
+        self.assertEqual([q['q'] for q in queries], [["name = 'owner\\'s\\\\record'"]] * 2)
+        self.assertEqual(queries[1]['pageToken'], ['next'])
+        self.assertTrue(all(q['spaces'] == ['appDataFolder'] for q in queries))
 
     def test_revoked_refresh_token_requests_sign_in_without_retrying_or_replacing_token(self):
         token = {'refresh_token': 'synthetic-revoked'}

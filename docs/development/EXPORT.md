@@ -98,6 +98,53 @@ there is no multi-file transaction or automatic rollback.
 
 ## Preserve contributions on every release
 
+### Routine updates from a Content Manager worktree
+
+Content Manager remains the development source of truth. Use a separate,
+durable public-only clone for the outward mirror. A public clone must never be
+a private Git worktree. Synchronize selected commits after review and checks;
+unfinished local edits remain local. Avoid folder-sync programs and Git hooks
+that push every save or commit: a newly added credential, fixture or private
+document must not become public through a directory glob.
+
+`scripts/prepare_public_update.py` turns the last reviewed manifest into a new
+**private candidate**. It refreshes blob IDs, modes and hashes for existing mapped
+files at an explicit full commit ID. It reports changed public destinations and
+changed source paths outside the mapping. Unmapped paths stay excluded. Previous
+approvals and gates are cleared; it cannot export, commit, tag or push. It refuses
+deleted/nonregular inputs and changed transformations until their mapping/output
+has been reviewed manually. Unchanged transformations retain their exact output.
+
+Run it from the intended development worktree, after committing the changes:
+
+```powershell
+$sourceRevision = git rev-parse HEAD
+py scripts/prepare_public_update.py --source . --manifest C:\release-review\last-manifest.json --revision $sourceRevision --output build/source-update-review/next-manifest.json
+```
+
+Replace the manifest with the last reviewed one on subsequent updates. Use a new
+private output filename each time; the command refuses to overwrite a record.
+Outputs must stay inside the private source checkout. The candidate includes
+private path/revision information and must never be copied into the public clone.
+
+Review both lists. Keep private plans/data/tooling excluded; explicitly add any
+new runtime modules, assets and tests with their hashes and mapping. Handle
+renames/deletions explicitly, using the existing deletion rules. Fetch the public
+clone and integrate contributions as described below. Review ownership/privacy,
+scan the delta and validate the exact candidate in isolation before recording new
+approvals. Then use the existing export preview/apply commands with the previous
+receipt. Review the public diff, commit it, and confirm a repeat export is empty.
+
+Public source main may advance between application releases. Release tags remain
+immutable snapshots. Give each new release a fresh tag and build any future
+binaries from that exact public source commit. If an application version tag is
+already occupied by a historical binary/website commit, use a distinct source tag
+such as `source-v1.1.0`; never move the occupied tag or imply an unverified binary
+match. Source-only releases stay prereleases with make-latest false so the stable
+Windows updater continues selecting a release with official installer assets.
+
+### Integrate accepted public changes
+
 Fetch public changes only into the independent public clone. Compare its HEAD
 and owned file hashes against the previous receipt. Import reviewed public
 file-level patches into the corresponding source paths, with contributor

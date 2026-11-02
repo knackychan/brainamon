@@ -7,14 +7,14 @@ import { RECOVERY_LIMIT } from './mirror/recovery-envelope'
 import { savePhoneKit, verifyPhoneRecovery } from './mirror/phone-recovery'
 import { mirrorSource, phone } from './state.svelte'
 
-export const rec = $state({ mode: '' as '' | 'setup', busy: false, message: '', error: '' })
+export const rec = $state({ mode: '' as '' | 'setup', busy: false, activity: '', message: '', error: '' })
 
 // one recovery action at a time; Setup's Recovery row and the status follow at once (phone.recoveryAt)
-export async function recoveryRun(action: () => Promise<void>): Promise<void> {
+export async function recoveryRun(action: () => Promise<void>, activity = 'Checking recovery…'): Promise<void> {
   if (rec.busy) return
-  rec.busy = true; rec.error = ''; rec.message = ''
+  rec.busy = true; rec.activity = activity; rec.error = ''; rec.message = ''
   try { await action() } catch (e) { rec.error = (e as Error).message }
-  finally { rec.busy = false; phone.recoveryAt = Date.now() }
+  finally { rec.busy = false; rec.activity = ''; phone.recoveryAt = Date.now() }
 }
 
 // a recovery file the person picks, as text; null when the chooser was cancelled
@@ -45,5 +45,5 @@ export function saveFile(): Promise<void> {
     const saved = await savePhoneKit(m.pair)
     rec.message = saved === 'saved' ? 'Recovery file saved. Check it once so you know it opens your backup.'
       : saved === 'downloaded' ? 'Download requested. A browser download is not confirmed until you open the file.' : ''
-  })
+  }, 'Saving recovery file…')
 }

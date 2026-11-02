@@ -264,7 +264,7 @@ class PhoneJsTest(unittest.TestCase):
             const prune = loader.changes.prune.bind(loader.changes)
             loader.changes.prune = async at => { prunes++; await prune(at) }
             loader.key = { name: async n => n, openJSON: async () => incoming }
-            loader.drive = { find: async () => ({ id: 'fixture' }), get: async () => new Uint8Array() }
+            loader.drive = { checkpoint: () => {}, find: async () => ({ id: 'fixture' }), get: async () => new Uint8Array() }
             loader.cached = async () => { receipts++; return '{}' }
             let refused = false
             try { await loader.loadManifest() } catch(e) { refused = e instanceof PhoneTooOld }

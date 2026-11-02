@@ -468,10 +468,10 @@ class FreshManifestGate(unittest.TestCase):
             const uploads = []
             Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => online })
             const Source = new Function('READER', 'PhoneTooOld', 'tooOld', 'kv', 'deviceId', 'syncPaused', 'SyncPaused', 'token',
-              'beginCloudChange', 'endCloudChange', 'recordPublish', 'resendPending',
+              'beginCloudChange', 'endCloudChange', 'recordPublish', 'resendPending', 'cloudStopped',
               stripTypeScriptTypes('class Source {\n' + body + '\n}') + ';return Source')(
               READER, PhoneTooOld, { fn: () => {} }, kv, () => 'phone', () => false, SyncPaused, () => signedIn ? 'synthetic' : null,
-              () => {}, () => {}, async () => {}, R.resendPending)
+              () => {}, () => {}, async () => {}, R.resendPending, () => false)
             const s = new Source()
             let found = false, incoming = null
             Object.assign(s, { pair: { f: 'n'.repeat(12), l: 'L' }, changes: new Changes(), manifest: { reader: 1, files: {}, cached: true },
@@ -479,7 +479,7 @@ class FreshManifestGate(unittest.TestCase):
               noLibrary: async () => new Error('No library from this PC yet.'),
               key: { name: async n => n, openJSON: async () => { reads++; return incoming },
                      sealChange: async doc => { uploads.push(structuredClone(doc)); return ['chg-' + uploads.length, new Uint8Array()] } },
-              drive: { find: async () => found ? { id: 'manifest' } : null, get: async () => new Uint8Array(), create: async () => 'id' } })
+              drive: { checkpoint: () => {}, find: async () => found ? { id: 'manifest' } : null, get: async () => new Uint8Array(), create: async () => 'id' } })
             await s.changes.add({ op: 'fav', uid: 'A', on: true }); await s.changes.flush(async () => 'chg-old', 'phone', true, true)
             await s.changes.add({ op: 'fav', uid: 'B', on: true })
             R.markResend(s.pair)

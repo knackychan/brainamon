@@ -880,6 +880,10 @@ class PairRoutesTest(test_sync.RoutesTest):
         self.assertEqual(writer.read(lambda db: db.get_setting('cloud_account', '')), 'dev@brainamon.local')
         v = self.c.post('/api/cloud/sign-out', json={'delete_mirror': True}, headers={'X-CM': '1'}).json()
         self.assertEqual((v['account'], v['signed_in']), ('', False))
+        # Disconnect is a saved worker task; its local cleanup can finish after the accepted response.
+        until = time.monotonic() + 5
+        while writer.read(lambda db: db.get_setting('cloud_account', '')) and time.monotonic() < until:
+            time.sleep(.01)
         self.assertEqual(writer.read(lambda db: db.get_setting('cloud_account', '')), '')
 
     def test_pair_link_and_unpair(self):

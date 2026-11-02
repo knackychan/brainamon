@@ -245,8 +245,12 @@ def handler(drive: FakeDrive):
                 return self._json(200, {'user': {'emailAddress': self.server.account, 'displayName': self.server.account.split('@')[0]},
                                         'storageQuota': {'limit': str(15 * 2**30), 'usage': '0'}})
             if u.path == '/drive/v3/files':
-                m = re.match(r"^\s*name\s*=\s*'([^']*)'\s*$", q.get('q', ''))
-                return self._json(200, {'files': drive.files(m.group(1) if m else '')})
+                m = re.fullmatch(r"\s*name\s*(=|contains)\s*'((?:\\.|[^'\\])*)'\s*", q.get('q', ''))
+                files = drive.files()
+                if m:
+                    name = re.sub(r"\\(.)", r"\1", m.group(2))
+                    files = [f for f in files if (f['name'] == name if m.group(1) == '=' else f['name'].startswith(name))]
+                return self._json(200, {'files': files})
             m = re.match(r'^/drive/v3/files/([\w-]+)$', u.path)
             if m and q.get('alt') == 'media':
                 try:

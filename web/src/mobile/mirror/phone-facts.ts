@@ -7,6 +7,7 @@ import type { AccessKind } from './license'
 import { clock, type PhoneFacts } from './phone-state.ts'
 
 export interface PairedInput {
+  pause?: string
   app: boolean                 // the Android app (native.ts isApp)
   online: boolean              // network.online
   paused: boolean              // syncPaused(): offline, or Wi-Fi only on another network
@@ -33,6 +34,7 @@ export interface PairedInput {
 // was refused is "sign in again"; a pairing with no confirmed account is "connect".
 export function pairedFacts(i: PairedInput): PhoneFacts {
   return {
+    pause: i.pause,
     mode: 'pc', app: i.app, online: i.online, wifiWait: i.online && i.paused, refreshing: i.refreshing, tried: i.tried,
     signedIn: !i.refused && (i.token || !i.tried), account: i.account, pcAccount: i.pcAccount, mismatch: i.mismatch,
     access: i.access, hadAccess: i.last > 0, since: clock(i.access === 'expired' ? i.accessAt : i.last, i.now),
@@ -42,6 +44,8 @@ export function pairedFacts(i: PairedInput): PhoneFacts {
 }
 
 export interface SoloInput {
+  pause?: string
+  backupTask?: PhoneFacts['backupTask']
   app: boolean                 // the Android app (native.ts isApp)
   online: boolean              // network.online
   paused: boolean              // syncPaused(): offline, or Wi-Fi only on another network
@@ -59,6 +63,7 @@ export interface SoloInput {
 // account is not asked to sign in again (the app renews an expired token at the start), as for a paired phone.
 export function soloFacts(i: SoloInput): PhoneFacts {
   return {
+    pause: i.pause, backupTask: i.backupTask,
     mode: 'solo', app: i.app, online: i.online, wifiWait: i.online && i.paused, refreshing: i.refreshing, tried: !!i.round,
     signedIn: i.token || (!!i.account && !i.started), account: i.account, pcAccount: '', mismatch: '', access: '',
     hadAccess: false, since: '', noLibrary: '', noLibraryText: '', reachable: !!i.round?.ok, tooOld: false,

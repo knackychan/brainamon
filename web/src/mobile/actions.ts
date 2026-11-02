@@ -6,12 +6,15 @@ import type { ActionId, PhoneAction } from './mirror/phone-state'
 import { openBackupBox } from './onboard.svelte'
 import { checkFile, rec } from './recovery.svelte'
 import { changeAccount, connectDrive, pairFrom, phone, refresh, syncNow } from './state.svelte'
+import { setSyncPaused } from './network.svelte'
 
 const GOOGLE: ActionId[] = ['connect', 'sign-in-again', 'change-account', 'back-up']
 const RECOVERY: ActionId[] = ['set-up-recovery', 'check-file']
 
 export async function runPhoneAction(id: ActionId): Promise<void> {
   switch (id) {
+    case 'manage-backup': location.hash = '#/backup/manage'; return
+    case 'resume-sync': setSyncPaused(false); return
     case 'scan': return pairFrom()
     case 'connect': case 'sign-in-again': case 'back-up': return connectDrive()
     case 'change-account': return changeAccount()
@@ -23,5 +26,5 @@ export async function runPhoneAction(id: ActionId): Promise<void> {
 }
 
 // while its flow runs the key waits, and a Google key says which step it is in (as More's own keys do)
-export const actionBusy = (id: ActionId) => GOOGLE.includes(id) ? phone.connecting : RECOVERY.includes(id) ? rec.busy : phone.refreshing || (!!phone.sync && !phone.sync.end)
+export const actionBusy = (id: ActionId) => GOOGLE.includes(id) ? phone.connecting : (RECOVERY.includes(id) && (rec.busy || phone.connecting)) || phone.refreshing || (!!phone.sync && !phone.sync.end)
 export const actionLabel = (a: PhoneAction) => GOOGLE.includes(a.id) && phone.connecting ? `${phone.connectStep || 'Connecting'}…` : a.label

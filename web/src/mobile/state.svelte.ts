@@ -17,7 +17,8 @@ import { isApp, scanQr, secretsSaved } from './native'
 import { changes as changesDb, drafts, items as storedItems, kv, outbox, trimItems, wipe } from './store'
 import { network, SyncPaused, syncPaused, syncPauseReason } from './network.svelte'
 import { lastAccess, LICENSE_REQUIRED, LicenseRequired } from './mirror/license'
-import { reconnecting, RECONNECT_BUSY } from './mirror/gate'
+import { allowCloudWork, CloudCancelled, cloudCheckpoint, cloudRevision, cloudStopped, reconnecting, RECONNECT_BUSY, stopCloudWork } from './mirror/gate'
+import { backup } from './backup.svelte'
 import { ACCESS_STATES, phoneState, type PhoneFacts, type PhoneState } from './mirror/phone-state'
 import { pairedFacts, soloFacts } from './mirror/phone-facts'
 import { recoveryFact } from './mirror/recovery-fact'
@@ -255,12 +256,6 @@ async function checkAccount(): Promise<boolean> {
   return true
 }
 
-// the refresh after a sign-in: one already running (it started without the token) is waited for, 15 s at most
-async function refreshAgain() {
-  for (let i = 0; phone.refreshing && i < 150; i++) await new Promise(r => setTimeout(r, 100))
-  return await refresh()
-}
-
 // What Google Drive allows right now, for every box that depends on it (the Google Drive box and the
 // Obsidian vault box read the same answer): its lamp, and when it is not usable, why in words.
 export function driveStatus(): { lamp: DriveLamp; ok: boolean; why: string } {
@@ -305,12 +300,19 @@ export function phoneFacts(): PhoneFacts | null {
   if (m.solo) {
     void phone.recoveryAt; void phone.now
     return soloFacts({
+      pause: network.manualPause ? 'Sync paused by you.' : undefined,
+      backupTask: backup.task || backup.busy ? {
+        busy: backup.busy,
+        text: backup.busy ? backup.task?.paused ? 'Pausing backup task…' : backup.step : backup.task?.paused ? 'Backup task paused.' : 'Backup task waiting to continue.',
+        detail: backup.error || 'Local content and queued edits stay here. Open the saved task to continue.',
+      } : undefined,
       app: isApp, online: network.online, paused: syncPaused(), refreshing: phone.refreshing, started: phone.tried,
       token: !!token(m.pair), account: m.pair.g || '', round: phone.round && { ok: phone.round.ok, ago: fmtAgo(phone.round.at) },
       recovery: recoveryFact(m.pair), unsent: phone.pend.unsent,
     })
   }
   return pairedFacts({
+    pause: network.manualPause ? 'Sync paused by you.' : undefined,
     app: isApp, online: network.online, paused: syncPaused(), refreshing: phone.refreshing, tried: phone.tried,
     token: !!token(m.pair), refused: phone.signIn, account: m.pair.g || '', pcAccount: m.pair.e || '',
     mismatch: phone.account?.check === 'mismatch' ? phone.account.got : '', access: network.licenseKind,
@@ -329,12 +331,15 @@ export function phoneStatus(): PhoneState | null {
 // Drive.call 20 s for the account), and the button says which one it is in (phone.connectStep).
 export async function connectDrive(choose = false) {
   if (phone.connecting) return
-  if (reconnecting()) { phone.note = RECONNECT_BUSY; return }
+  if (backup.busy) { phone.note = 'Pause the backup task before changing Google sign-in.'; return }
   if (!paired) { phone.note = 'Pair with your PC first (Scan), or use Brainamon without a PC.'; return }
   phone.connecting = true
   phone.connectStep = 'Waiting for Google'
   phone.note = ''
   try {
+    await stopCloudWork()
+    allowCloudWork()
+    if (choose && !isApp) { disconnectDrive(paired); await secretsSaved(); phone.signIn = true; tokenMoved() }
     if (!(await signIn(paired, false, choose))) return      // the browser is on its way to Google
     tokenMoved()
     phone.connectStep = 'Checking the account'
@@ -342,22 +347,20 @@ export async function connectDrive(choose = false) {
     // the library read that follows shows itself (the Now row and the lamp): the button is free again
     phone.connecting = false; phone.connectStep = ''
     // the refusal an earlier read met is answered: More drops Connect now, not when the read after it lands
-    if (!ok) { phone.note = `Choose ${paired.e}, the account your PC uses.`; return }
+    if (!ok) { phone.note = `Choose ${paired.e}, the account your PC uses.`; sessionStorage.setItem('bp-note', phone.note); location.reload(); return }
     await secretsSaved()
     phone.signIn = false
     phone.note = `Google Drive connected: ${paired.g || 'signed in'}.`
   } catch (e) {
     phone.note = `Google Drive was not connected: ${(e as Error).message}`
+    sessionStorage.setItem('bp-note', phone.note)
+    location.reload()
     return
   } finally {
     phone.connecting = false; phone.connectStep = ''
   }
-  // Library access is a separate outcome: it cannot undo a successful Google connection.
-  try {
-    const why = await refreshAgain()
-    if (why) phone.note = phone.signIn ? why : `Google Drive connected: ${paired.g || 'signed in'}. Library refresh: ${why}`
-  }
-  catch (e) { phone.error = `Google Drive is connected. Library refresh needs a retry: ${(e as Error).message}` }
+  sessionStorage.setItem('bp-note', phone.note)
+  location.reload()
 }
 
 // Change account (Backup & phones, the card): Google's account chooser. The app keeps the current sign-in until Google
@@ -365,14 +368,13 @@ export async function connectDrive(choose = false) {
 // Google, so the token and `g` go first and the page reads the new account when it comes back.
 export async function changeAccount() {
   if (!paired) return
-  if (reconnecting()) { phone.note = RECONNECT_BUSY; return }
   phone.account = null
-  if (!isApp) { disconnectDrive(paired); phone.signIn = true; tokenMoved() }
   await connectDrive(true)
 }
 
 // the app: scan the pairing QR (or take a pasted link) and start again on the mirror
 export async function pairFrom(text?: string) {
+  if (backup.task || backup.busy) { phone.note = 'Finish the saved backup task, or disconnect backup before pairing with a PC.'; return }
   if (reconnecting()) { phone.note = RECONNECT_BUSY; return }
   try {
     const got = text ?? (await scanQr())
@@ -389,6 +391,7 @@ export async function pairFrom(text?: string) {
 
 // use the phone without a PC: a new library (no code), or the one a recovery code opens in Drive
 export async function useWithoutPc(code = '', recoveryAccount = '') {
+  if (backup.task || backup.busy) { phone.note = 'Finish the saved backup task, or disconnect backup before restoring.'; return false }
   if (reconnecting()) { phone.note = RECONNECT_BUSY; return false }
   if (code.trim() && (phone.refreshing || phone.connecting || (paired && token(paired) && !recoveryAccount))) {
     phone.note = 'Disconnect backup on Backup & phones and wait for current work to finish before restoring a phone backup.'
@@ -439,6 +442,7 @@ export async function refresh(step?: (key: SyncKey, note?: string) => void): Pro
   if (reconnecting()) return RECONNECT_BUSY
   if (mirrorSource && syncPaused()) { phone.loaded = true; phone.tried = true; return syncPauseReason() }
   phone.refreshing = true
+  const revision = cloudRevision()
   phone.error = ''
   // where it is: the steps, then the library parts (the first load, with nothing on screen yet, shows it too)
   const where = source.kind === 'mirror' ? 'Google Drive' : 'the PC'
@@ -450,6 +454,7 @@ export async function refresh(step?: (key: SyncKey, note?: string) => void): Pro
       step?.(key, note)
     }, (done, total) => at(`Fetching the library · part ${done} of ${total}`, PARTS_AT + PARTS_SPAN * done / Math.max(1, total)))
     await collectKeys()
+    cloudCheckpoint(revision)
     applyCats(cats)
     phone.rows = rows
     phone.loaded = true
@@ -466,6 +471,7 @@ export async function refresh(step?: (key: SyncKey, note?: string) => void): Pro
     fillLinks(); runPictures()
     return ''
   } catch (e) {
+    if (e instanceof CloudCancelled) return e.message
     if (e instanceof SyncPaused || (mirrorSource && syncPaused())) { phone.loaded = true; return syncPauseReason() }
     const msg = syncProblem(e)
     if (e instanceof PhoneTooOld) { phone.answered = phone.loaded = true; if (!phone.rows.length) phone.error = msg; return msg }
@@ -521,7 +527,8 @@ export function syncFill(run: SyncRun): number {
 
 // what the read of Google Drive (or of the PC, over USB) is doing now, null when nothing runs: Sync now
 // (its steps, with the changes sent first) or a refresh on its own (app start, Connect, back online)
-export function driveWork(): { text: string; pct: number } | null {
+export function driveWork(): { text: string; pct: number | null } | null {
+  if (backup.busy) return { text: backup.task?.paused ? 'Pausing backup task after the current request…' : backup.step, pct: null }
   const run = phone.sync && !phone.sync.end ? phone.sync : null
   if (!run && !phone.refreshing) return null
   const s = run?.steps.find(x => x.state === 'run')
@@ -531,7 +538,7 @@ export function driveWork(): { text: string; pct: number } | null {
 
 export async function syncNow() {
   if (phone.refreshing || (phone.sync && !phone.sync.end)) return
-  if (reconnecting()) return
+  if (reconnecting() || cloudStopped()) return
   if (mirrorSource && syncPaused()) return
   clearTimeout(syncT)
   const m = mirrorSource
@@ -549,13 +556,14 @@ export async function syncNow() {
       const queued = m.changes.counts(m.canvasSync).unsent
       try {
         const n = await m.flush()
+        if (queued && !n && !token(m.pair)) unsent = 'Connect Google Drive on Backup & phones to send the queued changes.'
         stepAt('send', n ? (solo ? `${n} backed up in Google Drive` : `${n} sent, the PC applies them when it runs`) : queued ? 'waiting for Google sign-in' : 'nothing to send')
       } catch (e) {
         unsent = syncProblem(e)
         syncEdit(s => ({ ...s, steps: s.steps.map(x => (x.key === 'send' ? { ...x, state: 'err', note: `kept for later: ${unsent}` } : x)) }))
       }
     }
-    why = await refresh(stepAt)
+    why = cloudStopped() ? 'Previous cloud work stopped. Local changes stay on this phone.' : await refresh(stepAt)
   }
   const n = phone.rows.length.toLocaleString('en')
   const done = `Up to date · ${n} items${m?.manifest?.published ? ` · the PC uploaded ${fmtAgo(m.manifest.published)}` : solo ? ' · on this phone' : ''}`

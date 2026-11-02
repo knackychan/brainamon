@@ -33,6 +33,7 @@ import { projectOf } from './diagnose'
 import { accountConfirmed } from './status'
 import { markResend } from './resend'
 import type { PhoneKit } from './recovery-envelope'
+import type { BackupTask } from './phone-backup'
 
 // x: development only, stand-in AI endpoints (server/dev_drive.py) instead of the providers' own
 // solo: no PC (plans/08-phone-solo.md): the phone made the key itself, its change files in Drive are
@@ -40,7 +41,7 @@ import type { PhoneKit } from './recovery-envelope'
 // g: the Google account the user confirmed on this phone (never in a pairing code)
 // recovery: the setup this phone made (solo), whether its recovery file was checked against Drive, and when the app saved
 // that file (ms; a browser download is never confirmed, so it is not recorded)
-export interface Pairing { v: number; k: string; c: string; e: string; f: string; l?: string; accessVersion?: 2; p?: string; ai: Record<string, string>; t?: string; tx?: number; d?: string; x?: Record<string, string>; at: number; solo?: boolean; g?: string; recovery?: { kit: PhoneKit; verified: boolean; saved?: number } }
+export interface Pairing { v: number; k: string; c: string; e: string; f: string; l?: string; accessVersion?: 2; p?: string; ai: Record<string, string>; t?: string; tx?: number; d?: string; x?: Record<string, string>; at: number; solo?: boolean; g?: string; backupTask?: BackupTask; recovery?: { kit: PhoneKit; verified: boolean; saved?: number } }
 interface Token { access: string; exp: number }
 
 const verified = new Map<string, string>()
@@ -91,6 +92,8 @@ function savePairing(p: Pairing) {
   // A settings form may hold a snapshot from before the first v2 Drive call.
   // Updating keys/account must not erase the same trusted pairing's watermark.
   const live = pairing()
+  if (live && (live.k !== p.k || live.l !== p.l)) throw new Error('The phone library changed. Reopen settings before saving.')
+  if (live?.backupTask) p.backupTask = live.backupTask
   if (live && live.k === p.k && live.l === p.l && live.accessVersion === 2) p.accessVersion = 2
   secrets.set(PAIR, JSON.stringify(p))
 }
@@ -256,6 +259,11 @@ export function setAiKeys(p: Pairing, ai: Record<string, string>) {
   p.ai = {}
   for (const [k, v] of Object.entries(ai)) if (v.trim()) p.ai[k] = v.trim()
   savePairing(p)
+}
+export function setAiKey(p: Pairing, provider: 'openai' | 'anthropic', value: string) {
+  const live = pairing()
+  if (!live || live.k !== p.k) throw new Error('The phone library changed. Reopen settings before saving a key.')
+  setAiKeys(p, { ...live.ai, [provider]: value })
 }
 // after a solo phone paired with a PC: every change goes again, under the PC's key (source/mirror.ts ready). The
 // marker stays until the journal is saved for it; then takeRequeue removes it.

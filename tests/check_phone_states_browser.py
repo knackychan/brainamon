@@ -101,6 +101,10 @@ class PhoneDrive:
     scene holds it (`hold`, a test on the request), refuses the token (`refuse`), cuts the network (`cut`) or names
     another account (`account`)."""
 
+    # Historical PH12/legacy-license/WebView cases model an older PC. V2 transport, watermark and
+    # anti-downgrade are covered by test_licensed_sync and test_phone_access; no signature is bypassed here.
+    legacy_only = set()
+
     def __init__(self, base):
         self.base, self.held, self.calls = base, [], []
         self.hold, self.refuse, self.cut, self.account = None, False, False, ''
@@ -132,6 +136,10 @@ class PhoneDrive:
         part = re.search(r"name contains '([^']*)'", parse_qs(url.query).get('q', [''])[0])
         if part and status == 200 and req.method == 'GET':          # the stand-in answers `name = 'X'` only
             data = json.dumps({'files': [f for f in json.loads(data)['files'] if part.group(1) in f['name']]}).encode()
+        if status == 200 and req.method == 'GET' and url.path == '/drive/v3/files':
+            body = json.loads(data)
+            body['files'] = [f for f in body['files'] if f.get('name') not in self.legacy_only]
+            data = json.dumps(body).encode()
         return route.fulfill(status=status, body=data, headers={'content-type': ctype, 'access-control-allow-origin': '*'})
 
     def release(self):
@@ -274,6 +282,7 @@ def fixture(root):
         phone page refuses one outside a development build and reaches the stand-in through Google's address."""
         code = api('POST', '/api/cloud/pair', {})['code']
         p = json.loads(base64.urlsafe_b64decode(code + '=' * (-len(code) % 4)))
+        PhoneDrive.legacy_only.add(mirror.MirrorKey(base64.urlsafe_b64decode(p['k'] + '=')).name(sync_license.ACCESS_LOGICAL))
         check.assertEqual(p.pop('d'), base)
         check.assertEqual((p['e'], p['c'], p.get('p')), (PC_ACCOUNT, WEB_CLIENT, '123456789012'))
         return encode(p)
@@ -693,12 +702,14 @@ def fixture(root):
                     renew(CONTROL)                                          # the PC's own record again
                     n = done[CONTROL]
                     api('DELETE', '/api/license')                           # Settings > License > Remove on the PC
+                    svc._control_wake.set()                                # receipts no longer alter the worker lifetime
                     wait_for(lambda: done[CONTROL] > n, 'the PC did not write its record without the license')
                     sync_now(p)
                     check.assertEqual(kind(p), 'inactive')
                     shows(p, 'PC license inactive')
                     n = done[CONTROL]
                     api('PUT', '/api/license', {'key': license_key})
+                    svc._control_wake.set()
                     wait_for(lambda: done[CONTROL] > n, 'the PC did not write its record with the license')
                     api('POST', '/api/cloud/connect')                       # removing the license stopped the backup
                     sync_now(p)
@@ -796,6 +807,20 @@ def fixture(root):
                     expect(recovery.get_by_text('Recovery file checked against your backup.', exact=True)).to_be_visible(timeout=30000)
                     shows(p, 'solo: backed up')
                     extra(p, '#/recover', 'recover-solo-ok', 'Recover a library… on a phone without a PC, backed up')
+                    p.evaluate("async () => (await import('/src/mobile/network.svelte.ts')).setSyncPaused(true)")
+                    shows(p, 'sync paused by user')
+                    p.evaluate("async () => (await import('/src/mobile/network.svelte.ts')).setSyncPaused(false)")
+                    settle(p)
+                    p.evaluate("""async () => {
+                      const {mirrorSource:m} = await import('/src/mobile/state.svelte.ts')
+                      const {MirrorKey} = await import('/src/mobile/mirror/crypto.ts')
+                      const k=await MirrorKey.fromText(m.pair.k), [name,blob]=await k.sealChange({format:1,device:'fixture',at:1,changes:[]},true)
+                      await m.drive.create(name,blob)
+                      const b=await import('/src/mobile/mirror/phone-backup.ts')
+                      await b.beginBackupTask('delete',await k.soloPrefix());await b.pauseBackupTask(true)
+                      ;(await import('/src/mobile/backup.svelte.ts')).backup.task=b.backupTask()
+                    }""")
+                    shows(p, 'solo: saved backup task')
                     ctx.close()
 
                     # ── 9. a phone browser with no pairing: More and Backup & phones (which falls back to More) ───────────

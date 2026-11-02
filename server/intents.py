@@ -15,8 +15,9 @@ from server.cloud_errors import Busy
 
 REMOVE, ENROLL, SWITCH, ONE_SHOT, RESET = 'remove_phones', 'enroll', 'switch_account', 'one_shot_publish', 'reset_backup'
 UPDATE = 'update_folder'        # S9: queued -> downloading -> downloaded (waits for Restart now) -> swap (at the start) -> claim
-KINDS = (REMOVE, ENROLL, SWITCH, ONE_SHOT, RESET, UPDATE)
-FIRST_STAGE = {REMOVE: 'requested', ENROLL: 'queued', SWITCH: 'queued', ONE_SHOT: 'queued', RESET: 'queued', UPDATE: 'queued'}
+DISCONNECT = 'disconnect'
+KINDS = (REMOVE, ENROLL, SWITCH, ONE_SHOT, RESET, UPDATE, DISCONNECT)
+FIRST_STAGE = {REMOVE: 'requested', ENROLL: 'queued', SWITCH: 'queued', ONE_SHOT: 'queued', RESET: 'queued', UPDATE: 'queued', DISCONNECT: 'queued'}
 WAITING = {UPDATE: ('downloaded', 'swap')}     # stages that wait for the user (Restart now), not for the sync thread
 BUSY_TEXT = {
     REMOVE: 'Phones are already being removed. Check the progress in Backup & phones.',
@@ -25,6 +26,7 @@ BUSY_TEXT = {
     ONE_SHOT: 'A backup is already waiting to run.',
     RESET: 'The backup is already being reset.',
     UPDATE: 'This folder is already being updated.',
+    DISCONNECT: 'Google Drive is already being disconnected.',
 }
 
 
@@ -69,7 +71,9 @@ class Intents:
 
     def all(self) -> list:
         with self._lock:
-            return self._read()
+            return sorted(self._read(), key=lambda i: (0 if i['kind'] == DISCONNECT else
+                          1 if i['kind'] in (RESET, SWITCH) and i['stage'] == 'queued' else 2,
+                          -i['created'] if i['kind'] in (RESET, SWITCH) and i['stage'] == 'queued' else i['created']))
 
     def find(self, kind: str):
         return next((i for i in self.all() if i['kind'] == kind), None)

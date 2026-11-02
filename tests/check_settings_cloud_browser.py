@@ -90,7 +90,7 @@ STATES = [
     ('reset-small-progress', dict(task=dict(RESETTING, done=10, total=1000, bytes_done=1048576, bytes_total=1000 * 1048576), state='publishing'), dict(REC_OK),
      ['Uploading replacement backup: <1% · 10 of 1,000 files (1 MB of 1000 MB).'], ['Done'], []),
     ('reset-deleting', dict(task=dict(RESETTING, stage='cleanup', step=3, done=4, total=10, steps=[dict(label=x['label'], state='active' if n == 2 else 'done') for n, x in enumerate(RESETTING['steps'])])), dict(REC_OK),
-     ['Deleting the old backup: 4 of 10 files.', 'Backing up again · done', 'Deleting the old backup · in progress'], ['Done'], ['Uploading replacement backup:']),
+     ['Deleting the old backup: 4 of 10 files confirmed.', 'Backing up again · done', 'Deleting the old backup · in progress'], ['Done'], ['Uploading replacement backup:']),
     ('t5-no-recovery', dict(), dict(configured=False),
      ['Backed up at 10:00, but if this PC is lost nothing can unlock the backup.', 'A recovery passphrase unlocks it on another PC.',
       'If this PC is lost, your passphrase or a recovery file unlocks the backup on another PC.'], ['Create recovery passphrase'], ['Choose a recovery passphrase']),

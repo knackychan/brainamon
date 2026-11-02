@@ -6,6 +6,7 @@ The development build and synthetic issuer trust exist only below the temporary 
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -146,7 +147,7 @@ def fixture(root):
                     page.locator('#m-app').wait_for()
                     page.evaluate("location.hash='/backup'")
                     try:
-                        expect(page.locator('#m-library').get_by_text('1 items · the PC uploaded', exact=False)).to_be_visible(timeout=15000)
+                        expect(page.locator('#m-library').get_by_text(re.compile(r'1 items.*[0-9]+ files.*the PC uploaded'))).to_be_visible(timeout=15000)
                     except AssertionError:
                         print(page.locator('body').inner_text(), flush=True)
                         raise
@@ -193,7 +194,7 @@ def fixture(root):
                     page.evaluate("location.hash='/more'")
                     page.get_by_role('button', name='Sync now', exact=True).first.click()
                     page.evaluate("location.hash='/backup'")
-                    expect(page.locator('#m-library').get_by_text('2 items · the PC uploaded', exact=False)).to_be_visible(timeout=15000)
+                    expect(page.locator('#m-library').get_by_text(re.compile(r'2 items.*[0-9]+ files.*the PC uploaded'))).to_be_visible(timeout=15000)
                     page.wait_for_function("""async () => {
                       const db = await new Promise(ok => { const r=indexedDB.open('brainamon-phone',2);r.onsuccess=()=>ok(r.result) })
                       const rows = await new Promise(ok => { const r=db.transaction('changes','readonly').objectStore('changes').getAll();r.onsuccess=()=>ok(r.result) })

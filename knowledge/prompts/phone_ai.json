@@ -1,0 +1,45 @@
+{
+  "ask": {
+    "default": "openai",
+    "models": {
+      "anthropic": [
+        {
+          "id": "claude-sonnet-4-6",
+          "label": "Sonnet"
+        },
+        {
+          "id": "claude-haiku-4-5",
+          "label": "Haiku"
+        },
+        {
+          "id": "claude-sonnet-5-5",
+          "label": "Sonnet 5.5"
+        }
+      ],
+      "openai": [
+        {
+          "id": "gpt-6-luna",
+          "label": "GPT-6 Luna"
+        },
+        {
+          "id": "gpt-5.4-mini",
+          "label": "GPT-5.4 mini"
+        }
+      ]
+    }
+  },
+  "synth": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-6"
+  },
+  "embedding_model": "text-embedding-3-small",
+  "transcription_model": "whisper-1",
+  "ask_max_tokens": 4000,
+  "cloud_min_tokens": 8000,
+  "agent_max_tokens": 16000,
+  "agent_max_rounds": 8,
+  "retired": [
+    "gpt-4.1",
+    "gpt-4.1-mini"
+  ]
+}

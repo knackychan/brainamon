@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Brainamon</title>
+    <!-- Logo files: projects/brainamon-logo/build.py (from design/logo). The .ico carries pixel-hinted 16 and 32. -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/brand/icon.svg" type="image/svg+xml" />
+    <!-- Order matters (design/web-look/v5/README.md "Rules"): page CSS, then the locked card CSS,
+         then the page-level card theme overrides. The card files are served from
+         design/card-designs/ by the backend at /cards and are never edited. -->
+    <!-- The Library rows (2 MB) start downloading while the scripts below load and compile;
+         lib/library.svelte.ts prefetchLibrary() picks up these responses (same URL, mode, credentials). -->
+    <link rel="stylesheet" href="/styles/v6-page.css" />
+    <link rel="stylesheet" href="/cards/cards.css" />
+    <link rel="stylesheet" href="/cards/full-art-v2/fa2.css" />
+    <link rel="stylesheet" href="/styles/v6-cards-theme.css" />
+    <!-- The card engine reads THUMBS[item.key] when it builds a card; item.key is the item id. -->
+    <script>window.THUMBS = new Proxy({}, { get: function (_, k) { return '/thumb/' + String(k) } });</script>
+    <script src="/cards/engine.js"></script>
+    <script src="/cards/full-art-v2/fa2.js"></script>
+  </head>
+  <body>
+    <!-- The desktop startup bar, carried over from the window's loading page (?boot=, server/desktop.py) -->
+    <script src="/boot.js"></script>
+    <!-- main.ts mounts the app straight into <body>: the V6 CSS lays out body's children -->
+    <script type="module" src="/src/auth-main.ts"></script>
+  </body>
+</html>

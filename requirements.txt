@@ -1,0 +1,45 @@
+# Brainamon — Python dependencies (running from source)
+# Install with: pip install -r requirements.txt
+# Exact source pins. Change them deliberately,
+# run the tests, commit. The installed build pins its own leaner set: packaging/requirements-build.txt.
+
+# Image processing (thumbnail resize, format conversion)
+Pillow==13.0.0
+# semantic search (library/search.py)
+numpy==2.4.6
+
+# Claude API (AI describe + auto-categorize)
+anthropic==0.97.0
+
+# Video download — yt-dlp integration is active (invoked as a subprocess via PATH).
+# Installing it here also makes the `yt-dlp` executable available on PATH.
+yt-dlp==2026.7.4
+requests==2.33.1
+
+# Video analysis — transcription (OpenAI Whisper API) and AI report.
+openai==2.42.0
+playwright==1.61.0
+
+# OpenCV remains a source dependency; it is excluded from the frozen payload.
+opencv-python==4.13.0.92
+
+# External tools required on PATH (not pip-installable here): ffmpeg + ffprobe.
+
+# V6 desktop UI (projects/desktop-cmos): local web server on 127.0.0.1 + pywebview window.
+fastapi==0.143.0
+uvicorn[standard]==0.54.0
+pywebview==6.2.1
+# notification-area icon for Minimize to tray (desktop/tray.py, imported on the first minimize)
+pystray==0.19.5
+# Upload to Google Drive: the mirror is sealed with AES-256-GCM (library/mirror.py)
+cryptography==47.0.0
+# the phone's pairing QR (Settings > Backup & phones, server/routes/cloud.py); pure Python
+segno==1.6.6
+# local MCP server for Claude Code (mcp_local/); also bundled in installed builds
+mcp==1.28.1
+# PDF text for Wiskit attachments and filing (knowledge/attachments.py pdf_text); pure Python
+pypdf==6.21.2
+# IANA timezone data for the weekly review's ZoneInfo lookups (no host zoneinfo dependency)
+tzdata==2026.2
+# tests for the server (fastapi.testclient needs httpx)
+httpx==0.28.1

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: the development Drive and AI stand-ins (py -m server.dev_drive) over
+     `adb reverse tcp:18765 tcp:18765` and `adb reverse tcp:18766 tcp:18766` are plain http on the
+     phone's own loopback. Release builds keep Android's default: no cleartext anywhere. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

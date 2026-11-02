@@ -1,0 +1,675 @@
+/* Additions on top of the generated V6 styles (public/styles/). Never reuse the card class
+   names (.win .hd .nm .pn .st .ft .ds .ab .art .bk .sub ...) for page chrome. */
+
+/* Fonts are bundled (fontsource) so the app works offline. The variable Archivo registers as
+   'Archivo Variable'; the V6 and card CSS ask for 'Archivo' through --display. */
+:root { --display: 'Archivo Variable', 'Archivo', 'Helvetica Neue', Arial, sans-serif }
+
+/* Shared short-action popup: keep the source visible and the next click nearby. */
+.cw-scrim.action-scrim{background:transparent;backdrop-filter:none}
+.cw.action-popup{left:50%;top:50%;transform:translate(-50%,-50%);width:min(var(--w,340px),calc(100vw - 16px));height:auto;max-height:calc(100dvh - 16px);border:2.5px solid var(--rw-ink);border-radius:11px;box-shadow:4px 4px 0 var(--rw-sh)}
+.cw.action-popup.anchored{transform:none}
+.action-popup-head{flex:none;padding:12px 12px 8px}
+.action-popup-head h2{margin:0;font:600 12px/1.4 var(--mono);overflow-wrap:anywhere}
+.action-popup .cw-body{padding:0 12px 12px}
+.action-popup .about{gap:8px;font-size:11.5px;line-height:1.55}
+.action-popup .cw-foot{padding:8px 10px;border-top-width:1px;border-radius:0 0 8px 8px}
+.action-popup .cw-foot .wkey{height:30px}
+.action-popup .fg{grid-template-columns:minmax(0,1fr);gap:6px}
+.action-popup .fg>span:empty{display:none}
+
+/* A command that is not built yet in V6 (the Qt app still has it). */
+.soon-note { font: 500 12px/1.4 var(--mono); color: var(--muted); padding: 12px 14px }
+
+/* List rows: V6 places the thumbnail and the title as two grid tracks, but its markup wraps them
+   in one .lr-open button. Give the button the two tracks itself. */
+.cell.lr{grid-template-columns:24px minmax(0,1fr) auto auto auto auto}
+.cell.lr .lr-open{display:grid;grid-template-columns:62px minmax(0,1fr);gap:12px;align-items:center;justify-self:stretch;justify-content:start;width:100%;min-width:0;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.cell.lr .lr-open:focus-visible{outline:2px solid var(--gold);outline-offset:2px;border-radius:6px}
+@media (max-width:860px){.cell.lr{grid-template-columns:24px minmax(0,1fr) auto auto}.cell.lr .lr-open{grid-template-columns:52px minmax(0,1fr)}}
+
+/* Canvas (plan 09). Images keep their natural aspect, as the Qt canvas draws them, so canvases made
+   there look the same here; V6 crops them to 9:14. Notes are edited in a textarea in place. */
+#cv-board{cursor:default}
+#cv-board.pan-ready,#cv-board.pan-ready .ce,#cv-board.pan-ready .ce-text,#cv-board.pan-ready .lbl{cursor:grab}
+#cv-board.pan,#cv-board.pan .ce,#cv-board.pan .ce-text,#cv-board.pan .lbl{cursor:grabbing}
+.cv-marquee{position:absolute;z-index:2;pointer-events:none;border:1px solid var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.cv-st{user-select:none;-webkit-user-select:none}
+.ce.img img{aspect-ratio:auto;height:auto;min-height:40px;background:rgba(0,0,0,.08)}
+.ce.note.editing{cursor:text;outline:2px dashed var(--accent);outline-offset:2px}
+.ce-ed{display:block;width:100%;min-height:5.8em;field-sizing:content;margin:0;padding:0;border:0;background:none;color:inherit;font:inherit;resize:none;outline:none}
+
+/* Library grid cards never turn over (only the booster flips a card), so their back face is never
+   seen: it is not laid out or painted (PLAN.md performance budget). */
+#grid .slot>.card>.back{display:none}
+
+/* Item window (ItemWin.svelte): one scrolling page. The header (title, No., type, source, saved date,
+   section jumps); a sticky left side holding the big card and the grouped actions (Open, Process,
+   Media, To canvas, Wiskit); the main column: metadata, Description beside the AI description, My
+   notes, then the folding Report, Frames and Related sections. Labels sit above their field; text
+   boxes grow with their text up to a cap, then scroll. Narrower: the side drops above the main column. */
+.itv-err{margin:0}
+.itv{container:itv/inline-size;display:grid;gap:20px}
+.itv-card{container:box/inline-size;min-width:0}
+.itf{display:grid;gap:8px;min-width:0;align-content:start}
+.itv .fl{letter-spacing:.05em}
+.itv-ro{margin-left:8px;font:500 10px/1 var(--mono);font-style:normal;letter-spacing:.08em;text-transform:uppercase;opacity:.75}
+.itv input.inp,.itv select.inp{height:34px}
+.itv select.inp{background-position:calc(100% - 15px) 14px,calc(100% - 10px) 14px}
+.itv textarea.inp{field-sizing:content;padding:10px 12px;line-height:1.65}
+.itv textarea.grow{min-height:220px;max-height:min(50vh,520px)}
+.itv textarea.mine{min-height:110px;max-height:40vh}
+.itv .aibox{min-height:220px;max-height:min(50vh,520px);padding:12px 14px;resize:vertical;white-space:pre-line;line-height:1.65}
+.itv-grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px 20px}
+.itv-grid4>.itf-wide{grid-column:span 2}
+@container box (max-width:760px){.itv-grid4{grid-template-columns:repeat(2,minmax(0,1fr))}.itv-grid4>.itf-wide{grid-column:1/-1}}
+@container box (max-width:400px){.itv-grid4{grid-template-columns:minmax(0,1fr)}}
+.itv-card{display:grid;gap:16px;align-content:start;padding:16px 18px 18px;border:2px solid var(--rw-ink);border-radius:12px;background:var(--rw);box-shadow:3px 3px 0 var(--rw-sh)}
+
+.itw-head{display:flex;flex-wrap:wrap;align-items:end;gap:10px 20px;padding-bottom:14px;border-bottom:2px dashed var(--lcd-line)}
+.itw-head>div{flex:1 1 320px;min-width:0;display:grid;gap:7px}
+.itw-head h2{margin:0;font:800 22px/1.15 var(--display);font-stretch:110%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.itw-nav{display:flex;flex-wrap:wrap;gap:6px}
+
+/* the side and the main column */
+.itl{display:grid;grid-template-columns:340px minmax(0,1fr);gap:20px;align-items:start}
+.itv-side{position:sticky;top:0;display:grid;gap:14px;max-height:calc(100vh - 150px);overflow:auto;scrollbar-width:thin}
+.itv-side>.c-item{justify-content:center;padding:18px 16px 14px}
+.itv-side .itw-card .slot{width:300px}
+.itv-acts{display:grid;gap:12px;padding:12px 14px 14px;border:2px solid var(--rw-ink);border-radius:10px;background:var(--rw-2)}
+.ag{display:grid;gap:7px}
+.ag h4{margin:0;font:400 11px/1 var(--pixel);letter-spacing:.06em;color:var(--rw-dim)}
+.ag>div{display:flex;flex-wrap:wrap;gap:6px}
+.ag .wkey{height:30px;padding:0 10px}
+.ag .wkey.pri{flex:1 0 100%;height:36px;font-size:12px}
+.itv-main{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;min-width:0}
+.itx{grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+
+/* the folding sections below */
+.itv-det{min-width:0;border:2px solid var(--rw-ink);border-radius:10px;background:var(--rw-2)}
+.itv-det>summary{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;list-style:none;font:var(--type-summary);letter-spacing:.12em;text-transform:uppercase}
+.itv-det>summary::-webkit-details-marker{display:none}
+.itv-det>summary::before{content:"▸";color:var(--accent)}
+.itv-det[open]>summary::before{content:"▾"}
+.itv-det>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-4px;border-radius:8px}
+.itv-det>summary small{font-weight:500;letter-spacing:.06em;text-transform:none;color:var(--rw-dim)}
+.itv-det>:not(summary){margin:4px 14px 16px}
+.itv-sec{scroll-margin-top:4px}
+.itv-copy{margin-left:auto;width:26px;padding:0}
+.itv .frames.strip{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:116px;overflow-x:auto;padding-bottom:6px;scrollbar-width:thin}
+.itv .rel{grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}
+
+@container itv (max-width:900px){
+  .itl{grid-template-columns:minmax(0,1fr)}
+  .itv-side{position:static;max-height:none;overflow:visible}
+  .itv-side .itw-card .slot{width:min(300px,70vw)}
+  .itx{grid-template-columns:minmax(0,1fr)}
+}
+
+/* the item window title bar at phone width: the centred title ran under the ITM code */
+@media (max-width:640px){.itw-win .wtitle{position:static;transform:none;flex:1 1 auto;min-width:0;max-width:none}.itw-win .wcode,.itw-win .wbar .wkey.x{flex:none;white-space:nowrap}}
+/* the item window takes the full height of the screen */
+@media (min-width:641px){.cw.itw-win{height:calc(100vh - 32px);max-height:none}}
+/* A state marker (components/ui/Status.svelte): a green check when done, a ring when still to do, an
+   orange ring for the next step, a dashed ring when optional; a step number sits inside when given.
+   Never red. The words beside it are the state; an error is a Hint tone="error". */
+.status-dot{position:relative;flex:none;display:inline-grid;place-items:center;box-sizing:border-box;width:16px;height:16px;border-radius:50%;border:2px solid var(--rw-dim);color:var(--rw-dim);font:700 9px/1 var(--mono);font-style:normal}
+.status-dot.on{border-color:var(--ok);background:var(--ok)}
+.status-dot.on::after{content:"";width:3px;height:7px;margin-top:-2px;border:solid #0b2016;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.status-dot.next{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)}
+.status-dot.opt{border-style:dashed;border-width:1.5px}
+.status-line{display:flex;align-items:flex-start;gap:8px;min-width:0;margin:0;font:500 11.5px/1.6 var(--mono);color:var(--rw-ink)}
+.status-line>.status-dot{margin-top:1px}
+.status-line>span{min-width:0;overflow-wrap:anywhere}
+/* work that cannot be counted (components/ui/Progress.svelte): one sweep across the whole bar */
+.prog.busy{grid-template-columns:minmax(0,1fr)}
+@media (prefers-reduced-motion:reduce){.cw .prog i.lead{animation:none;background-size:100% 100%}}
+/* the shared Settings rows (ImportSetup, ToolsSettings, SiteSessions) also show in Scrapers and Help: there,
+   rows with a state read from the top, with a small gap between what stacks in a row (Settings has its own) */
+.fg:not(.set-win *):has(>div>.status-line,>.set-wide){align-items:start}
+.fg:not(.set-win *):has(>div>.status-line,>.set-wide)>.fl{align-self:start}
+.fg:not(.set-win *):has(>div>.status-line,>.set-wide)>.fl:has(+.inp,+div>.frow:first-child){padding-top:6px}
+.fg:not(.set-win *):has(>div>.status-line,>.set-wide)>div>*+*{margin-top:6px}
+/* a grid row that spans both columns, and a command to copy (Settings > Tools, also in Help) */
+.fg>.set-wide{grid-column:1/-1}
+.set-cmd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;user-select:all}
+
+/* Settings keeps the CM-OS frame; only the active section scrolls. The left column holds Find a setting
+   and the tabs in the tour's order (Wiskit, Sync, Library, Application); narrow, two fields replace it. */
+.cw.set-win{height:min(780px,calc(100dvh - 56px))}
+.set-layout{flex:1;min-height:0;display:grid;grid-template-columns:172px minmax(0,1fr)}
+.set-nav{overflow:auto;padding:14px 8px;background:var(--rw-2);border-right:1px solid var(--rw-ink);scrollbar-width:thin;overscroll-behavior:contain}
+.set-find{margin-bottom:18px}
+.set-find .fl,.set-group{display:block;margin:18px 8px 6px;font:600 10px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:color-mix(in srgb,var(--rw-dim) 80%,var(--rw-ink))}
+.set-find .fl,.set-group:first-child{margin-top:0}
+.set-find .inp{height:30px;padding:0 8px;font-size:11.5px}
+.set-found{margin:-8px 0 0;padding:0;list-style:none}
+.set-found .hint{padding:6px 8px}
+.set-tab{display:block;width:100%;min-height:34px;padding:8px;border:1.5px solid transparent;border-radius:6px;background:transparent;color:var(--rw-ink);text-align:left;font:500 11.5px/1.4 var(--mono);cursor:pointer}
+.set-tab:hover{background:var(--rw)}
+.set-tab[aria-selected="true"]{background:var(--rw);border-color:var(--rw-ink);font-weight:600;box-shadow:2px 2px 0 var(--rw-ink)}
+.set-tab.dirty::after{content:"";display:inline-block;width:6px;height:6px;margin-left:7px;border-radius:50%;background:var(--accent);vertical-align:2px}
+.set-hit small{display:block;margin-top:1px;font:500 10px/1.4 var(--mono);color:color-mix(in srgb,var(--rw-dim) 80%,var(--rw-ink))}
+.set-content{display:flex;flex-direction:column;min-width:0;min-height:0}
+.set-picker{display:none;padding:12px 18px;border-bottom:1px solid var(--rw-ink);background:var(--rw-2)}
+.set-picker .fl{display:block;margin-bottom:6px;color:var(--rw-ink);font:500 11.5px/1.5 var(--mono)}
+.set-win .cw-body{padding:20px;overscroll-behavior:contain;scrollbar-gutter:stable;scroll-behavior:auto}
+.set-heading{margin-bottom:22px}
+.set-heading h2{margin:0 0 6px;font:var(--type-heading);letter-spacing:-.02em;text-wrap:balance}
+.set-win .hint{max-width:72ch;font-size:11.5px;line-height:1.6;overflow-wrap:anywhere;color:color-mix(in srgb,var(--rw-dim) 80%,var(--rw-ink))}
+.set-win .hint a,.set-jump a{color:var(--rw-ink);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--rw-dim) 70%,transparent);text-underline-offset:3px}
+.set-win .hint a:hover,.set-jump a:hover{text-decoration-color:currentColor;text-decoration-thickness:2px}
+.set-win code{padding:0 3px;border-radius:3px;background:var(--rw-2);color:var(--rw-ink);font:inherit}
+.set-save-note{display:block;margin-top:10px;font:500 10.5px/1.5 var(--mono);color:color-mix(in srgb,var(--rw-dim) 80%,var(--rw-ink))}
+.set-jump{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:12px;font:500 11px/1.5 var(--mono)}
+/* one grid in every tab: the label column, then the control with its state and one hint under it */
+.set-win .fg{grid-template-columns:136px minmax(0,1fr);gap:12px 16px;align-items:start}
+.set-win .fg>.fl{align-self:start;padding-top:7px;font:500 11.5px/1.5 var(--mono);color:var(--rw-ink);letter-spacing:0;overflow-wrap:anywhere}
+@media (min-width:601px){
+  .set-win .fg>.fl:has(+ :is(.hint,.err,.status-line),+ div>:is(.hint,.err,.status-line,.chk):first-child){padding-top:0}
+  .set-win .fg>.fl:has(+ div>.frow:first-child>input[type="checkbox"]:only-child){padding-top:2px}
+}
+.set-win .fg>div,.set-win .frow{min-width:0}
+.set-win .frow{min-height:30px}
+/* a switch alone on its row sits on the label's line, its hint close under it */
+.set-win .frow:has(>input[type="checkbox"]:only-child){min-height:22px}
+.set-win .fg>div>*+*,.set-win .set-pair>div>*+*,.set-win .fg>div>[role="alert"]>*+*{margin-top:6px}
+.set-win .fg>div>.set-more{margin-top:8px}
+.set-win :is([role="tabpanel"],.set-anchor)>:is(.hint,.err,.status-line,.fg,.frow,.set-more)+:is(.hint,.err,.status-line,.fg,.frow,.set-more){margin-top:12px}
+/* section titles: more space above than below, the same in and out of the grid */
+.set-win .fsec{margin:28px 0 12px;line-height:1.4;letter-spacing:.06em;scroll-margin-top:8px}
+.set-win .fg>.fsec{grid-column:1/-1;margin:16px 0 0}
+.set-win .fsec:first-child{margin-top:0}
+.set-anchor{margin-top:28px;scroll-margin-top:8px}
+.set-win .frow>.inp{flex:1 1 150px}
+.set-win input[type="checkbox"]{flex:none;width:16px;height:16px;margin:3px 0;accent-color:var(--accent);cursor:pointer}
+.set-win .chk{font-size:11.5px;line-height:1.5;color:var(--rw-ink)}
+.set-win .chk input[type="checkbox"]{margin:1px 0 0}
+.set-win .chk:has(>input:disabled){color:var(--rw-dim);cursor:default}
+.set-win label{cursor:pointer}
+.set-win .wkey{min-height:30px;height:auto;padding:5px 9px;white-space:normal;line-height:1.3}
+.set-win .wbar .wkey{min-height:0}
+.set-win .err{margin:0;line-height:1.6;color:color-mix(in srgb,var(--danger) 65%,var(--rw-ink))}
+.set-win .prog{max-width:360px}
+.set-more{margin-top:10px;font:var(--type-label)}
+.set-more summary{width:fit-content;max-width:100%;min-height:28px;padding:5px 0;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.set-more summary:hover{color:var(--rw-ink);text-decoration-thickness:2px}
+.set-more[open]>:not(summary){display:block;margin-top:6px}
+.set-win .set-notes{margin:0;max-height:240px;overflow:auto;white-space:pre-wrap}
+/* JobLive.svelte: a job's live panel and its activity log (Settings > Knowledge map) */
+.job-live{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.job-live-hd{margin:0;display:flex;justify-content:space-between;gap:8px;font:600 12px var(--mono)}
+.job-live-hd b{color:var(--accent);letter-spacing:.06em}
+.job-live-hd b.held{color:var(--muted)}
+.job-log{max-height:220px;overflow:auto;margin-top:6px;padding:8px 10px;background:var(--term);border:1px solid var(--cable);border-radius:6px;font:400 11.5px/1.7 var(--mono)}
+.job-log p{margin:0;display:grid;grid-template-columns:64px minmax(0,1fr) minmax(0,1.6fr) 64px;gap:10px}
+.job-log p span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.job-log time,.job-log em{color:var(--muted);font-style:normal}
+.job-log em{text-align:right}
+.job-log p.bad span:nth-child(3),.job-log p.bad em{color:var(--danger)}
+.set-pair{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}
+.set-pair>div{flex:1 1 220px;min-width:0}
+.set-qr{flex:none;width:280px;max-width:100%;padding:6px;background:var(--paper);border-radius:6px;line-height:0}
+.set-qr svg{display:block;width:100%;height:auto}
+.set-win .cw-foot{gap:8px}
+.set-win .set-foot-note{font-size:10.5px;line-height:1.5;font-weight:600;color:var(--rw-ink)}
+.set-win .set-foot-err{flex:1 1 100%;order:9}
+.set-win :is(button,input,select,textarea,summary,a,[role="tabpanel"]):focus-visible,.set-win :is(.fsec,.set-anchor,.set-heading>h2):focus-visible{outline:2px solid var(--rw-ink);outline-offset:3px}
+.set-win [role="tabpanel"]:focus-visible{outline-offset:5px}
+.set-win .inp::placeholder{color:color-mix(in srgb,var(--rw-dim) 80%,var(--rw-ink));opacity:1}
+.set-win .inp:disabled{color:var(--rw-dim);cursor:default}
+.set-win .wkey:disabled{background:var(--rw-2);color:var(--rw-ink)}
+/* Settings pass (projects/ui-building-blocks plan 06), Fred's approved choices. */
+.set-win .wkey{background:#fff;color:#000;border-color:#000;font:600 12px/1.3 var(--mono)}
+.set-win .wkey:hover{background:#ececec}
+/* the one primary per state is filled (the calm Settings mockup), so it stands out from the white keys in both themes */
+/* the main action (Save, Done, Continue) is green in both themes, so it outweighs Discard or Cancel next to it */
+.set-win .wkey.pri,.set-win .wkey.pri:hover{background:var(--ok);color:#0b2016;border-color:#000}
+.set-win .wkey.pri:hover{background:color-mix(in srgb,var(--ok) 85%,#000)}
+.set-win .wkey.danger,.set-win .wkey.danger:hover{background:var(--danger);color:#fff;border-color:var(--danger)}
+.set-win .wkey:is(:disabled,[aria-disabled="true"]),.set-win .wkey:is(:disabled,[aria-disabled="true"]):hover{background:#fff;color:#000;border-color:#000;border-style:dashed;opacity:.5}
+.set-win .wkey.danger:is(:disabled,[aria-disabled="true"]){background:var(--danger);color:#fff;border-color:var(--danger)}
+.set-win .fl,.set-win .fg>.fl,.set-win .frow label{font:500 12px/1.5 var(--mono);color:var(--rw-ink);letter-spacing:0}
+.set-win .inp{font:500 12px/1.5 var(--mono)}
+.set-win .chk{font-size:12px}
+.set-win code{font:500 11.5px/1.4 var(--mono)}
+.set-win a{color:inherit;text-decoration:underline;text-underline-offset:3px}
+.set-win .fsec{font:600 11px/1.4 var(--mono);letter-spacing:.08em}
+.set-win .fg{grid-template-columns:160px minmax(0,1fr)}
+.set-win .hint{max-width:70ch;color:color-mix(in srgb,var(--rw-dim) 45%,var(--rw-ink))}
+.set-win input[type="checkbox"]{appearance:none;position:relative;box-sizing:border-box;width:36px;height:22px;border:2px solid var(--rw-ink);border-radius:999px;background:var(--rw-2);box-shadow:inset 0 1px 2px #0002;transition:background 160ms ease}
+.set-win input[type="checkbox"]::before{content:"";position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:var(--rw-ink);box-shadow:0 1px 2px #0003;transition:transform 160ms cubic-bezier(.2,.8,.2,1)}
+.set-win input[type="checkbox"]:checked{background:var(--accent)}
+.set-win input[type="checkbox"]:checked::before{background:#fff;transform:translateX(14px)}
+.set-win input[type="checkbox"]:disabled{opacity:.45;cursor:default}
+@media (prefers-reduced-motion:reduce){.set-win input[type="checkbox"],.set-win input[type="checkbox"]::before{transition:none}}
+@media (forced-colors:active){.set-win input[type="checkbox"]{forced-color-adjust:none;background:Canvas;border-color:ButtonText}.set-win input[type="checkbox"]::before{background:ButtonText}.set-win input[type="checkbox"]:checked{background:Highlight}.set-win input[type="checkbox"]:checked::before{background:HighlightText}}
+@media (max-width:600px){
+  .cw.set-win{height:100dvh;max-height:100dvh}
+  .set-layout{grid-template-columns:minmax(0,1fr)}
+  .set-nav{display:none}
+  .set-picker{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .set-picker .set-found{grid-column:1/-1;margin:0}
+  .set-win .cw-body{padding:16px}
+  .set-win .fg{grid-template-columns:minmax(0,1fr);gap:8px}
+  .set-win .fg>.fl{padding-top:8px}
+  .set-win .fg>span:empty{display:none}
+  .set-win .set-foot-note{flex:1 0 100%}
+}
+@media (max-width:420px){.set-picker{grid-template-columns:minmax(0,1fr)}}
+@media (pointer:coarse){.set-win :is(.wkey,.set-tab,.inp,.chk,.set-more summary),.menubar :is(.mbtn,.mlogo),.mnu .mi{min-height:44px}}
+
+/* Menu rows share a shortcut width; long labels wrap instead of disappearing. */
+.mnu{min-width:min(300px,calc(100vw - 20px));overscroll-behavior:contain}
+.mnu .mi{min-height:32px;line-height:1.4;white-space:normal}
+.mnu .mi>span{overflow:visible;overflow-wrap:anywhere}
+.mnu .mi kbd{min-width:54px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mnu .mi-state{display:block;font:400 9.5px/1.4 var(--mono)}
+.mnu .mi[aria-disabled="true"]{opacity:1;color:var(--muted)}
+.mnu .mhd{font:600 10px/1.4 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding-top:12px}
+.mnu .mi:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+
+/* Running jobs. The card of an item being processed: the drone tag (.drn-tag) names the job and a
+   scan bar runs across the card's bottom edge (the V6 search field's dscan keyframes). Only working
+   cards get the bar, at most 40 at once (lib.scanIds); no idle animation. */
+.job-scan{position:absolute;left:50%;bottom:4px;z-index:2;width:var(--card);height:3px;margin-left:calc(var(--card) / -2);border-radius:2px;pointer-events:none;contain:strict}
+/* the same sweep runs in the front segment of the rail's Jobs bar (RailJobs.svelte), on its unlit track */
+.job-scan,.prog i.lead{background:linear-gradient(90deg,transparent,var(--accent),transparent) 0 0/40% 100% no-repeat;animation:dscan .8s linear infinite}
+.prog i.lead{background-color:var(--seg-off)}
+.motion-off .job-scan,.motion-off .prog i.lead{animation:none;background-size:100% 100%}
+
+/* Card focus while a job runs and when it ends. Bigger corner brackets (22px arms, 3px thick) with a
+   soft halo and tint: orange and breathing while working, green with a pop when done (held 2.8 s,
+   library-commands.ts), red when it failed. The tag above the card names the job, then DONE / FAILED.
+   The grid only; list rows keep the small V6 brackets. */
+.cell:not(.lr)::before{--arm:22px;--w:3px;border-radius:10px;
+  background:
+    linear-gradient(var(--k),var(--k)) 0 0/var(--arm) var(--w) no-repeat,
+    linear-gradient(var(--k),var(--k)) 0 0/var(--w) var(--arm) no-repeat,
+    linear-gradient(var(--k),var(--k)) 100% 100%/var(--arm) var(--w) no-repeat,
+    linear-gradient(var(--k),var(--k)) 100% 100%/var(--w) var(--arm) no-repeat,
+    linear-gradient(var(--k),var(--k)) 100% 0/var(--arm) var(--w) no-repeat,
+    linear-gradient(var(--k),var(--k)) 100% 0/var(--w) var(--arm) no-repeat,
+    linear-gradient(var(--k),var(--k)) 0 100%/var(--arm) var(--w) no-repeat,
+    linear-gradient(var(--k),var(--k)) 0 100%/var(--w) var(--arm) no-repeat,
+    color-mix(in srgb,var(--k) 9%,transparent);
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--k) 55%,transparent),0 0 22px 3px color-mix(in srgb,var(--k) 45%,transparent)}
+.cell.worked:not(.lr)::before{animation:cell-work 1.2s ease-in-out infinite}
+.cell.done:not(.lr)::before{animation:cell-done .7s cubic-bezier(.2,.9,.3,1.2) both}
+.cell.err:not(.lr)::before{animation:cell-done .5s ease-out both}
+@keyframes cell-work{0%,100%{opacity:.55}50%{opacity:1}}
+@keyframes cell-done{0%{opacity:1;transform:scale(1.07);box-shadow:0 0 0 4px color-mix(in srgb,var(--k) 80%,transparent),0 0 44px 10px color-mix(in srgb,var(--k) 70%,transparent)}100%{opacity:1;transform:none}}
+.motion-off .cell.worked:not(.lr)::before,.motion-off .cell.done:not(.lr)::before,.motion-off .cell.err:not(.lr)::before{animation:none}
+.cell.worked .drn-tag,.cell.done .drn-tag,.cell.err .drn-tag{font-size:11px;letter-spacing:.06em;padding:5px 9px;max-width:calc(100% - var(--gap) - 12px)}
+.cell.worked .drn-tag{background:var(--accent);color:#17181b}
+.cell.done .drn-tag{background:#9df6d2;color:#0b2a20}
+.cell.err .drn-tag{background:var(--danger);color:#fff}
+
+/* the rail's Jobs module (RailJobs.svelte): pinned above the docks */
+.rjobs{flex:none;gap:7px;margin:0 3px}
+.rjobs .wg-hd .n{font-weight:600;letter-spacing:.1em;text-transform:uppercase}
+.rjobs.on .wg-hd .n{color:var(--accent)}
+.rj-row{margin:0;display:flex;align-items:center;gap:8px;min-width:0;font:500 12px/1.2 var(--mono)}
+.rj-row .l{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rj-row .c{flex:none;font-variant-numeric:tabular-nums;color:var(--wg-dim)}
+.rj-k{flex:none;padding:3px 5px 2px;border-radius:4px;background:var(--wg-ink);color:var(--wg);font:var(--type-chip);letter-spacing:.06em}
+.rj-idle{color:var(--wg-dim);font-size:11px}
+.rj-keys{display:flex;gap:6px}
+.rj-keys .wkey{flex:1}
+.rj-err{margin:0;font:500 11px/1.2 var(--mono);color:var(--danger)}
+.rj-run{height:7px;background:linear-gradient(90deg,transparent,var(--accent),transparent) 0 0/40% 100% no-repeat,var(--seg-off);animation:dscan .8s linear infinite}
+.rj-run.held,.motion-off .rj-run{animation:none;background-size:100% 100%,auto;opacity:.5}
+.rj-step{margin:0;font:500 10.5px/1.3 var(--mono);color:var(--wg-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Knowledge > Connections: the running scan or card synthesis (KnowledgeWs.svelte), a status strip
+   under the tools with the job's live step and a scan bar on its bottom edge while it runs */
+.cx-run{position:relative;flex:none;display:flex;align-items:center;gap:10px;padding:7px 12px 9px;border-bottom:2px solid var(--rw-ink);background:var(--rw);font:var(--type-small);min-width:0}
+.cx-run b{flex:none;font:var(--type-tag);letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.cx-run span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--rw-dim)}
+.cx-run::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;pointer-events:none;background:linear-gradient(90deg,transparent,var(--accent),transparent) 0 0/40% 100% no-repeat;animation:dscan .8s linear infinite}
+.cx-run.held::after,.motion-off .cx-run::after{animation:none;background-size:100% 100%;opacity:.5}
+.cx.busy{box-shadow:3px 3px 0 var(--accent);border-color:var(--accent)}
+
+/* Rest mode (lib/rest.ts): window hidden, unfocused or idle, so every animation holds its frame */
+html.cm-rest *,html.cm-rest *::before,html.cm-rest *::after{animation-play-state:paused!important}
+
+/* Wiskit toolbar: the Clear key never shrinks either (the chat name gives way, as for + and SET) */
+.wtools #clearchat{flex:none}
+
+/* Start-up skeletons. Rail (Rail.svelte, lib/dock-ghost.ts): until the docks mount, each tile is a
+   skeleton with the real tile's surface, span and height (a title bar, then text lines). Wiskit
+   (App.svelte): a skeleton of its pane. When they mount, html.cm-boot fades their content in on the
+   same surfaces. Board (VirtualGrid.svelte): skeleton cards until the rows arrive; then each card
+   fades in over a skeleton card in its own cell, in reading order, and each thumbnail fades in as it
+   loads. The bars are the surface's ink at low strength, with a slow sheen. Motion off: none of it moves. */
+:root{--sk-in:.3s;--sk-shine:1.5s;--boot-in:.36s;--cell-in:.4s;--cell-step:18ms;--art-in:.35s;--sk-ease:cubic-bezier(.2,.7,.2,1)}
+.sk-h,.sk-l,.sk-art{--sk-ink:var(--wg-ink);--sk-hi:var(--wg);display:block;flex:none;border-radius:4px;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--sk-hi) 60%,transparent),transparent) 150% 0/200% 100% no-repeat,color-mix(in srgb,var(--sk-ink) 11%,transparent);animation:sk-shine var(--sk-shine) linear infinite}
+.sk-h{width:46%;height:10px;margin:2px 0 5px;background-color:color-mix(in srgb,var(--sk-ink) 18%,transparent)}
+.sk-l{height:8px}
+.dock>.dock-sk{overflow:hidden;animation:sk-in var(--sk-in) ease-out backwards}
+.cm-boot .dock>.wg>*,.cm-boot .jv>*{animation:sk-in var(--boot-in) var(--sk-ease) backwards}
+@keyframes sk-in{from{opacity:0}}
+@keyframes sk-out{to{opacity:0}}
+@keyframes sk-shine{to{background-position:-50% 0,0 0}}
+
+.jv-sk{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;padding:14px 16px;animation:sk-in var(--sk-in) ease-out backwards}
+.jv-sk i{--sk-ink:var(--rw-ink);--sk-hi:var(--rw)}
+.jv-sk>.sk-h{width:38%;align-self:center}
+.jv-sk-tools{width:100%;height:22px!important;border-radius:6px!important}
+.jv-sk-pet{display:flex;gap:12px;padding:10px;border-radius:10px;box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--rw-ink) 14%,transparent)}
+.jv-sk-pet .sk-art{width:72px;height:72px;border-radius:8px}
+.jv-sk-pet>div{flex:1;display:flex;flex-direction:column;gap:8px}
+.jv-sk-pet .sk-l:nth-child(3){width:70%}.jv-sk-pet .sk-l:nth-child(4){width:50%}
+.jv-sk-msg{flex:1;display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:10px;box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--rw-ink) 14%,transparent)}
+.jv-sk-msg .sk-l:nth-child(2n){width:72%}.jv-sk-msg .sk-l:nth-child(3){width:86%}.jv-sk-msg .sk-l:last-child{width:40%}
+.jv-sk-in{width:100%;height:34px!important;border-radius:8px!important}
+
+.sk-cell{display:grid;justify-items:center;padding:14px 0 4px}
+.sk-card,.cell-sk{box-sizing:border-box;width:var(--card);aspect-ratio:63/88;border-radius:calc(var(--card) * .125);background:var(--wg);box-shadow:0 0 0 1px var(--wg-line),0 10px 18px -12px rgba(0,0,0,.35)}
+.sk-card{display:flex;flex-direction:column;gap:9px;padding:calc(var(--card) * .08);animation:sk-in var(--sk-in) ease-out backwards}
+.sk-card .sk-art{flex:1;border-radius:calc(var(--card) * .06)}
+.sk-card .sk-l:nth-child(2){width:78%}.sk-card .sk-l:nth-child(3){width:52%}
+.lv .sk-cell{display:block;padding:0}
+.lv .sk-card{flex-direction:row;align-items:center;width:100%;aspect-ratio:auto;height:58px;padding:8px 12px;border-radius:10px}
+.lv .sk-card .sk-art{flex:none;width:62px;height:100%}
+.lv .sk-card .sk-l:nth-child(2){width:38%}.lv .sk-card .sk-l:nth-child(3){width:18%}
+/* the hand-over: a skeleton card under each card (Cell .cell-sk) fades out as the card fades in */
+.cell-sk{position:absolute;top:14px;left:50%;margin-left:calc(var(--card) / -2);z-index:0;pointer-events:none;
+  background:linear-gradient(color-mix(in srgb,var(--wg-ink) 9%,transparent) 0 0) 50% 8%/84% 62% no-repeat,var(--wg);
+  animation:sk-out var(--cell-in) var(--sk-ease) calc(min(var(--i, 0), 30) * var(--cell-step)) both}
+#grid.fade>.cell>:not(.sel-mat,.cell-sk){animation:sk-in var(--cell-in) var(--sk-ease) calc(min(var(--i, 0), 30) * var(--cell-step)) backwards}
+#grid img.art{transition:opacity var(--art-in) ease-out}
+#grid img.art:not(.ld){opacity:0}
+.sk-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.motion-off .sk-h,.motion-off .sk-l,.motion-off .sk-art{animation:none;background-image:none}
+.motion-off .dock>.dock-sk,.motion-off.cm-boot .dock>.wg>*,.motion-off.cm-boot .jv>*,.motion-off .jv-sk,.motion-off .sk-card,.motion-off #grid.fade>.cell>*{animation:none}
+.motion-off .cell-sk{display:none}
+.motion-off #grid img.art{transition:none}
+/* Wiskit Saved chats: a delete key on each row (WiskitDesk delChat) */
+.chr-w{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:2px}
+.chr-x{width:24px;height:24px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--rw-dim);cursor:pointer;font:500 14px/1 var(--mono)}
+.chr-x:hover,.chr-x:focus-visible{background:var(--danger);color:#fff}
+/* Menubar wordmark (Menubar.svelte .mlogo, components/Wordmark.svelte): the design/logo monoline
+   wordmark, "Braina" in the ink, "mon" in the accent; the SVG is 1em tall. The V6 diamond is gone, so
+   the narrow screen rule that hides the logo text (font-size:0) is answered by sizing the wordmark itself. */
+.menubar .mlogo{padding:0 8px;gap:0}
+.mlogo .bwm{display:block;font-size:15px;line-height:1}
+@media (max-width:440px){.mlogo .bwm{font-size:13px}}
+/* Wiskit files (projects/wiskit-files plan 02): drop target, chips, filing choices, the digest to place */
+.jv.drag{outline:3px dashed var(--accent);outline-offset:-7px}
+.jv-files{display:grid;gap:7px}
+.jv-files .sp{flex:1}
+.jv-atts{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.jv-atts li{display:flex;align-items:center;gap:6px;max-width:100%;padding:3px 4px 3px 8px;border:2px solid var(--rw-ink);border-radius:7px;font:500 11px/1.2 var(--mono)}
+.jv-atts li.on{border-color:var(--accent)}
+.jv-atts li>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jv-atts small{color:var(--rw-dim)}
+.jv-att-x{border:0;background:none;color:inherit;font-size:15px;line-height:1;padding:2px 4px;cursor:pointer}
+.jv-busy{margin:0}
+.jv-file,.jv-dig{display:grid;gap:6px;padding:9px;border:2px solid var(--rw-ink);border-radius:9px;background:var(--rw)}
+.jv-file h4,.jv-dig h4{margin:0;display:flex;justify-content:space-between;gap:8px;font:400 12px/1 var(--pixel);letter-spacing:.06em;color:var(--rw-dim)}
+.jv-opt{display:grid;grid-template-columns:1fr auto;gap:2px 8px;text-align:left;padding:6px 8px;border:1.5px solid var(--rw-ink);border-radius:7px;background:none;color:inherit;font:500 11.5px/1.3 var(--mono);cursor:pointer}
+.jv-opt.best{border-color:var(--accent);box-shadow:2px 2px 0 var(--accent)}
+.jv-opt em{font-style:normal;font-size:10px;color:var(--accent)}
+.jv-opt small{grid-column:1/-1;color:var(--rw-dim)}
+.jv-file .frow .inp,.jv-dig .frow .inp{flex:1;height:26px;font-size:11.5px}
+.jv-file .frow select.inp,.jv-dig .frow select.inp{background-position:calc(100% - 15px) 10px,calc(100% - 10px) 10px}
+.jv-ufiles{color:var(--lcd-dim)}
+.jv-cmp .cmp-box{grid-template-columns:auto minmax(0,1fr) auto auto}
+.cmp-box #attach{background:transparent;color:var(--rw-ink)}
+.jv-nokey{margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:6px 8px;border:2px solid var(--accent);border-radius:7px;background:var(--rw);color:var(--rw-ink);font:500 11.5px/1.3 var(--mono)}
+.jv-nokey.calm{border-style:dashed;border-color:var(--rw-dim)}   /* first run: Get started lists the key as a task */
+.jv-review-row{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px}
+.jv-review-row small{min-width:0;color:var(--rw-dim);font:var(--type-status);overflow-wrap:anywhere}
+.jv-review-row [aria-disabled="true"]{opacity:.55;cursor:default}
+
+/* ---------- UI audit 2026-10-15 (project files audits/ui-ux-2026-10-15/REPORT.md) ---------- */
+/* #9 Settings: nine tabs wrap to a second row instead of running out of the window */
+.ctabs{flex-wrap:wrap;row-gap:4px;overflow-x:visible}
+/* #10 the clock is a glance, not the rail's biggest thing */
+.dock .clk-t{font-size:34px;margin:4px 0 6px}
+/* #13 the card's key strip: 28 px keys (titles are their tooltips), inside the card's lower edge, so
+   it never covers the next row or the caption under a small card */
+.cell:not(.lr) .ck-row{top:calc(14px + var(--card) * 88 / 63 - 36px);bottom:auto;right:calc(50% - var(--card) / 2 + 6px)}
+.ck{width:28px;height:28px}
+.ck .px{width:13px;height:13px}
+/* #15 one keyboard focus ring for anything focusable that has none of its own */
+:where(button,a,[tabindex],input,select,textarea,summary):focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+/* Add to Brainamon (windows/AddItemWin.svelte, plans/09-add-to-brainamon.md): the capture window. The V6
+   window frame and keys come from v6-page.css; the content box is dot paper on a 24 px grid. */
+.cap{--cap-dot:color-mix(in srgb,var(--rw-ink) 24%,transparent);padding:18px 24px 20px}
+.cap h2{margin:0 0 6px;font:650 24px/1.2 var(--display);letter-spacing:-.02em;outline:none}
+.cap-head{display:flex;align-items:flex-start;gap:14px;margin-bottom:14px}
+.cap-head .wkey{margin-left:auto;flex:none;min-width:30px}
+.cap-dim,.cap small{margin:0;font:var(--type-help);color:var(--rw-dim)}
+.cap-src{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.cap-src label,.cap-l,.cap-set legend{font:var(--type-label)}
+.cap-kind{padding:3px 10px;border-radius:999px;background:var(--rw-ink);color:var(--rw);font:600 10px/1.5 var(--display)}
+.cap textarea.cap-paper{display:block;width:100%;min-height:112px;padding:19px 24px 20px;border:1.5px solid var(--rw-ink);border-radius:12px;background:radial-gradient(circle,var(--cap-dot) 1px,transparent 1.5px) 12px 7px/24px 24px,var(--rw);color:var(--rw-ink);font:var(--type-paper);resize:vertical;overflow-wrap:anywhere}
+.cap-in{display:block;width:100%;min-width:0;margin-top:6px;padding:9px 10px;border:1.5px solid var(--rw-ink);border-radius:7px;background:var(--fldbg,var(--rw));color:var(--rw-ink);font:400 12px/1.5 var(--mono)}
+.cap-l{display:block}
+.cap-comment{margin-top:18px}
+.cap-pic{display:flex;gap:16px;align-items:center;margin-top:14px}
+.cap-drop{position:relative;flex:0 0 136px;width:136px;aspect-ratio:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px;padding:12px;border:2px dashed var(--rw-ink);border-radius:10px;background:var(--rw-2);color:var(--rw-ink);overflow:hidden;font:inherit;cursor:pointer}
+.cap-drop:hover{background:var(--bar-b);border-style:solid;color:#1f1f22}
+.cap-drop b{font:var(--type-choice)}
+.cap-drop img{width:100%;height:66px;object-fit:contain}
+.cap-drop:has(img) small{display:none}
+.cap-hint{min-width:0}
+.cap-hint strong{font:600 13px/1.5 var(--display);overflow-wrap:anywhere}
+.cap-hint p{margin:5px 0 0;font:var(--type-help);color:var(--rw-dim);overflow-wrap:anywhere}
+.cap-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.cap-link{display:flex;gap:12px;align-items:center;margin-top:8px;padding:10px;border:2px solid var(--rw-ink);border-radius:10px;background:var(--rw-2)}
+.cap-link img{flex:none;width:88px;height:56px;object-fit:cover;border-radius:6px}
+.cap-link>div{min-width:0}
+.cap-link b{display:block;font:650 12.5px/1.4 var(--display);overflow-wrap:anywhere}
+.cap-link p{margin:3px 0 0;font:var(--type-help);color:var(--rw-dim);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.cap-set{border:0;padding:0;margin:18px 0 14px}
+.cap-set legend{margin-bottom:8px}
+.cap-choices{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cap-choice,.cap-note{display:flex;align-items:center;gap:10px;padding:10px 12px;border:2px solid var(--rw-ink);border-radius:8px;background:var(--rw-2);cursor:pointer}
+.cap-choice:has(input:checked),.cap-note[aria-selected="true"]{background:var(--bar-b);box-shadow:2px 2px 0 var(--rw-ink);color:#1f1f22}
+.cap-choice input,.cap-note input{flex:none;width:15px;height:15px;margin:0;accent-color:var(--rw-ink)}
+.cap-choice span,.cap-note span{min-width:0;font:650 12px/1.4 var(--display)}
+.cap-choice small,.cap-note small{display:block;margin-top:3px}
+.cap-choice:has(input:checked) small,.cap-note[aria-selected="true"] small{color:#1f1f22}
+.cap-choice:has(input:checked) input{accent-color:#1f1f22}
+.cap-fields{display:grid;gap:12px}
+.cap-which{display:grid;gap:8px;min-width:0}
+.cap-pick{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:10px 12px;border:2px solid var(--rw-ink);border-radius:8px;background:var(--rw-2);color:var(--rw-ink);font:650 12px/1.4 var(--display);text-align:left;cursor:pointer}
+.cap-pick span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cap-pick.fresh{border-color:var(--accent);color:var(--accent);font-weight:800}
+.cap-menu{display:grid;gap:8px;padding:8px;border:2px solid var(--rw-ink);border-radius:12px;background:var(--rw)}
+.cap-new{padding:10px 16px;border:2px solid #b83a0e;border-radius:999px;background:var(--accent);color:#fff;font:800 12px/1.2 var(--display);letter-spacing:.04em;text-align:left;cursor:pointer;box-shadow:0 2px 0 #9b310b}
+.cap-new[aria-pressed="true"]{outline:2px solid var(--rw-ink);outline-offset:2px}
+.cap-note{width:100%;text-align:left;font:inherit;color:var(--rw-ink)}
+.cap-notes{display:grid;gap:6px;max-height:210px;overflow:auto}
+.cap-note b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cap-page{padding:10px 12px;border:1px dashed var(--rw-dim);border-radius:7px;background:radial-gradient(circle,var(--cap-dot) 1px,transparent 1.5px) 12px 12px/24px 24px,var(--rw)}
+.cap-page b{display:block;margin-bottom:6px;font:600 10.5px/1.4 var(--mono);color:var(--rw-dim)}
+.cap-page pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:400 13px/1.6 var(--mono)}
+.cap-more summary{cursor:pointer;min-height:30px;font:500 11px/30px var(--mono)}
+.cap-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px}
+.cap-err{margin:12px 0 0;color:var(--danger);font:400 12px/1.5 var(--mono)}
+.cap-done{padding:6px 0}
+.cap-done h2{margin:14px 0 6px;font-size:25px}
+.cap-mark{display:inline-grid;place-items:center;width:36px;height:36px;border:2px solid var(--rw-ink);border-radius:50%;background:var(--bar-b);color:#1f1f22;font-weight:700}
+.cap-state{margin:0 0 14px;font:400 11px/1.6 var(--mono)}
+.cap-badge{display:inline-block;padding:2px 8px;border-radius:999px;font:600 10px/1.5 var(--mono);background:var(--rw-2);border:1.5px solid var(--rw-ink)}
+.cap-badge[data-s=synced]{background:var(--bar-b);color:#1f1f22}
+.cap-badge[data-s=pending]{background:var(--bar-c);color:#1f1f22}
+.cap-badge[data-s=failed]{background:var(--danger);color:#fff}
+.cap-over{position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:24px;background:rgba(31,31,34,.62);pointer-events:none}
+.cap-over::before{content:'';position:absolute;inset:16px;border:3px dashed var(--bar-b);border-radius:18px}
+.cap-over>div{position:relative;max-width:430px;padding:28px;text-align:center;border:2.5px solid var(--rw-ink);border-radius:14px;background:var(--bar-b);color:#1f1f22;box-shadow:8px 8px 0 var(--rw-ink)}
+.cap-over b{font:650 25px/1.2 var(--display)}
+.cap-over p{margin:12px 0;font:400 13px/1.6 var(--display)}
+.cap-over small{font:400 10px/1.6 var(--mono);color:#1f1f22}
+/* Selected Writing Desk layout: capture only; the My Notes editor keeps its own layout. */
+.cap-window .cap-editing{height:min(740px,calc(100dvh - 120px));padding:18px 20px;overflow:hidden}
+.cap-editing #cap-form{height:100%;min-height:0;display:flex;flex-direction:column}
+.cap-editing .cap-head{flex:none;margin-bottom:16px}
+.cap-editing .cap-head h2{font-size:20px}
+.cap-layout{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:20px}
+.cap-sheet{min-width:0;min-height:0;display:flex;flex-direction:column;gap:10px;padding:20px 24px;border:1px solid var(--wg-line);border-radius:18px;background:radial-gradient(circle,var(--cap-dot) .8px,transparent 1.2px) 12px 12px/24px 24px,var(--win);box-shadow:3px 4px 0 color-mix(in srgb,var(--bar-c) 25%,var(--rw-2))}
+.cap-title-label{display:block;flex:none;font:var(--type-label);color:var(--rw-dim)}
+.cap .cap-title{display:block;width:100%;min-width:0;margin:0;padding:4px 0;border:0;background:transparent;color:var(--rw-ink);font:650 28px/1.4 var(--display);letter-spacing:-.02em}
+.cap-editing .cap-src{flex:none;margin:0}
+.cap-editing textarea.cap-paper{flex:1;min-height:140px;max-height:none;resize:none;field-sizing:fixed;padding:4px 0;border:0;border-radius:0;background:transparent;font-size:16px}
+.cap-sheet>.cap-dim{flex:none}
+.cap-editing .cap-link{flex:none;max-height:100px;overflow:auto;margin:0;padding:8px;border:1px solid var(--wg-edge)}
+.cap-tools{min-width:0;min-height:0;display:flex;flex-direction:column;gap:16px;padding:16px;border:1px solid var(--wg-line);border-radius:14px;background:var(--case-hi)}
+.cap-options{flex:1;min-height:0;display:flex;flex-direction:column;gap:16px;overflow:auto;scrollbar-width:thin}
+.cap-options>h3{margin:0;font:650 15px/1.3 var(--display)}
+.cap-add-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.cap-add-grid .wkey{justify-content:center;padding:8px 6px;min-height:38px;font-size:11px;white-space:normal}
+.cap-add-grid .px{width:14px;height:14px}
+.cap-editing .cap-in{border:1px solid var(--wg-edge);background:var(--wg);font:400 13px/1.4 var(--display);padding:8px 10px}
+.cap-editing .cap-fields{gap:14px}
+.cap-editing .cap-pick{min-height:40px;border:1px solid var(--wg-edge);background:var(--wg);padding:8px 10px}
+.cap-editing .cap-pick.fresh{border-color:var(--accent);color:var(--rw-ink);font-weight:650}
+.cap-category{display:grid;gap:6px;font:var(--type-label);color:var(--rw-dim)}
+.cap-category b{font:500 13px/1.5 var(--display);color:var(--rw-ink)}
+.cap-editing .cap-comment{margin:0}
+.cap-editing .cap-pic{gap:10px;margin:0;align-items:flex-start}
+.cap-editing .cap-drop{flex:0 0 56px;width:56px;aspect-ratio:1;padding:4px;border:1px solid var(--wg-edge)}
+.cap-editing .cap-drop img{height:46px}
+.cap-editing .cap-drop .px{width:24px;height:24px}
+.cap-editing .cap-hint strong{font-size:12px}
+.cap-editing .cap-acts{margin:0;gap:6px}
+.cap-editing .cap-acts .wkey{font-size:10px;padding:6px 8px;white-space:normal}
+.cap-commit{flex:none;display:flex;flex-direction:column;gap:10px;border-top:1px dashed var(--wg-edge);padding-top:14px}
+.cap-commit .cap-set{margin:0}
+.cap-commit legend{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.cap-commit .cap-choices{grid-template-columns:.8fr 1.4fr;gap:4px;padding:4px;border:1px solid var(--wg-edge);border-radius:10px;background:var(--wg-2)}
+.cap-commit .cap-choice{gap:5px;justify-content:center;min-height:36px;padding:5px;border:1px solid transparent;background:transparent;border-radius:6px}
+.cap-commit .cap-choice input{width:12px;height:12px}
+.cap-commit .cap-choice span{font-size:12px;white-space:nowrap}
+.cap-commit .cap-choice:has(input:checked){box-shadow:none;border-color:var(--wg-edge)}
+.cap-commit #cap-help{font:400 11px/1.5 var(--mono);color:var(--rw-dim)}
+.cap-commit .cap-err{margin:0;max-height:76px;overflow:auto;font-size:11px}
+.cap-commit .wkey{justify-content:center;min-height:38px}
+.cap-commit .wkey.pri{min-height:44px}
+@media(max-width:760px){.cap-window .cap-editing{height:auto;overflow:auto;padding:16px}.cap-layout{grid-template-columns:minmax(0,1fr)}.cap-sheet{min-height:410px;padding:16px}.cap-tools{min-height:0}.cap-options{overflow:visible}.cap .cap-title{font-size:24px}.cap-editing textarea.cap-paper{min-height:240px}.cap-editing .cap-row{grid-template-columns:1fr}}
+@media (max-width:640px){.cap{padding:14px 14px 18px}.cap-pic{gap:12px}.cap-drop{flex-basis:112px;width:112px;padding:8px}.cap-row{grid-template-columns:1fr}.cap-choice{padding:11px 8px;gap:7px}}
+
+/* Canvas geometry uses stored note dimensions; full content stays scrollable. */
+.ce.note{box-sizing:border-box;min-height:0}
+.ce-text{height:100%;overflow:auto;overscroll-behavior:contain;cursor:move;user-select:none;-webkit-user-select:none;touch-action:pan-y}
+.ce-text:focus-visible,.ce .lbl:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ce.note .ce-ed{height:100%;min-height:0;field-sizing:fixed;overflow:auto;overscroll-behavior:contain}
+.ce .lbl{box-sizing:border-box;max-width:100%;overflow:hidden;text-overflow:ellipsis;border:0;cursor:pointer}
+.ce.img img{object-fit:contain}
+/* Let touch scroll note contents; image cards retain their drag-only touch action. */
+#cv-board,.ce.note{touch-action:pan-y}
+.cw .about p{overflow-wrap:anywhere}
+.cw .about .about-mark{display:block;width:64px;height:64px}   /* the app icon (web/public/brand, design/logo) */
+.ce.img{margin:0}
+
+/* Setup and Settings share the checklist and the same white action buttons. */
+.tool-checklist{margin-top:16px;min-width:0}
+.tool-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:16px;padding:18px 0;border-bottom:1px solid var(--hair)}
+.tool-info{min-width:0;display:grid;gap:8px}
+.tool-title{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}
+.tool-title>b{font:600 13px/1.4 var(--mono);color:var(--rw-ink)}
+.tool-status{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border:1px solid var(--rw-dim);border-radius:5px;color:var(--rw-ink);font:500 11px/1.4 var(--mono);white-space:nowrap}
+.tool-status.ready{border-color:var(--ok)}
+.tool-status.ready>span{color:var(--ok)}
+.tool-status.pending{border-style:dashed}
+.tool-path{overflow-wrap:anywhere;user-select:text}
+.tool-wide{grid-column:1/-1;display:grid;gap:10px;min-width:0}
+.setup-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:10px;margin-top:16px}
+.tool-row>.setup-actions{max-width:190px;margin-top:0}
+.tool-checklist .frow{gap:10px;margin-top:12px;justify-content:flex-end;flex-wrap:wrap}
+.tool-checklist .frow>.inp{flex:1 1 180px;min-width:0}
+.tool-checklist .set-more{margin-top:12px}
+:is(.setup-surface,.setup-win) .wkey,.tool-checklist .wkey{min-height:30px;height:auto;padding:5px 9px;white-space:normal;background:#fff;color:#000;border-color:#000;font:600 12px/1.3 var(--mono)}
+:is(.setup-surface,.setup-win) .wkey:hover,.tool-checklist .wkey:hover{background:#ececec}
+:is(.setup-surface,.setup-win) .wkey.pri,.tool-checklist .wkey.pri{background:var(--ok);color:#0b2016;border-color:#000}
+:is(.setup-surface,.setup-win) .wkey.pri:hover,.tool-checklist .wkey.pri:hover{background:color-mix(in srgb,var(--ok) 85%,#000)}
+:is(.setup-surface,.setup-win) .wkey:disabled,.tool-checklist .wkey:disabled{background:#fff;color:#000;border-style:dashed;opacity:.5}
+.tool-checklist .wkey.danger{background:var(--danger);color:#fff;border-color:var(--danger)}
+.setup-surface .fsec{margin-top:28px}
+.cw.setup-win{height:min(800px,calc(100dvh - 32px));max-height:calc(100dvh - 32px)}
+.cw.setup-win>.cw-body{overflow:hidden}
+@media(max-width:700px){.cw.setup-win>.cw-body{overflow-y:auto}}
+@media(max-width:640px){.cw.setup-win{height:100dvh;max-height:100dvh}}
+@media(max-width:540px){.tool-row{gap:12px}.tool-summary{grid-template-columns:minmax(0,1fr)}.tool-summary>.wkey{justify-self:start}.tool-row>.setup-actions{max-width:140px}.tool-title{align-items:flex-start}.tool-title>b{overflow-wrap:anywhere}}
+@media(pointer:coarse){:is(.setup-surface,.setup-win) .wkey,.tool-checklist .wkey{min-height:44px}}
+
+/* A calm group in a Settings section (components/ui/GroupBox.svelte): its own label column, the title in the first
+   cell, the action row last. It spans a .fg row; the summary tone is the filled at-a-glance panel. */
+.fg>.group-box{grid-column:1/-1}
+/* groups sit on a raised surface with a visible edge, so they stand apart from the window behind them */
+.group-box{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px 16px;align-items:start;min-width:0;margin:0;padding:14px 16px;border:1px solid color-mix(in srgb,var(--rw-ink) 20%,transparent);border-radius:10px;background:var(--rw-2)}
+.group-box.on{border-color:var(--rw-ink)}
+.group-box.summary{gap:4px 16px;padding:12px 16px;background:color-mix(in srgb,var(--rw-2) 88%,var(--rw-ink))}
+.group-box>.fl{align-self:start;padding-top:1px;font:500 11.5px/1.5 var(--mono);letter-spacing:0;color:var(--rw-ink);overflow-wrap:anywhere}
+.group-box>.fl:first-child{padding-top:0;font:600 12.5px/1.45 var(--display)}
+.group-box>.fl:has(+div>:is(.inp,.frow):first-child){padding-top:7px}
+.group-box.summary>.fl,.group-box.summary>.fl:first-child{padding-top:0;font:500 11.5px/1.6 var(--mono);color:color-mix(in srgb,var(--rw-dim) 80%,var(--rw-ink))}
+.group-box.summary>div{font:500 11.5px/1.6 var(--mono);color:var(--rw-ink);overflow-wrap:anywhere}
+.group-box>div{min-width:0}
+.group-box>div>*+*{margin-top:6px}
+.group-box>div>.frow:last-child:not(:first-child){margin-top:10px}
+@media (max-width:600px){.group-box{grid-template-columns:minmax(0,1fr);gap:6px}.group-box>.fl:empty{display:none}}
+/* a quiet underlined action beside a row's keys (components/ui/TextButton.svelte) */
+.text-btn{min-height:30px;padding:5px 2px;border:0;background:none;color:var(--rw-ink);font:var(--type-label);cursor:pointer;text-decoration:underline;text-underline-offset:3px;text-decoration-color:color-mix(in srgb,var(--rw-dim) 70%,transparent)}
+.text-btn:hover:not(:disabled){text-decoration-color:currentColor;text-decoration-thickness:2px}
+.text-btn:disabled{opacity:.45;cursor:default}
+.text-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* a few equal choices (components/ui/Segmented.svelte) use the V6 .seg; a disabled one fades like a key */
+.seg button:disabled{opacity:.45;cursor:default}
+
+/* Calm Settings (docs/superpowers/plans/2026-10-29-settings-calm): a tab's content is one column of
+   groups (.set-calm); a switch with its words on one line (components/ui/ToggleRow.svelte); rows of one
+   thing with trailing actions (ItemList.svelte); named tool chips in a row (ToolStatus.svelte with name).
+   A summary row spreads its value and its one link; a group title can take focus from Find a setting. */
+.set-calm{display:grid;gap:12px;min-width:0}
+.set-calm>.group-box.summary{margin-bottom:6px}
+.set-calm>.set-anchor{margin-top:0}
+.set-calm>.set-more{margin-top:0}
+.set-calm .fg{gap:12px 16px}
+.tgl{display:flex;align-items:center;gap:9px;margin:0;font:500 11.5px/1.5 var(--mono);color:var(--rw-ink);cursor:pointer}
+.tgl input{flex:none;margin:0}
+.set-win .tgl input[type="checkbox"]{margin:0}
+.tgl small{font:inherit;color:color-mix(in srgb,var(--rw-dim) 80%,var(--rw-ink))}
+.tgl:has(>input:disabled){color:var(--rw-dim);cursor:default}
+.tgl+.tgl{margin-top:8px}
+.ilist{margin:0;padding:0;list-style:none;border-top:1px solid var(--hair)}
+.ilist li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 10px;min-height:34px;padding:2px 0;border-bottom:1px solid var(--hair)}
+.ilist li>div{min-width:0;flex:1 1 200px;font:500 11.5px/1.6 var(--mono);color:var(--rw-ink);overflow-wrap:anywhere}
+.ilist .acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.group-box.summary>div{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0 10px}
+.group-box.summary>div>*+*{margin-top:0}
+.group-box.summary .text-btn{min-height:0;padding:0 2px;margin-left:auto}
+@media (max-width:600px){.group-box.summary .text-btn{min-height:28px;padding:4px 2px}}
+.group-box>div>.set-pair>*+*{margin-top:0}
+.group-box:focus-visible,.group-box>.fl:focus-visible{outline:2px solid var(--rw-ink);outline-offset:3px}
+@media (max-width:600px){.set-calm{gap:10px}}
+
+/* Toasts (components/Toasts.svelte) drop in from the top: in the open window's top right corner, or at
+   the top middle of the screen. An "off" toast (a feature turned off) has an orange dot, not green. */
+.toasts{top:16px;bottom:auto;left:50%;right:auto;transform:translateX(-50%);justify-items:center}
+.toasts.in-win{left:auto;transform:none;justify-items:end}
+.toasts>.tst{animation-name:tdrop}
+@keyframes tdrop{from{opacity:0;transform:translateY(-10px)}}
+.tst.off>i{background:var(--accent)}
+.tst>i{width:10px;height:10px}
+@media (max-width:640px){.toasts{left:10px;right:10px;bottom:auto;transform:none}.toasts.in-win{left:10px}}
+
+/* (i) beside a feature (components/ui/InfoTip.svelte): hover shows its explanation, a click pins it */
+.info-tip{position:relative;display:inline-flex;vertical-align:middle;margin-left:6px}
+.info-i{display:grid;place-items:center;width:16px;height:16px;padding:0;border:1.5px solid var(--rw-dim);border-radius:50%;background:transparent;color:var(--rw-dim);font:italic 700 10px/1 Georgia,'Times New Roman',serif;cursor:help}
+.info-i:hover,.info-i.on{border-color:var(--rw-ink);color:var(--rw);background:var(--rw-ink)}
+.info-i:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.info-pop{position:absolute;left:-8px;top:calc(100% + 8px);z-index:20;display:grid;gap:8px;width:max-content;max-width:min(360px,70vw);padding:10px 12px;border:2px solid var(--rw-ink);border-radius:8px;background:var(--rw);color:var(--rw-ink);box-shadow:3px 3px 0 var(--rw-ink);font:400 11.5px/1.55 var(--mono);text-transform:none;letter-spacing:0;white-space:normal;cursor:default}
+/* the bubble's paragraphs, and a bridge over the gap so the pointer can reach its links */
+.info-pop>span{display:block}
+.info-pop.up{top:auto;bottom:calc(100% + 8px)}
+.info-pop.left{left:auto;right:-8px}
+.info-pop.up::before{top:auto;bottom:-10px}
+.info-pop::before{content:"";position:absolute;left:0;right:0;top:-10px;height:10px}
+.info-pop a{color:inherit;text-decoration:underline}
+.info-pop code{font:inherit;font-weight:600}

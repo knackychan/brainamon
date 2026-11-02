@@ -1,0 +1,26 @@
+{
+  "name": "Brainamon",
+  "short_name": "Brainamon",
+  "description": "Your saved reels, notes and Wiskit, on the phone.",
+  "id": "/mobile.html",
+  "start_url": "/mobile.html",
+  "scope": "/mobile.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#e2dfd6",
+  "theme_color": "#e2dfd6",
+  "icons": [
+    { "src": "/brand/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/brand/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/brand/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/brand/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/brand/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "share_target": {
+    "action": "/mobile.html?share=1",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": { "title": "share_title", "text": "share_text", "url": "share_url",
+      "files": [{ "name": "share_file", "accept": ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf", "text/markdown", ".md", "text/plain", ".txt"] }] }
+  }
+}

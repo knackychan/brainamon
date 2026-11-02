@@ -6,14 +6,14 @@
 
 Brainamon turns the reels, posts and videos you saved on Facebook, Instagram, Reddit and YouTube into a private library on your PC. It describes them, analyzes the videos, writes notes from them and answers your questions, showing the saves it used. Your library stays on your computer, and AI runs with your own key, only when you ask.
 
-**[Presentation site](https://knackychan.github.io/brainamon/)** · [Download for Windows](https://github.com/knackychan/brainamon/releases/latest) · [Buy on Gumroad](https://fredtomas.gumroad.com/l/brainamon) · [Privacy policy](https://www.fredtomas.com/brainamon/privacy/)
+**[Presentation site](https://knackychan.github.io/brainamon/)** · [Download for Windows](https://github.com/knackychan/brainamon/releases/latest) · [Optional support](https://ko-fi.com/fredtomas) · [Privacy policy](https://www.fredtomas.com/brainamon/privacy/)
 
 ![The Brainamon desktop app: the library of saved reels shown as cards, with the status panel, collections and the Wiskit assistant.](docs/img/desk-library.webp)
 
 ## Download
 
 - **Windows 10 / 11:** [download the latest installer](https://github.com/knackychan/brainamon/releases/latest) or browse [all releases](https://github.com/knackychan/brainamon/releases). Run it and follow the setup prompts. Windows may show an unknown-publisher warning. Brainamon checks future updates against a signed release manifest and installs them only when you choose.
-- **License:** the Windows app is a one-time purchase on [Gumroad](https://fredtomas.gumroad.com/l/brainamon). The receipt key is exchanged once for a permanent license key that unlocks phone sync with your PC. Other desktop features do not depend on it.
+- **Current source:** application-owned code is [GPL-3.0-only](LICENSE). All current features are available without payment or activation. Support is optional. Existing released downloads retain their original terms; the new source is not a claim that historical binaries were built from it.
 - **Android:** a companion app that pairs with your PC or works on its own. It is planned for Google Play; store availability is not yet established.
 
 ## What it does
@@ -82,7 +82,7 @@ The Android app takes the library with you: browse the cards, read reports and n
   <img src="docs/img/phone-canvas-open.webp" width="170" alt="A canvas on the phone.">
 </p>
 
-Phone sync goes through your own Google Drive: the PC encrypts the library (AES-256-GCM) and uploads it to Brainamon's hidden app-data folder, which cannot see your other Drive files. Only your paired devices hold the key. Sync is off until you turn it on, with no cloud call before that. Pair a phone by scanning a QR code on the PC. The app also works without a PC, with an optional encrypted backup, and Recovery lets you restore a library on a new PC. Phone sync requires a license and Google Drive.
+Phone sync goes through your own Google Drive: the PC encrypts the library (AES-256-GCM) and uploads it to Brainamon's hidden app-data folder, which cannot see your other Drive files. Only your paired devices hold the key. Sync is off until you turn it on, with no cloud call before that. Pair a phone by scanning a QR code on the PC. The app also works without a PC, with an optional encrypted backup, and Recovery lets you restore a library on a new PC. Current phone sync needs Google Drive and trusted pairing, with a signed one-hour grant renewed by the running PC. No payment or receipt is required. Older clients may need an update; existing legacy receipts remain supported for compatibility.
 
 ### And more
 
@@ -112,11 +112,28 @@ The installer requires an x64-compatible Windows PC and the Microsoft Edge WebVi
 
 The desktop library uses a local SQLite database and files in your chosen data folder. The interface runs in WebView2 with a local server bound to `127.0.0.1`. Android uses a Capacitor app and Android Keystore. Keep a separate backup of your library and recovery information.
 
+## Build from source
+
+Start with [BUILDING.md](docs/development/BUILDING.md). It covers Python 3.14,
+frontend setup, disposable runtime paths, independent Windows contributor
+installers and Android debug builds. Local features work without provider keys;
+optional integrations use your own credentials and service registrations.
+
+Contributor builds have separate installation identities and cannot replace an
+official installation or install its automatic updates. A local native build is
+not binary distribution clearance. See [RELEASING.md](docs/development/RELEASING.md)
+for corresponding-source, payload, signing and device requirements. Android
+binary distribution is held pending Google SDK compatibility and release evidence.
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md),
+[MCP setup](docs/development/MCP.md), [backup and recovery](docs/development/BACKUP-RESTORE.md)
+and [access/legacy compatibility](docs/development/LICENSING.md).
+
 ## Support
 
 For support or privacy requests, contact [me@fredtomas.com](mailto:me@fredtomas.com).
 
-The application source and support materials are maintained privately. This repository contains the public presentation site (`docs/`, published with GitHub Pages), the download page and release files.
+This repository contains the application source, development instructions, releases and the presentation site (`docs/`, published with GitHub Pages). Library data, credentials, signing keys and private development history are excluded.
 
 Enjoying Brainamon? It is made by one person. You can [support it on Ko-fi](https://ko-fi.com/fredtomas).
 

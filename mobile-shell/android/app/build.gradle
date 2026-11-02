@@ -1,0 +1,100 @@
+apply plugin: 'com.android.application'
+
+def releaseRequested = gradle.startParameter.taskNames.any {
+    def name = it.split(':').last().toLowerCase()
+    name.endsWith('release') || name in ['build', 'assemble', 'bundle']
+}
+if (releaseRequested) {
+    def required = ['BRAINAMON_VERSION_CODE', 'BRAINAMON_VERSION_NAME', 'BRAINAMON_UPLOAD_KEYSTORE',
+                    'BRAINAMON_UPLOAD_STORE_PASSWORD', 'BRAINAMON_UPLOAD_KEY_ALIAS', 'BRAINAMON_UPLOAD_KEY_PASSWORD']
+    def missing = required.findAll { !System.getenv(it) }
+    if (missing) throw new GradleException("Release build requires: ${missing.join(', ')}")
+    if (Integer.parseInt(System.getenv('BRAINAMON_VERSION_CODE')) <= 0)
+        throw new GradleException('BRAINAMON_VERSION_CODE must be positive')
+    if (!file(System.getenv('BRAINAMON_UPLOAD_KEYSTORE')).isFile())
+        throw new GradleException('BRAINAMON_UPLOAD_KEYSTORE does not name a file')
+}
+
+// Release signing with the Play upload key, only when BRAINAMON_UPLOAD_KEYSTORE names its file; the
+// passwords come from the environment too. The key never goes in the repo (audit 2026-10-11, M7).
+def uploadStore = releaseRequested ? System.getenv('BRAINAMON_UPLOAD_KEYSTORE') : null
+
+android {
+    namespace = "app.brainamon.mobile"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "app.brainamon.mobile"
+        manifestPlaceholders = [appLabel: '@string/app_name']
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        // Play wants a higher number for every upload: BRAINAMON_VERSION_CODE, else the GitHub run number, else 1
+        versionCode Integer.parseInt(System.getenv('BRAINAMON_VERSION_CODE') ?: System.getenv('GITHUB_RUN_NUMBER') ?: '1')
+        versionName System.getenv('BRAINAMON_VERSION_NAME') ?: '1.0'
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    // Debug uses the SDK's local generated key; no shared or official key is needed.
+    signingConfigs {
+        if (uploadStore) {
+            upload {
+                storeFile file(uploadStore)
+                storePassword System.getenv('BRAINAMON_UPLOAD_STORE_PASSWORD')
+                keyAlias System.getenv('BRAINAMON_UPLOAD_KEY_ALIAS') ?: 'upload'
+                keyPassword System.getenv('BRAINAMON_UPLOAD_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            applicationIdSuffix '.contributor'
+            versionNameSuffix '-contributor'
+            resValue 'string', 'contributor_app_name', 'Brainamon Contributor'
+            manifestPlaceholders = [appLabel: '@string/contributor_app_name']
+        }
+        release {
+            debuggable false
+            if (uploadStore) {
+                signingConfig signingConfigs.upload
+            }
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    // the Brainamon plugin (BrainamonPlugin.java): Drive sign-in and the pairing QR scanner
+    implementation "com.google.android.gms:play-services-auth:$playServicesAuthVersion"
+    implementation "com.google.android.gms:play-services-code-scanner:$playServicesCodeScannerVersion"
+    // vault sync (BrainamonPlugin.java vault*): the folder the user picked, through the Storage Access Framework
+    implementation "androidx.documentfile:documentfile:1.0.1"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+// Native debug authorization uses its own package/certificate registration, not owner JSON.
+if (releaseRequested) {
+    try {
+        def servicesJSON = file('google-services.json')
+        if (servicesJSON.text) {
+            apply plugin: 'com.google.gms.google-services'
+        }
+    } catch(Exception e) {
+        logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+    }
+}

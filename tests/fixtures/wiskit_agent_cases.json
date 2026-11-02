@@ -1,0 +1,79 @@
+{
+  "library_fixture": "phone_ai_library.json",
+  "cases": [
+    {
+      "name": "read-proposal-answer",
+      "modes": [
+        "quick",
+        "deep"
+      ],
+      "initial_ids": [
+        102
+      ],
+      "calls": [
+        {
+          "name": "read_items",
+          "args": {
+            "ids": [
+              102,
+              102,
+              104
+            ]
+          }
+        },
+        {
+          "name": "propose_category",
+          "args": {
+            "ids": [
+              102,
+              104
+            ],
+            "category": "SPORT"
+          }
+        }
+      ],
+      "expected_evidence": [
+        102,
+        104
+      ],
+      "expected_calls": 2
+    },
+    {
+      "name": "search-is-not-evidence",
+      "modes": [
+        "quick",
+        "deep"
+      ],
+      "initial_ids": [],
+      "calls": [
+        {
+          "name": "search_library",
+          "args": {
+            "query": "knee"
+          }
+        },
+        {
+          "name": "propose_category",
+          "args": {
+            "ids": [
+              102
+            ],
+            "category": "SPORT"
+          }
+        }
+      ],
+      "expected_evidence": []
+    },
+    {
+      "name": "deadline",
+      "modes": [
+        "quick",
+        "deep"
+      ],
+      "initial_ids": [],
+      "elapsed_seconds": 181,
+      "expected_calls": 0,
+      "final_only": true
+    }
+  ]
+}

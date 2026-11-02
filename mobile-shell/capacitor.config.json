@@ -1,0 +1,14 @@
+{
+  "appId": "app.brainamon.mobile",
+  "appName": "Brainamon",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "hostname": "localhost",
+    "appStartPath": "/mobile.html"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  }
+}

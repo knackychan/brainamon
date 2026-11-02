@@ -1,0 +1,16 @@
+{
+  "_about": "Synthesize prompt texts and limits, read by knowledge/synth.py and the phone (web/src/mobile/ai/synth.ts). Placeholders are {name}. tests/test_phone_ai.py checks both sides build the same prompts.",
+  "limits": {
+    "batch_size": 12,
+    "excerpt_limit": 2000,
+    "max_tokens": 8000,
+    "phone_max_sources": 36
+  },
+  "rules": "Rules:\n- Write clean markdown with descriptive ## / ### titles and short paragraphs, so the note is easy to navigate later.\n- Capture every tool, app, product, website, book, channel, or other resource mentioned in the sources under a '## Tools & resources mentioned' section; for each, note what it is and the source id(s) it came from, and keep any URLs.\n- Keep a '## Sources' section at the end listing the source ids you used.\n- Be specific; do not invent facts beyond the sources.\n- Return the COMPLETE note as markdown only — no preamble, no commentary, no code fences.",
+  "source": "### Source {id} — {title}\n{meta}{text}",
+  "creator": "Creator: {creator}",
+  "url": "URL: {url}",
+  "first": "You are building a personal knowledge wiki note on the topic: \"{topic}\".\nSynthesize the sources below into one well-structured note.\n\n{rules}\n\n# Sources to synthesize\n\n{sources}",
+  "append": "You are expanding an existing knowledge wiki note on: \"{topic}\".\nBelow is the CURRENT NOTE, then NEW SOURCES. Add the new material as new or extended sections, merging it under existing titles where it fits, but do NOT rewrite or restructure the prose that is already there. Update the 'Tools & resources mentioned' and 'Sources' sections to include the new items.\n\n{rules}\n\n# Current note\n\n{note}\n\n# New sources\n\n{sources}",
+  "reorganize": "You are growing an existing knowledge wiki note on: \"{topic}\".\nBelow is the CURRENT NOTE, then NEW SOURCES. Integrate the new material into the note, reorganizing and rewriting as needed so the result reads as one coherent, well-structured document (merge related points, improve the section structure). Update the 'Tools & resources mentioned' and 'Sources' sections.\n\n{rules}\n\n# Current note\n\n{note}\n\n# New sources\n\n{sources}"
+}

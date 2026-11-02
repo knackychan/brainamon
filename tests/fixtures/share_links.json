@@ -1,0 +1,26 @@
+{
+  "_doc": "Shared text -> the link Brainamon saves (null: no link). Checked against knowledge/inbox.py link(), desktop/widget.py link() and the phone's web/src/mobile/links.ts + public/sw.js, so items.url UNIQUE dedupes a link however it arrives.",
+  "cases": [
+    ["https://www.instagram.com/reel/C9xYz/?igsh=MTc4bWx5", "https://www.instagram.com/reel/C9xYz/"],
+    ["Check this out https://www.instagram.com/reel/C9xYz/?utm_source=ig_web_copy_link&igsh=MTc4bWx5 so good", "https://www.instagram.com/reel/C9xYz/"],
+    ["https://www.facebook.com/share/r/1AbCdEf/?mibextid=wwXIfr", "https://www.facebook.com/share/r/1AbCdEf/"],
+    ["https://youtu.be/dQw4w9WgXcQ?si=Zx9_abc", "https://youtu.be/dQw4w9WgXcQ"],
+    ["https://www.youtube.com/watch?v=dQw4w9WgXcQ&feature=shared&t=42", "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42"],
+    ["https://www.reddit.com/r/bodyweightfitness/comments/abc123/knee_drill/?share_id=XYZ&utm_medium=android_app&utm_name=androidcss&utm_source=share&utm_term=1", "https://www.reddit.com/r/bodyweightfitness/comments/abc123/knee_drill/"],
+    ["Knee drill\nhttps://www.reddit.com/r/x/comments/1/y/", "https://www.reddit.com/r/x/comments/1/y/"],
+    ["see (https://example.com/a?b=1&fbclid=IwAR0x).", "https://example.com/a?b=1"],
+    ["https://en.wikipedia.org/wiki/Foo_(bar)", "https://en.wikipedia.org/wiki/Foo_(bar)"],
+    ["https://x.y/z#frag", "https://x.y/z#frag"],
+    ["HTTPS://x.y/z", "HTTPS://x.y/z"],
+    ["https://x.y/?UTM_Source=a", "https://x.y/"],
+    ["https://x.y/p?keep=1&igshid=2&keep2=3", "https://x.y/p?keep=1&keep2=3"],
+    ["text.com", "https://text.com"],
+    [" www.example.org/a?b=1 ", "https://www.example.org/a?b=1"],
+    ["instagram.com/reel/abc/?igsh=x", "https://instagram.com/reel/abc/"],
+    ["look at text.com", null],
+    ["a thought", null],
+    ["notes.md", null],
+    ["ftp://x.y", null],
+    ["", null]
+  ]
+}

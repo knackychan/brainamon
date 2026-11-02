@@ -1,0 +1,31 @@
+{
+  "key": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+  "fingerprint": "3fe72357ee0f",
+  "backup_library": "e46898dbf1cccef1d198fd732c032a94",
+  "recovery_library": "1f9a644b3ee39346a0f0bf2c806ec92c",
+  "solo_prefix": "solo-e46898dbf1cccef1d198fd732c032a94-",
+  "change_format": 1,
+  "batch": {
+    "name": "solo-e46898dbf1cccef1d198fd732c032a94-a1b2c3d4e5f60718293a4b5c6d7e8f90",
+    "at": 1761750000000,
+    "n": 2,
+    "sig": "1100ce69603fecaa2999f8a32699547a5eb9820f47e47d452eab0aec41fd7155",
+    "blob": "QkFNMUbOiYnGfs5Vzlj18ZU7t6HW5/UTg8oG0gkbftFGXylso7HrojVwVQciYTk5tCmCMjuaMOcMszoyUoNsoY8p9ThdGJQe/SbE8UyTXyxKfFTe8YIrLL6va89oDWVauEGBmCwM4v3c/WimNzoIPzE2xvCcZGMcYXnaUvkYuhCew83isYAvbSmlW1bXMqxQifX/LFxGBkJIvA6m0A1lM4fWVoQSfx0ryUzgI6B5/+uzzztYJyPTSpOOa6TXAHenF95AKXoI7RUyzaWGiYwP7tWp1ybN/QijIFx5nCt3JB6cOuaRQJ/mgcWBgrZCJj3epEc2VLjAsVqf/TwfKSfbxhQvniUpfBL+/SsMzh0iRoSSaDJwp7aCh3/Ao3YkRoqfgDxSJcD6XwcQbhGbNiRzNK+YiOo1ZRtDP8vti2JbY6HmIWDNzOFXh9+bmhPiTxpFOXKP710ThbzMwAg=",
+    "plain": "{\"format\":1,\"device\":\"p0102030405\",\"at\":1761750000000,\"changes\":[{\"op\":\"link\",\"uid\":\"efefefefefefefefefefefefefefefef\",\"url\":\"https://www.youtube.com/watch?v=reconnect1\",\"note\":\"kept on the phone\",\"category\":\"\",\"at\":1761749990000},{\"op\":\"fav\",\"uid\":\"efefefefefefefefefefefefefefefef\",\"on\":true,\"at\":1761749995000}]}"
+  },
+  "materials": {
+    "raw": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+    "pairing_url": "https://brainamon.example/mobile.html#pair=eyJ2IjogMiwgImsiOiAiQndjSEJ3Y0hCd2NIQndjSEJ3Y0hCd2NIQndjSEJ3Y0hCd2NIQndjSEJ3YyJ9",
+    "phone_export": "{\"format\":\"brainamon-phone-recovery\",\"version\":1,\"key\":\"BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc\",\"fingerprint\":\"3fe72357ee0f\"}"
+  },
+  "names": {
+    "solo": "^solo-[0-9a-f]{32}-[0-9a-f]{32}$",
+    "phone_recovery": "^vi-phone-recovery-[0-9a-f]{32}-[0-9a-f]{32}\\.json$",
+    "legacy_change": "^chg-[0-9a-f]{32}$"
+  },
+  "formats": {
+    "phone_export": "brainamon-phone-recovery",
+    "phone_kit": "brainamon-phone-backup-kit",
+    "phone_envelope": "brainamon-phone-backup-recovery"
+  }
+}

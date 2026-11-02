@@ -1,0 +1,57 @@
+{
+  "supported": [
+    "",
+    "A paragraph.",
+    "  significant  spaces  \n\n\nnext\n",
+    "# Title\n\n## Heading\n### Subheading\n> quote\n\n---\n",
+    "- one\n- two\n\n3. three\n4) four\n\n- [ ] open\n* [X] done",
+    "**bold** and *italic* and __strong__ and _emphasis_ and ~~strike~~ and <u>under</u>",
+    "==sun== <mark data-mark=\"mint\">mint</mark> <mark data-mark=\"peach\">peach</mark> <mark data-mark=\"sky\">sky</mark>",
+    "<span data-ink=\"graphite\">g</span> <span data-ink=\"indigo\">i</span> <span data-ink=\"sky\">s</span> <span data-ink=\"leaf\">l</span> <span data-ink=\"sun\">s</span> <span data-ink=\"ember\">e</span> <span data-ink=\"rose\">r</span>",
+    "<mark data-mark=\"sun\"><span data-ink=\"ember\">**bold** and <u>under</u></span></mark>",
+    "<span data-ink=\"sky\">outside <span data-ink=\"ember\">inside</span> outside</span>",
+    "***both*** and **bold _italic_** and <u>==nested==</u>",
+    "`<script>==literal== **code**</script>` and `` `ticks` ``",
+    "[site](https://example.com/path) [mail](mailto:test@example.com) [id 418] [note: fixture.md]",
+    "2 * 3; x_y_z; \\*literal\\*; \\[id 1\\]; < 7; \\# literal\n\\- literal\n\\1. literal"
+  ],
+  "unsupported": [
+    "| one | two |\n| --- | --- |",
+    "```py\nprint(1)\n```",
+    "- a\n  - nested",
+    "#### deep",
+    "![image](https://example.com/x.png)",
+    "**multi\nline**",
+    "<u>multi\nline</u>",
+    "<script>window.__unsafe=1</script>",
+    "<span onclick=\"alert(1)\">bad</span>",
+    "<span data-ink=\"unknown\">bad</span>",
+    "<b>unknown</b>",
+    "[bad](javascript:alert(1))",
+    "[link]: https://example.com",
+    "Title\n====",
+    "    code"
+  ],
+  "geometry": {
+    "width": 800,
+    "height": 700,
+    "textLeft": 72,
+    "textRight": 650,
+    "top": 48,
+    "end": 600,
+    "headings": [
+      {
+        "at": "Duplicate",
+        "row": 144
+      },
+      {
+        "at": "Duplicate",
+        "row": 384
+      },
+      {
+        "at": "Later",
+        "row": 480
+      }
+    ]
+  }
+}

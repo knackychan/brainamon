@@ -1,0 +1,4 @@
+# dist/ is ignored by the root .gitignore (dist/): build it with npm run build.
+node_modules
+*.log
+*.local

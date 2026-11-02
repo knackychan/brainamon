@@ -1,0 +1,19 @@
+# Lean dependencies for cloud / remote sessions (claude.ai, Linux, no display, no GPU).
+# Enough to run the server, the Python tests and `cd web && npm ci && npm run build`.
+# Skipped on purpose (heavy or Windows-only): openai-whisper, opencv-python, playwright,
+# SpeechRecognition, pystray, pywebview (the Windows window, server/desktop.py: its proxy_tools
+# dependency does not build on Python 3.13, and the tests that import it skip off Windows).
+# numpy (search) is needed. Install with: pip install -r requirements-remote.txt
+Pillow==13.0.0
+anthropic>=0.40.0
+openai>=1.0.0
+requests>=2.30.0
+yt-dlp>=2024.1.0
+fastapi>=0.143.0
+uvicorn[standard]>=0.54.0
+httpx>=0.28.1
+numpy
+cryptography>=42.0.0
+segno>=1.6.0
+pypdf==6.21.2
+tzdata

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="theme-color" content="#e2dfd6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#18191c" media="(prefers-color-scheme: dark)" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <!-- Scripts only from this page's own files (audit 2026-10-11, H2: the browser keeps the
+         pairing and the Google token, so nothing injected may run here). Connections stay open:
+         Google Drive, the AI providers and a development Drive are all called from the page.
+         The Android app's copy drops this line (mobile-shell/scripts/www.mjs): Capacitor injects
+         its bridge as an inline script. -->
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+    <title>Brainamon</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/brand/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
+    <!-- The phone (projects/mobile-app/PLAN.md Phase 2): the third Vite page. Same stylesheet order as
+         index.html: V6 tokens, the locked card files (served from design/card-designs/ at /cards, never
+         edited), then the page-level card theme. -->
+    <link rel="stylesheet" href="/styles/v6-page.css" />
+    <link rel="stylesheet" href="/cards/cards.css" />
+    <link rel="stylesheet" href="/cards/full-art-v2/fa2.css" />
+    <link rel="stylesheet" href="/styles/v6-cards-theme.css" />
+    <!-- The card engine reads THUMBS[item.key]; src/mobile/cards.ts swaps the URL for the cached one. -->
+    <script src="/thumbs-proxy.js"></script>
+    <script src="/cards/engine.js"></script>
+    <script src="/cards/full-art-v2/fa2.js"></script>
+  </head>
+  <body>
+    <main id="m-startup" aria-labelledby="m-startup-title">
+      <h1 id="m-startup-title">Opening Brainamon</h1>
+      <p id="m-startup-message" role="status">Loading your saved sign-in...</p>
+      <button id="m-startup-retry" type="button" class="m-btn" hidden>Retry</button>
+    </main>
+    <script type="module" src="/src/mobile/main.ts"></script>
+  </body>
+</html>

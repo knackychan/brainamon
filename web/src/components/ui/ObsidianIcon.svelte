@@ -1,0 +1,1 @@
+<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="#7c5cd6" d="M12 2 19 7.5 17.5 18 12 22 6.5 18 5 7.5Z" /><path fill="#5a3eb0" d="M12 2 9 12l3 10 5.5-4L19 7.5Z" /><path fill="#a58bf0" d="M12 2 5 7.5 9 12Z" /></svg>

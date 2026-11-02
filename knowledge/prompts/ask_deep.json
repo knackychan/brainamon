@@ -1,0 +1,453 @@
+{
+  "_about": "Ask Deep (Wiskit Deep, the librarian agent) prompt texts, tool definitions and limits, read by knowledge/librarian.py, knowledge/ask_core.py and the phone (web/src/mobile/ai/deep.ts). Placeholders are {name}. Change them here only; tests/test_phone_deep.py checks both sides give the model the same text.",
+  "limits": {
+    "result_max": 12000,
+    "section_max": 4000,
+    "line_excerpt": 220,
+    "read_max_ids": 12,
+    "keyinfo_max": 1500,
+    "howto_max": 600,
+    "transcript_max": 700,
+    "rank_pool": 400,
+    "profile_max": 3000,
+    "aux_batch": 64
+  },
+  "tools": [
+    {
+      "name": "find_topics",
+      "description": "Find the topic areas of the library closest to a subject. Each topic is a cluster of saved items with a written overview. Use it first on broad questions to see which parts of the library are relevant.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Subject to look for."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Max topics (default 5)."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "topic_items",
+      "description": "List the items inside one topic returned by find_topics, best matches for the query first. Page with offset.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "topic_id": {
+            "type": "string",
+            "description": "topic_id from find_topics."
+          },
+          "query": {
+            "type": "string",
+            "description": "Optional focus inside the topic."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Results to skip (default 0)."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Max items (default 20, max 50)."
+          }
+        },
+        "required": [
+          "topic_id"
+        ]
+      }
+    },
+    {
+      "name": "search_library",
+      "description": "Search every saved item (reels, posts, videos) by meaning and keywords. Returns one line per item: [id N] summary (creator, category), most relevant first. When the last results of a page are still relevant, call again with a higher offset to get more.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "What to look for."
+          },
+          "category": {
+            "type": "string",
+            "description": "Optional. Restrict to one category only when the question clearly names it; most subjects span several categories, so usually leave it out."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Results to skip (default 0)."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Max items (default 20, max 50)."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "read_items",
+      "description": "Read the full details of up to 12 items: summary, key information (concrete facts such as exercise names, sets and reps, settings, shortcuts, tool names, links), how to use it, and a transcript excerpt. Read items before giving specific instructions.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Item ids to read (max 12)."
+          },
+          "query": {
+            "type": "string",
+            "description": "Optional: focuses the transcript excerpt."
+          }
+        },
+        "required": [
+          "ids"
+        ]
+      }
+    },
+    {
+      "name": "search_notes",
+      "description": "Search the user's notes: wiki syntheses (AI-written overviews of many items) and personal notes (written by the user). Returns matching sections with the item ids they were built from.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "What to look for."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Max sections (default 4)."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "find_resources",
+      "description": "Find websites, tools and links mentioned in saved items, for questions like 'which site or tool for X'. Returns each domain with a link, context and the items mentioning it.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "What the resource is for."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Max resources (default 15)."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "related_items",
+      "description": "Items most similar to a given item.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Item id."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Max items (default 8)."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    }
+  ],
+  "desktop_tools": [
+    {
+      "name": "read_note",
+      "description": "Read one saved note in full, as written: its Markdown body with highlights, ink colours, underlines and task ticks, and its stamps line. Use it before proposing a reformat, or when a search_notes excerpt is not enough. Use the filename of a [note: filename].",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "Filename of the note in data/notes, e.g. knee-plan.md."
+          }
+        },
+        "required": [
+          "file"
+        ]
+      }
+    },
+    {
+      "name": "propose_reformat",
+      "description": "Reformat or format one of the user's personal notes (My Notes): tidy it, classify its parts by topic, and apply what the user asked for in instruction (for example: make the steps a checklist, highlight the weights, colour the warnings red, put a kettlebell stamp next to the first heading). This only queues a proposal: the note is NOT changed until the user clicks Apply in My Notes. Say so in your answer. Use the note's filename, e.g. the [note: filename] of a personal note found with search_notes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "Filename of the personal note in data/notes, e.g. knee-plan.md."
+          },
+          "instruction": {
+            "type": "string",
+            "description": "What the user asked to change, in their words. Empty for a plain tidy-up."
+          }
+        },
+        "required": [
+          "file"
+        ]
+      }
+    }
+  ],
+  "system": "You are the user's personal librarian and assistant. Their library holds {total_items} saved social-media items (reels, posts, videos) plus notes. Categories: {categories}.\n\nResearch when the question needs library evidence. A greeting or simple conversation does not need searches. Stay within the current mode budget.\nHow to research:\n1. Broad or planning questions (a workout, a learning path, 'what do I have on X'): call find_topics and search_notes first.\n2. Call search_library (with a category when one clearly fits). If the last results of a page are still relevant, fetch the next page with offset.\n3. Call read_items on a useful bounded set of relevant items when the supplied summaries do not already support the requested instructions: names, steps, sets and reps, settings, shortcuts and links come from there.\n4. For websites, tools or apps, call find_resources.\n\nHow to answer:\n- Build the answer from the library. Put the source right after each exercise, step, tip or resource: [id N] for items, [note: filename] for notes. Every item you use must be cited.\n- You may add general knowledge to fill gaps (for example warm-up, rest times, progression), but end each such sentence or bullet with '(general knowledge)'.\n- If the library has nothing relevant, say so first, then answer generally.\n- Answer the latest question; earlier turns are background. Be practical and specific; use short headings and lists.",
+  "profile": "\n\nAbout the user (their own profile note; tailor advice to it):\n{profile}",
+  "orientation": "Starting points from the library (closest topics and note sections; verify details with read_items):\n\nTOPICS\n{topics}\n\nNOTES\n{notes}",
+  "turn": "Question: {question}\n\n{orientation}\n\nAnswer this question: {question}",
+  "category_tools": [
+    {
+      "name": "propose_categories",
+      "description": "Preferred category action: prepare ONE batch across multiple existing categories. All supported modes use verified items within their research budgets; a mixed batch has at most 100 items. Include all target groups in one call after reading the affected items. Each item may appear only once. Brainamon shows every current and proposed category; one Apply batch click applies all groups atomically. Always requires the user's click, even with auto-approve. Suggestions alone stay in chat. Do not split a batch into separate approvals per category; do not queue another request while this one is pending.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "groups": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "description": "All category groups for this batch: at most 100 items in total.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ids": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 100,
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "category": {
+                  "type": "string",
+                  "description": "Exact existing category name."
+                }
+              },
+              "required": [
+                "ids",
+                "category"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "groups"
+        ]
+      }
+    },
+    {
+      "name": "propose_category",
+      "description": "Single-category action for an explicit move into one existing category. For categorizing a batch across categories, prefer propose_categories and include all groups in one approval. Use current supplied summaries or read_items evidence within the research budget. Nothing changes until the user clicks the Brainamon approval window. Suggestions alone stay in chat. Never split a mixed batch into one request per category or claim items already moved.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 500,
+            "items": {
+              "type": "integer"
+            },
+            "description": "Verified item IDs from current supplied summaries or read_items results."
+          },
+          "category": {
+            "type": "string",
+            "description": "Exact existing category name from the category instructions."
+          }
+        },
+        "required": [
+          "ids",
+          "category"
+        ]
+      }
+    }
+  ],
+  "category_instructions": "Category changes on this desktop:\n- Existing category names (JSON, includes empty categories): {categories}. Use the exact name and case.\n- For suggestions, read the affected items and explain proposed assignments with item citations and a brief reason. Do not queue changes when the user only asks for suggestions or says not to change anything.\n- When asked to categorize or apply assignments, prefer propose_categories: All supported modes can collect verified items within their research budgets, up to 100 in one batch. Group them by target category, then submit ALL groups in ONE call. Read details in bounded chunks with read_items; Claude Code uses show_item. Only include verified items; if the research budget runs out, submit the verified subset and state how many remain. Explain the assignments in your answer.\n- One batch can contain multiple target categories. Brainamon displays all current and proposed categories and applies the whole batch only after one Apply batch click. Do not stop after the first small target group or ask for separate approvals per category. Do not queue another request until the batch is resolved.\n- Use propose_category only for an explicit single-category move. Never call it repeatedly to categorize a mixed batch. Suggestions alone do not queue changes.\n- If a new category would fit better, suggest its name in chat and explain that it must first be created in Collections. These tools cannot create categories or change tags/folders.\n- Report errors honestly; never say a change was saved merely because a proposal was queued. API mode can request these actions without direct file access.",
+  "canvas_tools": [
+    {
+      "name": "list_canvases",
+      "description": "The user's canvases (moodboards): id, name, element count, last change. Newest first.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "read_canvas",
+      "description": "One canvas's elements: id, type (image or note), item_id (an item's thumbnail) or file_path (an uploaded image or frame), label, note text (clipped), x, y, w, h.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "canvas_id": {
+            "type": "string",
+            "description": "The id from list_canvases."
+          }
+        },
+        "required": [
+          "canvas_id"
+        ]
+      }
+    },
+    {
+      "name": "list_frames",
+      "description": "The extracted video frames of an item (file names in its frames folder, made by Analyze). Use these exact names in propose_canvas. Empty: the item has no frames; use its thumbnail or suggest running Analyze.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "item_id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id"
+        ]
+      }
+    },
+    {
+      "name": "propose_canvas",
+      "description": "Propose a canvas (moodboard) built from library items: a new themed canvas (new_name) or additions to an existing one (canvas_id). Elements are item thumbnails, extracted video frames and short text notes, grouped into sections; the tool arranges them without overlaps and writes the section titles. This only asks: Brainamon shows the user a review window and nothing is written until they click Apply. Never deletes or changes an existing element; with arrange: true it may only move the existing elements you list. One request can wait at a time.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "new_name": {
+            "type": "string",
+            "description": "Name of a NEW canvas (unique). Give this or canvas_id."
+          },
+          "canvas_id": {
+            "type": "string",
+            "description": "Id of an EXISTING canvas to add to (from list_canvases)."
+          },
+          "layout": {
+            "type": "string",
+            "enum": [
+              "rows",
+              "columns"
+            ],
+            "description": "columns: sections left to right (routine steps, a timeline). rows: one section per row (moves, categories). Default rows."
+          },
+          "arrange": {
+            "type": "boolean",
+            "description": "Existing canvas only: also move the existing elements listed as kind existing into the sections. Only when the user asks to rearrange."
+          },
+          "elements": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 60,
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "thumbnail",
+                    "frame",
+                    "text",
+                    "existing"
+                  ],
+                  "description": "thumbnail: an item's thumbnail. frame: one extracted video frame of an item. text: a short note on the board. existing: an element already on the canvas (only with arrange: true)."
+                },
+                "item_id": {
+                  "type": "integer",
+                  "description": "thumbnail and frame: the item id."
+                },
+                "frame": {
+                  "type": "string",
+                  "description": "frame: a file name from list_frames, e.g. frame_003.jpg."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "text: one heading, caption, step or instruction (one to three lines)."
+                },
+                "color": {
+                  "type": "string",
+                  "description": "text: optional note colour, #RRGGBB."
+                },
+                "label": {
+                  "type": "string",
+                  "description": "thumbnail and frame: optional caption."
+                },
+                "group": {
+                  "type": "string",
+                  "description": "The section this element belongs to; it becomes a section title on the board."
+                },
+                "order": {
+                  "type": "integer",
+                  "description": "Position inside its section (1 first)."
+                },
+                "id": {
+                  "type": "string",
+                  "description": "existing: the element id from read_canvas."
+                },
+                "x": {
+                  "type": "integer",
+                  "description": "Rare: explicit offset from the new block's corner instead of a group (with y)."
+                },
+                "y": {
+                  "type": "integer",
+                  "description": "Rare: explicit offset, with x."
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false
+            },
+            "description": "At most 60 elements and 20 text notes (section titles included)."
+          }
+        },
+        "required": [
+          "elements"
+        ]
+      }
+    }
+  ],
+  "canvas_instructions": "Canvases (moodboards) on this desktop:\n- Existing canvases (JSON: id, name, elements): {canvases}. read_canvas shows one canvas's elements; list_frames gives an item's extracted video frames.\n- Only when the user asks for a canvas (make, build, add to, rearrange), propose it with {tool}. Never on your own initiative.\n- Research first: search_library, then {read} on the candidates, then list_frames for the items whose frames you want. Use only real item ids and frame names returned by these tools; never invent an id or a file name. An item without frames can still go on as its thumbnail: say which items have no frames and suggest running Analyze on them.\n- Give groups and order, not pixel positions: each element has a group (the section title, e.g. 'Wake up', 'Warm-up') and an order. layout 'columns' puts sections left to right (the steps of a routine, a timeline); 'rows' gives each section its own row (exercise moves, themes). The tool arranges the elements and writes the section titles.\n- Text elements are short notes on the board: a heading, a caption, one step or instruction (one to three lines). Put [id N] citations in your answer, not in the notes.\n- A new canvas: new_name. Adding to an existing one: its canvas_id; its elements are never changed or removed. Set arrange: true and list elements as {\"kind\": \"existing\", \"id\": ...} only when the user asks to rearrange that canvas.\n- Before proposing, explain the plan in two lines (the sections and what goes in each, with [id N]). One proposal per answer: at most 60 elements and 20 text notes.\n- The proposal only asks: Brainamon shows the user a review window and nothing is written until they click Apply. Say so. Only one request can wait at a time: do not queue another (a note, a category batch) until they answer. A saved note in the notes is a separate request: {after}\n- If the tool answers with an error, nothing was queued: report it honestly and fix only what the message names.",
+  "phone_canvas_instructions": "Canvases on this phone: Existing canvases (JSON: id, name, elements): {canvases}. Only propose_canvas when the user asks to create, add to, or rearrange a canvas. Research and verify item IDs first. list_frames reports that extracted frames are unavailable here; use thumbnails or text. read_canvas shows existing element IDs, which may move only with arrange:true. Give groups and order, and explain the plan briefly. A proposal changes nothing until the user taps Apply on this phone. One proposal waits at a time; a note is a separate request after this review.",
+  "empty": "(No answer came back. Try rephrasing, pick a stronger model, or switch Deep mode off.)",
+  "agent_budgets": {
+    "quick": {
+      "max_rounds": 4,
+      "max_tool_calls": 12,
+      "max_items": 25,
+      "read_max_ids": 6,
+      "research_chars": 32000,
+      "result_chars": 6000,
+      "max_tokens": 8000,
+      "research_seconds": 45
+    },
+    "deep": {
+      "max_rounds": 8,
+      "max_tool_calls": 28,
+      "max_items": 100,
+      "read_max_ids": 12,
+      "research_chars": 128000,
+      "result_chars": 12000,
+      "max_tokens": 16000,
+      "research_seconds": 180
+    },
+    "control_chars": 2048,
+    "request_seconds": 60,
+    "connect_seconds": 10
+  }
+}

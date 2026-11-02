@@ -1,0 +1,52 @@
+{
+  "_about": "The My Notes format (projects/note-organic-ui/plans/01-note-format-agents.md) checked in Python (core/note_format.py) and TypeScript (web/src/lib/note-format.ts) by tests/test_note_format.py. plain: [body, words]. stamps: [frontmatter value, dump_stamps of it]. render (TypeScript only): [markdown, exact headings, blocksHTML(esc(markdown), marksInline, exact)]. head: [body, head(body)]. words: [body, word_count(body)].",
+  "head": [
+    ["\n\n# Title\nline", "# Title\nline"],
+    ["l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\nl11\nl12\nl13\nl14\nl15\nl16\nl17\nl18\nl19\nl20", "l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\nl11\nl12\nl13\nl14"],
+    ["a\r\nb\n\n", "a\nb"],
+    ["", ""],
+    ["  \n- [ ] open\n  indented", "- [ ] open\n  indented"]
+  ],
+  "words": [
+    ["Is <span data-ink=\"ember\">16 kg</span> right?", 4],
+    ["## The sequence\n- [x] 2 min: cat-cow\n- [ ] Swings", 6],
+    ["", 0],
+    ["Caf\u00e9 d\u00e9j\u00e0 vu \u2014 ok", 4],
+    ["==coffee== <u>first</u>, then **swings**.", 4]
+  ],
+  "plain": [
+    ["Is <span data-ink=\"ember\">16 kg</span> right?", "Is 16 kg right?"],
+    ["<mark data-mark=\"mint\">20 kg</mark> and ==coffee== here", "20 kg and coffee here"],
+    ["- [x] done\n- [ ] open\n* [X] big\n  - [ ]", "- done\n- open\n* big\n  - "],
+    ["<u>under</u> <span data-ink=\"pink\">x</span>", "under <span data-ink=\"pink\">x"],
+    ["== not == a = b", "== not == a = b"],
+    ["# Head\n\nText with **bold** and [id 12]", "# Head\n\nText with **bold** and [id 12]"]
+  ],
+  "stamps": [
+    ["[{\"k\":\"kettlebell\",\"at\":\"The sequence\",\"x\":-4,\"y\":1,\"s\":3,\"c\":\"indigo\",\"r\":0}]",
+     "[{\"k\":\"kettlebell\",\"at\":\"The sequence\",\"x\":-4,\"y\":1,\"s\":3,\"c\":\"indigo\",\"r\":0}]"],
+    ["[{\"k\":\"unicorn\"},{\"k\":\"sun\"},7,null]", "[{\"k\":\"sun\",\"at\":\"end\",\"x\":-4,\"y\":0,\"s\":2,\"c\":\"indigo\",\"r\":0}]"],
+    ["[{\"k\":\"star\",\"at\":\"  Open   questions \",\"x\":99,\"y\":-1000,\"s\":7,\"c\":\"pink\",\"r\":-3}]",
+     "[{\"k\":\"star\",\"at\":\"Open questions\",\"x\":40,\"y\":-400,\"s\":4,\"c\":\"indigo\",\"r\":-8}]"],
+    ["[{\"k\":\"sun\",\"x\":\"3\",\"y\":true,\"s\":2.5,\"r\":4.4,\"at\":5}]", "[{\"k\":\"sun\",\"at\":\"end\",\"x\":-4,\"y\":0,\"s\":3,\"c\":\"indigo\",\"r\":8}]"],
+    ["[{\"k\":\"pin\",\"x\":-2.5,\"at\":\"top\",\"c\":\"leaf\"}]", "[{\"k\":\"pin\",\"at\":\"top\",\"x\":-2,\"y\":0,\"s\":2,\"c\":\"leaf\",\"r\":0}]"],
+    ["[{\"k\":\"heart\",\"at\":\"Café ☕ notes\"}]", "[{\"k\":\"heart\",\"at\":\"Café ☕ notes\",\"x\":-4,\"y\":0,\"s\":2,\"c\":\"indigo\",\"r\":0}]"],
+    ["not json", ""],
+    ["{\"k\":\"sun\"}", ""],
+    ["[]", ""],
+    ["", ""]
+  ],
+  "render": [
+    ["# Title\n## Head\n### Sub\n#### Deep", false, "<h2>Title</h2><h2>Head</h2><h3>Sub</h3><h3>Deep</h3>"],
+    ["# Title\n## Head\n### Sub\n#### Deep", true, "<h1>Title</h1><h2>Head</h2><h3>Sub</h3><h3>Deep</h3>"],
+    ["- [ ] open\n- [x] done\n- plain\n1. one", false,
+     "<ul class=\"np-check\"><li>open</li><li data-done=\"\">done</li></ul><ul><li>plain</li></ul><ol><li>one</li></ol>"],
+    ["> quote\n---\ntext", false, "<blockquote>quote</blockquote><hr><p>text</p>"],
+    ["Is <span data-ink=\"ember\">16 kg</span> and <mark data-mark=\"mint\">20</mark> <u>u</u> ==sun== ~~s~~", false,
+     "<p>Is <span data-ink=\"ember\">16 kg</span> and <mark data-mark=\"mint\">20</mark> <u>u</u> <mark data-mark=\"sun\">sun</mark> <s>s</s></p>"],
+    ["<script>x</script> <span onclick=\"a\">y</span> <span data-ink=\"pink\">z</span>", false,
+     "<p>&lt;script&gt;x&lt;/script&gt; &lt;span onclick=&quot;a&quot;&gt;y&lt;/span&gt; &lt;span data-ink=&quot;pink&quot;&gt;z&lt;/span&gt;</p>"],
+    ["<u>open <span data-ink=\"sky\">x", false, "<p><u>open <span data-ink=\"sky\">x</span></u></p>"],
+    ["a</mark> b", false, "<p>a&lt;/mark&gt; b</p>"]
+  ]
+}

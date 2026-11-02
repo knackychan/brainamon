@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- the page case color (web/public/styles/v6-page.css, dark) -->
+    <color name="brainamon_window">#18191C</color>
+</resources>

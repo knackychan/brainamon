@@ -1,0 +1,53 @@
+# The Android app (projects/mobile-app/PLAN.md Phase 6, mobile-shell/): builds the debug APK from the
+# phone page. Artifact distribution stays off until the exact Android binary
+# license/source obligations and device gates have been cleared separately.
+name: Android app
+
+on:
+  push:
+    paths:
+      - 'mobile-shell/**'
+      - 'web/**'
+      - 'knowledge/prompts/**'
+      - 'design/card-designs/**'
+      - 'core/license.py'
+      - 'LICENSE'
+      - 'THIRD_PARTY_NOTICES.md'
+      - 'packaging/payload_guard.py'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: gradle/actions/wrapper-validation@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Build the phone page
+        working-directory: web
+        run: npm ci && npm run build
+      - name: Copy it into the app
+        working-directory: mobile-shell
+        run: npm ci && npm run sync
+      - name: Build the debug APK
+        working-directory: mobile-shell/android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+      - name: Inspect final debug APK payload (not production eligibility)
+        run: python3 packaging/payload_guard.py mobile-shell/android/app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: ${{ vars.ANDROID_BINARY_DISTRIBUTION_CLEARED == 'true' }}
+        with:
+          name: brainamon-debug-apk
+          path: mobile-shell/android/app/build/outputs/apk/debug/*.apk
+          retention-days: 14

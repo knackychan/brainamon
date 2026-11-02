@@ -1,0 +1,42 @@
+/* The My Notes format in rendered Markdown (lib/md.ts mdHTML, core/note_format.py): ink and marker colours
+   by name, task lists, quotes and dotted dividers. Imported by md.ts, so the desktop and the phone get it
+   wherever a note or report is rendered. The names map to tokens: dark mode re-maps them. Palette:
+   projects/note-organic-ui/MOCKUP.md, round 2. */
+:root{
+  --ink-graphite:#1f1f22; --ink-indigo:#2a22d0; --ink-sky:#2483d6; --ink-leaf:#3a8f37;
+  --ink-sun:#e2a00e; --ink-ember:#ff5a1f; --ink-rose:#d8392b;
+  --mk-sun:rgba(255,211,77,.6); --mk-mint:rgba(159,211,190,.55); --mk-peach:rgba(243,180,155,.65); --mk-sky:rgba(120,184,240,.36);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ink-graphite:#e9e3d3; --ink-indigo:#a29dff; --ink-sky:#6db4f2; --ink-leaf:#7cc46b;
+  --ink-sun:#ffd34d; --ink-ember:#ff8452; --ink-rose:#ff6f6a;
+  --mk-sun:rgba(255,211,77,.3); --mk-mint:rgba(111,174,148,.38); --mk-peach:rgba(201,131,106,.42); --mk-sky:rgba(109,180,242,.28);
+}}
+:root[data-theme="dark"]{
+  --ink-graphite:#e9e3d3; --ink-indigo:#a29dff; --ink-sky:#6db4f2; --ink-leaf:#7cc46b;
+  --ink-sun:#ffd34d; --ink-ember:#ff8452; --ink-rose:#ff6f6a;
+  --mk-sun:rgba(255,211,77,.3); --mk-mint:rgba(111,174,148,.38); --mk-peach:rgba(201,131,106,.42); --mk-sky:rgba(109,180,242,.28);
+}
+
+span[data-ink=graphite]{color:var(--ink-graphite)}
+span[data-ink=indigo]{color:var(--ink-indigo)}
+span[data-ink=sky]{color:var(--ink-sky)}
+span[data-ink=leaf]{color:var(--ink-leaf)}
+span[data-ink=sun]{color:var(--ink-sun)}
+span[data-ink=ember]{color:var(--ink-ember)}
+span[data-ink=rose]{color:var(--ink-rose)}
+mark[data-mark]{color:inherit;padding:0 2px;margin:0 -1px;border-radius:3px 6px 4px 7px;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+mark[data-mark=sun]{background:var(--mk-sun)}
+mark[data-mark=mint]{background:var(--mk-mint)}
+mark[data-mark=peach]{background:var(--mk-peach)}
+mark[data-mark=sky]{background:var(--mk-sky)}
+
+ul.np-check{list-style:none;padding-left:0}
+ul.np-check>li{position:relative;padding-left:22px}
+ul.np-check>li::marker{content:none}
+ul.np-check>li::before{content:"";position:absolute;left:2px;top:.32em;width:11px;height:11px;border:1.5px solid var(--ink-indigo);border-radius:3px 2px 4px 2px}
+ul.np-check>li[data-done]{opacity:.7;text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--ink-indigo) 55%,transparent)}
+ul.np-check>li[data-done]::after{content:"";position:absolute;left:5px;top:.12em;width:5px;height:10px;border:solid var(--ink-indigo);border-width:0 2px 2px 0;transform:rotate(40deg)}
+:where(.md,.m-rep) blockquote{margin:0 0 8px;padding:0 0 0 10px;border-left:2px solid var(--ink-indigo);font-style:italic;opacity:.85}
+:where(.md,.m-rep) hr{height:10px;margin:4px 0 8px;border:0;background:radial-gradient(circle,var(--ink-indigo) 1.2px,transparent 1.7px) 0 50%/10px 10px repeat-x;opacity:.5}
+:where(.md,.m-rep) s{opacity:.7}

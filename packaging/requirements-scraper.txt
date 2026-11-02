@@ -1,0 +1,2 @@
+# Separate optional runtime; never install the application's main requirements here.
+playwright==1.61.0

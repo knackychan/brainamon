@@ -1,0 +1,15 @@
+/* Under a small grid card (audit 2026-10-15, #1) the cell prints the title, creator and collection in
+   UI type (.card-cap, Cell.svelte and mobile/Grid.svelte), since the card's own text is 3 to 6 px there.
+   The card itself keeps its full layout at every size (Fred, 2026-10-16: Full and Cover must stay
+   two different designs); the card files, art and motion are untouched. */
+.card-cap { display: grid; gap: 2px; min-width: 0; padding-top: 8px; text-align: left; color: var(--felt-ink) }
+.card-cap b { font: 700 13px/1.25 var(--display); font-stretch: 85%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.card-cap small { font: 500 11px/1.3 var(--mono); opacity: .78; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+/* the footer's hex code is gone (lib/cards/card.ts realCard): the barcode keeps the right edge */
+.fa-ft .fa-bc, .ft .bc { margin-left: auto }
+
+/* The source colour on the frame, strong enough to read as the card's type (Fred, 2026-10-16); the
+   body keeps v6-cards-theme.css's light tint so the text stays readable. A favourite keeps its gold. */
+.slot.slot[data-th]:not(.r-holo) .front{background:linear-gradient(var(--fa,125deg),
+  color-mix(in srgb,var(--t) 78%,#fff) 0%,color-mix(in srgb,var(--t) 42%,#fff) 20%,var(--t) 42%,
+  color-mix(in srgb,var(--t) 48%,#fff) 64%,color-mix(in srgb,var(--t) 82%,#000) 84%,color-mix(in srgb,var(--t) 55%,#fff) 100%)}

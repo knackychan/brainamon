@@ -1,0 +1,18 @@
+[
+  {
+    "id": "instagram",
+    "name": "Instagram",
+    "what": "Saved posts and reels",
+    "page": "https://accountscenter.instagram.com/info_and_permissions/dyi/",
+    "pageLabel": "Open Instagram's page",
+    "wait": "Check Instagram for export availability; timing and menu names can vary. Download it on this phone from the same page.",
+    "steps": [
+      "Open Instagram's \"Download your information\" page (button below) and sign in if it asks.",
+      "Choose \"Download or transfer information\", then your Instagram account.",
+      "Choose \"Some of your information\" and tick only \"Saved\".",
+      "Choose \"Download to device\", date range \"All time\", format \"JSON\", then \"Create files\".",
+      "When Instagram's email comes, download the zip on this phone.",
+      "Come back here and choose the file: the zip, or saved_posts.json from inside it."
+    ]
+  }
+]

@@ -87,6 +87,7 @@ class DriveMirrorTarget(ExportTarget):
         self.tick = tick
         self._adopted: dict[str, str] = {}     # logical name: a same-name Drive file taken over this publish (I2)
         self.bytes_done = self.bytes_total = 0  # plain sizes of the files this publish sends and has sent: the bar beside the file count (S7)
+        self.items_done = self.items_total = 0
 
     def export(self, payload: dict, thumb_sources: dict | None = None, out_dir: Path | None = None,
                progress=None) -> MirrorResult:
@@ -117,6 +118,8 @@ class DriveMirrorTarget(ExportTarget):
                 if spare:
                     self._adopted[logical] = spare[0]
         todo = [f for f in files if self.state.get(f.name, {}).get('sig') != f.sig]
+        self.items_total = len(payload['items'])
+        self.items_done = sum(f.name.startswith('items/') and self.state.get(f.name, {}).get('sig') == f.sig for f in files)
         self.bytes_done, self.bytes_total = 0, sum(f.size for f in todo)
         if progress:
             progress(0, len(todo))
@@ -239,13 +242,15 @@ class DriveMirrorTarget(ExportTarget):
                             res.uploaded += 1
                             res.bytes_sent += sent
                             self.bytes_done += f.size
+                            if f.name.startswith('items/'):
+                                self.items_done += 1
                             since += 1
                             if since >= self.SAVE_EVERY:
                                 self._flush(put, drop)
                                 put.clear()
                                 drop.clear()
                                 since = 0
-                        done += 1
+                        done = res.uploaded
                         if progress:
                             progress(done, len(todo))
                     except BaseException as e:

@@ -251,7 +251,7 @@ class _GuardedClient:
             self.service.require_open()
             if self.phone:
                 self.service.require_license()
-            if name in ('upload', 'delete') and not self.recovery:
+            if name in ('upload', 'delete', 'delete_many') and not self.recovery:
                 remote_name = (args[0] if args else kwargs.get('name', '')) if name == 'upload' else ''
                 file_id = args[3] if len(args) > 3 else kwargs.get('file_id', '')
                 cached = (name == 'upload' and
@@ -319,7 +319,7 @@ class SyncService:
         self._signin_thread: threading.Thread | None = None
         self._after_sign_in: set[str] = set()   # what Connect turns on once Google answers: 'mirror', 'vault'
         # seq: bumped by every change, so the page can drop an answer older than the last `cloud` event
-        self.st = {'seq': 0, 'state': 'off', 'done': 0, 'total': 0, 'bytes_done': 0, 'bytes_total': 0,      # bytes: plain sizes of the files this pass sends (S7)
+        self.st = {'seq': 0, 'state': 'off', 'done': 0, 'total': 0, 'bytes_done': 0, 'bytes_total': 0, 'items_done': 0, 'items_total': 0,
                    'error': '', 'error_code': '', 'error_action': '',
                    'error_at': 0,              # ms: when the other PC became the backup PC (not_owner) or made its backup (foreign_backup)
                    'error_account': '',        # the Google account a discarded sign-in used (wrong_account): the page offers Switch to it
@@ -382,6 +382,8 @@ class SyncService:
         return {'id': it['id'], 'kind': it['kind'], 'stage': it['stage'], 'title': title, 'step': step, 'of': len(labels), 'steps': steps,
                 'done': self.st.get('done', 0), 'total': self.st.get('total', 0),
                 'bytes_done': self.st.get('bytes_done', 0), 'bytes_total': self.st.get('bytes_total', 0), 'since': it['created'],
+                'items_done': self.st.get('items_done', 0), 'items_total': self.st.get('items_total', 0),
+                'uploaded_items': it['payload'].get('uploaded_items'), 'uploaded_items_total': it['payload'].get('uploaded_items_total'), 'uploaded_files': it['payload'].get('uploaded_files'),
                 'error': it.get('error', ''), 'code': it.get('code', ''), 'lock': self.st.get('rotation_lock', '') if it['kind'] == intents.REMOVE else ''}
 
     def _set(self, emit: bool = True, **kw) -> None:
@@ -1013,14 +1015,9 @@ class SyncService:
             client.stop = stop
             if isinstance(client, drive_client.DriveClient):
                 client.token_path = self.previous_token_path        # a refresh of the old sign-in never lands in the new one's file
-            for fid in p.get('ids', []):
-                if stop.is_set():
-                    raise ExportStopped()
-                try:
-                    client.delete(fid)
-                except drive_client.DriveError as e:
-                    if e.status != 404:
-                        raise
+            old_ids = p.get('ids', [])
+            self._set(done=0, total=len(old_ids))
+            drive_client.delete_files(client, old_ids, lambda done, total: self._set(done=done, total=total), ExportStopped)
             try:
                 drive_client.revoke(previous)
             except Exception as e:
@@ -1103,16 +1100,15 @@ class SyncService:
         if not it or it['stage'] not in ('backing-up', 'cleanup') or (it.get('error') and it['stage'] != 'cleanup') or tok is None:
             return
         self.intents.update(intents.RESET, stage='cleanup')
-        self._emit()
+        self._set(upload_step='Checking the old backup files to delete…', done=0, total=0)
         client = self._raw_factory(tok)
         client.stop = stop
         present = {f['id'] for f in client.list()}
-        for fid in it['payload'].get('ids', []):
-            if stop.is_set():
-                raise ExportStopped()
-            if fid in present:
-                client.delete(fid)
+        remaining = [fid for fid in it['payload'].get('ids', []) if fid in present]
+        self._set(upload_step='Deleting the old backup…', done=0, total=len(remaining))
+        drive_client.delete_files(client, remaining, lambda done, total: self._set(done=done, total=total), ExportStopped)
         self.intents.finish(intents.RESET)
+        self._set(upload_step='', done=0, total=0)
 
     def _after_complete_publish(self, stop) -> None:
         """A publish ended with no errors and its manifest written. Old copies that waited for it can go now."""
@@ -1368,8 +1364,7 @@ class SyncService:
             try:
                 if tok and delete_mirror:
                     client = self._raw_factory(tok)
-                    if stop is not None:
-                        client.stop = stop
+                    client.stop = stop if stop is not None else threading.Event()
                     listing = client.list()
                     if delete_existing:
                         files = [f for f in listing if self._desktop_backup_file(f['name'])]
@@ -1382,15 +1377,7 @@ class SyncService:
                         files = [f for f in listing if f['id'] in owned]
                     self.intents.update(intents.DISCONNECT, stage='deleting')
                     self._set(done=0, total=len(files))         # 'disconnecting' counts the deletes
-                    for i, f in enumerate(files, 1):
-                        if stop and stop.is_set():
-                            raise ExportStopped()
-                        try:
-                            client.delete(f['id'])
-                        except drive_client.DriveError as e:
-                            if e.status != 404:
-                                raise
-                        self._set(done=i)
+                    drive_client.delete_files(client, [f['id'] for f in files], lambda done, total: self._set(done=done, total=total), ExportStopped)
             except ExportStopped:
                 raise
             except Exception:
@@ -2087,8 +2074,11 @@ class SyncService:
             self._set(state='signed-out', error='Sign in to Google Drive again to keep uploading.')
             stop.set()
             return False
+        reset = self.intents.find(intents.RESET)
+        if reset and reset['stage'] == 'cleanup':
+            self.intents.update(intents.RESET, stage='backing-up', error='', code='')
         try:
-            self._set(upload_step='Checking the Google account and library ownership…', upload_since=int(time.time() * 1000), done=0, total=0)
+            self._set(upload_step='Checking the Google account and library ownership…', upload_since=int(time.time() * 1000), done=0, total=0, items_done=0, items_total=0)
             pending = self._rotation()
             client = self._factory(tok)
             client.stop = stop
@@ -2125,7 +2115,8 @@ class SyncService:
                 tmp_dir=self.cloud_dir, save=lambda put, drop: self.writer.call(lambda db: db.save_sync_state(put, drop)),
                 force_manifest=force_manifest, tick=lambda: self._tick(stop), skipped_before=self._published_skipped)
             t0 = time.monotonic()
-            res = target.export(payload, progress=lambda d, t: self._set(done=d, total=t, bytes_done=target.bytes_done, bytes_total=target.bytes_total))
+            res = target.export(payload, progress=lambda d, t: self._set(done=d, total=t, bytes_done=target.bytes_done, bytes_total=target.bytes_total,
+                                                                        items_done=target.items_done, items_total=target.items_total))
             if stop.is_set():
                 raise ExportStopped()
             if not res.errors:
@@ -2174,6 +2165,8 @@ class SyncService:
         if not res.errors:
             self._published_receipts = payload['receipts']
             self._published_skipped = dict(res.skipped)
+            if self.intents.find(intents.RESET):
+                self.intents.update(intents.RESET, payload={'uploaded_items': target.items_done, 'uploaded_items_total': target.items_total, 'uploaded_files': res.files})
             self._after_complete_publish(stop)
         return not res.errors
 

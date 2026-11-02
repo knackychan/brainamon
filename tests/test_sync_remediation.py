@@ -62,6 +62,41 @@ class RecoveryNavigationTest(Library):
         self.assertIn(solo, self.drive.files)
         self.assertIsNone(self.svc.intents.find(intents.RESET))
         self.assertEqual(self.writer.read(lambda db: db.count_items()), len(self.ids))
+        tasks = [event['task'] for kind, event in self.svc.hub.events if kind == 'cloud' and event.get('task')]
+        uploads = [task for task in tasks if task['stage'] == 'backing-up' and task['bytes_done']]
+        self.assertTrue(uploads)
+        self.assertTrue(all(task['step'] == 2 and task['total'] >= task['done'] > 0 for task in uploads))
+        cleanup = [task for task in tasks if task['stage'] == 'cleanup' and task['total']]
+        self.assertEqual([task['done'] for task in cleanup], list(range(len(old) + 1)))
+        self.assertTrue(all(task['step'] == 3 and task['total'] == len(old) and task['bytes_total'] == 0 for task in cleanup))
+        final = [event for kind, event in self.svc.hub.events if kind == 'cloud'][-1]
+        self.assertIsNone(final['task'])
+        self.assertEqual((final['done'], final['total'], final['upload_step']), (0, 0, ''))
+
+    def test_reset_cleanup_retry_counts_only_remaining_files(self):
+        old = [self.drive.put(str(n), b'old backup') for n in range(3)]
+        self.svc.intents.add(intents.RESET, {'ids': old})
+        self.svc.intents.update(intents.RESET, stage='cleanup')
+        self.drive.delete(old[0])
+        delete = self.drive.delete
+
+        def fail_second(fid):
+            if fid == old[2]:
+                raise drive_client.DriveError('synthetic offline')
+            delete(fid)
+
+        with mock.patch.object(self.drive, 'delete', side_effect=fail_second):
+            with self.assertRaises(drive_client.DriveError):
+                self.svc._finish_reset(threading.Event())
+        task = self.svc.status()['task']
+        self.assertEqual((task['done'], task['total']), (1, 2))
+        self.assertEqual(task['bytes_total'], 0)
+        self.svc.hub.events.clear()
+        self.svc._finish_reset(threading.Event())
+        tasks = [event['task'] for kind, event in self.svc.hub.events if kind == 'cloud' and event.get('task') and event['task']['total']]
+        self.assertEqual([(task['done'], task['total']) for task in tasks], [(0, 1), (1, 1)])
+        self.assertFalse(self.drive.files)
+        self.assertIsNone(self.svc.status()['task'])
 
     def test_reset_with_recovery_uses_real_guard_and_removes_old_records(self):
         self.assertTrue(self.svc._publish())
@@ -77,6 +112,23 @@ class RecoveryNavigationTest(Library):
         self.assertTrue(old.issubset(self.drive.files))
         self.assertTrue(self.svc._publish(threading.Event()), self.svc.status())
         self.assertFalse(old & self.drive.files.keys())
+
+    def test_reset_cleanup_retry_reports_republishing_before_deletion(self):
+        self.foreign_backup()
+        with mock.patch.object(self.svc, 'start'):
+            self.svc.reset_backup(True)
+        self.svc._run_intents(threading.Event())
+        with mock.patch.object(self.drive, 'delete', side_effect=drive_client.DriveError('synthetic offline')):
+            self.assertTrue(self.svc._publish(threading.Event()))
+        self.assertEqual(self.svc.status()['task']['stage'], 'cleanup')
+        self.assertTrue(self.svc.status()['task']['error'])
+        self.svc.hub.events.clear()
+        self.assertTrue(self.svc._publish(threading.Event()))
+        uploads = [event['task'] for kind, event in self.svc.hub.events
+                   if kind == 'cloud' and event.get('task') and event.get('upload_step') == 'Uploading the encrypted library…']
+        self.assertTrue(uploads)
+        self.assertTrue(all(task['stage'] == 'backing-up' and not task['error'] for task in uploads))
+        self.assertIsNone(self.svc.status()['task'])
 
     def test_delete_preempts_blocked_reset_and_drains_inflight_upload(self):
         old = self.foreign_backup()

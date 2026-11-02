@@ -39,6 +39,16 @@ let afterPost=null, beforeGet=null, deleteError=false, who='fixture@example.com'
 globalThis.fetch=async(url, init={})=>{
   const u=new URL(url), method=init.method||'GET'; requests.push([method,u.pathname])
   if(u.pathname.endsWith('/about'))return Response.json({user:{emailAddress:who}})
+  if(u.pathname==='/batch/drive/v3') {
+    const ids=[...String(init.body).matchAll(/DELETE \/drive\/v3\/files\/([\w-]+) HTTP/g)].map(m=>m[1])
+    assert.ok(ids.length>0 && ids.length<=100)
+    const parts=ids.map((id,i)=>{
+      const status=deleteError?403:files.has(id)?204:404
+      if(!deleteError){removed.push(id);files.delete(id)}
+      return `--reply\r\nContent-Type: application/http\r\nContent-ID: <response-delete-${i}>\r\n\r\nHTTP/1.1 ${status} Result\r\n\r\n`
+    })
+    return new Response(parts.join('')+'--reply--\r\n',{headers:{'content-type':'multipart/mixed; boundary=reply'}})
+  }
   if(method==='POST') {
     const bytes=Buffer.from(init.body), boundary=init.headers['Content-Type'].split('boundary=')[1]
     const parts=bytes.toString('latin1').split('\r\n\r\n')
@@ -70,6 +80,69 @@ const protectedFiles=()=>{for(const id of ['unrelated-phone','desktop','paired-e
 
 
 class MobileRecoveryRemediation(unittest.TestCase):
+    def test_deletion_overlaps_four_batches_and_keeps_progress_monotonic(self):
+        node(PRELUDE + r"""
+          for(let i=3;i<=501;i++) files.set('old-'+i,{name:prefix+i.toString(16).padStart(32,'0'),data:enc.encode('old')})
+          await B.beginBackupTask('delete',prefix)
+          const original=fetch, releases=[];let active=0, peak=0, batches=0
+          globalThis.fetch=async(url,init)=>{
+            if(new URL(url).pathname!='/batch/drive/v3')return original(url,init)
+            active++;peak=Math.max(peak,active);batches++
+            if(batches<=4)await new Promise(resolve=>{releases.push(resolve);if(releases.length===4)releases.reverse().forEach(r=>r())})
+            const result=await original(url,init);active--;return result
+          }
+          const counts=[]
+          await B.runBackupTask(journal,(text,deleted)=>{
+            if(deleted!==undefined){counts.push(deleted);if(deleted===100)assert.equal(B.backupTask().removed,0)}
+          })
+          assert.equal(peak,4);assert.equal(active,0);assert.equal(batches,6)
+          assert.equal(new Set(removed).size,501);assert.equal(counts.at(-1),501)
+          assert.deepEqual(counts,[...counts].sort((a,b)=>a-b));protectedFiles()
+          assert.equal(B.backupTask(),undefined)
+        """)
+
+    def test_pause_drains_current_window_and_resume_finishes_remaining_files(self):
+        node(PRELUDE + r"""
+          for(let i=3;i<=501;i++) files.set('old-'+i,{name:prefix+i.toString(16).padStart(32,'0'),data:enc.encode('old')})
+          await B.beginBackupTask('delete',prefix)
+          const original=fetch;let batches=0,pausing
+          globalThis.fetch=async(url,init)=>{
+            if(new URL(url).pathname!='/batch/drive/v3')return original(url,init)
+            if(++batches===4)pausing=B.pauseBackupTask(true)
+            return original(url,init)
+          }
+          await assert.rejects(B.runBackupTask(journal,()=>{}),/paused/);await pausing
+          assert.equal(batches,4);assert.equal(removed.length,400)
+          assert.equal(B.backupTask().removed,400);assert.equal(B.backupTask().paused,true)
+          await B.pauseBackupTask(false);await B.runBackupTask(journal,()=>{})
+          assert.equal(removed.length,501);assert.equal(B.backupTask(),undefined);protectedFiles()
+        """)
+
+    def test_failed_parallel_window_drains_and_retry_relists_remaining_files(self):
+        node(PRELUDE + r"""
+          for(let i=3;i<=501;i++) files.set('old-'+i,{name:prefix+i.toString(16).padStart(32,'0'),data:enc.encode('old')})
+          await B.beginBackupTask('delete',prefix)
+          const original=fetch;let active=0,batches=0,release
+          const gate=new Promise(r=>release=r)
+          globalThis.fetch=async(url,init)=>{
+            if(new URL(url).pathname!='/batch/drive/v3')return original(url,init)
+            const index=++batches;active++
+            if(index===4)release()
+            await gate
+            try {
+              if(index===1)return new Response('malformed',{headers:{'content-type':'text/plain'}})
+              await new Promise(r=>setTimeout(r,10));return await original(url,init)
+            } finally {active--}
+          }
+          await assert.rejects(B.runBackupTask(journal,()=>{}),/Invalid Drive batch/)
+          assert.equal(active,0);assert.equal(batches,4);assert.equal(removed.length,300)
+          assert.equal(B.backupTask().removed,0);assert.ok(P.token(P.pairing()))
+          globalThis.fetch=original
+          await B.runBackupTask(new Changes(),()=>{})
+          assert.equal(removed.length,501);assert.equal(new Set(removed).size,501)
+          assert.equal(B.backupTask(),undefined);protectedFiles()
+        """)
+
     def test_pause_during_key_installation_survives_until_cleanup(self):
         node(PRELUDE + r"""
           await B.beginBackupTask('replace',prefix)

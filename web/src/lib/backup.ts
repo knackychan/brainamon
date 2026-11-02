@@ -18,6 +18,7 @@ export interface CloudTask {
   id: string; kind: 'remove_phones' | 'enroll' | 'switch_account' | 'reset_backup' | 'one_shot_publish' | 'update_folder' | 'disconnect'; stage: string; title: string
   step: number; of: number; steps: { label: string; state: 'done' | 'active' | 'waiting' }[]
   done: number; total: number; bytes_done: number; bytes_total: number; since: number; error: string; code: string; lock: string
+  items_done?: number; items_total?: number; uploaded_items?: number | null; uploaded_items_total?: number | null; uploaded_files?: number | null
 }
 export interface PhoneRecord { device: string; name: string; seen: number }
 
@@ -30,6 +31,7 @@ export interface CloudView {
   seq: number; on: boolean; running: boolean; signed_in: boolean; configured: boolean
   state: 'locked' | 'off' | 'idle' | 'signing-in' | 'starting' | 'publishing' | 'stopping' | 'disconnecting' | 'error' | 'signed-out'
   done: number; total: number; bytes_done?: number; bytes_total?: number; error: string; files: number; size: number; last_publish: number; last_summary: string
+  items_done?: number; items_total?: number
   skipped?: number; skipped_note?: string      // files the last backup left out because recovery would refuse their size, and the sentence about them ('' for none)
   account: string; used: number; limit: number; options: { videos: 'off' | 'fav' | 'all'; canvases: boolean }
   phone_url: string; web_client: boolean; phone_keys: string[]; last_intake: number; intake_summary: string
@@ -40,7 +42,7 @@ export interface CloudView {
   vault_step: string; vault_done: number; vault_total: number; vault_since: number
   vault_skipped?: number; vault_skipped_note?: string      // files the last vault round left out for their size, and the sentence about them ('' for none)
 }
-export interface Sizes { base: number; canvases: number; videos_fav: number; videos_all: number; videos_fav_count: number; videos_all_count: number }
+export interface Sizes { base: number; canvases: number; videos_fav: number; videos_all: number; videos_fav_count: number; videos_all_count: number; items?: number; files?: number }
 
 export interface RecoveryPreview {
   items: number; files: number; bytes: number; published: number; videos: string; canvases: boolean; omissions: string[]; duplicates: number

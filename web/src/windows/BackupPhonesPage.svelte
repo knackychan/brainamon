@@ -23,6 +23,8 @@
   import KeyIcon from '../components/ui/KeyIcon.svelte'
   import Label from '../components/ui/Label.svelte'
   import Progress from '../components/ui/Progress.svelte'
+  import DeletionEstimate from '../components/ui/DeletionEstimate.svelte'
+  import TaskSteps from '../components/ui/TaskSteps.svelte'
   import Segmented from '../components/ui/Segmented.svelte'
   import Status from '../components/ui/Status.svelte'
   import TextButton from '../components/ui/TextButton.svelte'
@@ -258,6 +260,23 @@
       } else {
         s = { dot: 'todo', text: `${task.title} · step ${task.step} of ${task.of}.`, steps: task.steps.map(x => x.label + (x.state === 'active' ? '…' : '')),
           pct: task.bytes_total ? 100 * task.bytes_done / task.bytes_total : task.total ? 100 * frac : undefined, bar: task.title, leave: true, quiet: paused ? [resumeAct] : [pauseAct] }
+        if (task.kind === 'reset_backup') {
+          s.steps = task.steps.map(x => x.label)
+          if (task.uploaded_items != null && task.uploaded_files != null && task.stage === 'cleanup') {
+            s.steps[1] += ` · ${num(task.uploaded_items)} / ${num(task.uploaded_items_total ?? task.uploaded_items)} item records · ${num(task.uploaded_files)} / ${num(task.uploaded_files)} files`
+          }
+          if (task.stage === 'backing-up') {
+            if (task.items_total !== undefined && task.items_total > 0) s.steps[1] += ` · ${num(task.items_done ?? 0)} / ${num(task.items_total)} item records backed up.`
+            const pct = s.pct === undefined ? '' : `${s.pct > 0 && s.pct < 1 ? '<1' : Math.floor(s.pct)}% · `
+            const bytes = task.bytes_total ? ` (${task.bytes_done ? amount(task.bytes_done) : '0 MB'} of ${amount(task.bytes_total)})` : ''
+            s.detail = task.total
+              ? `Uploading replacement backup: ${pct}${num(task.done)} of ${num(task.total)} files${bytes}.`
+              : c.upload_step || 'Preparing the replacement backup…'
+            s.detail += ' Drive temporarily holds both copies. The old backup is deleted only after the replacement is complete.'
+          } else if (task.stage === 'cleanup') {
+            s.detail = task.total ? `Deleting the old backup: ${num(task.done)} of ${num(task.total)} files confirmed.${task.done < task.total ? " Waiting for Google Drive to confirm the next files…" : ""}` : c.upload_step || 'Checking the old backup files to delete…'
+          } else s.detail = 'Preparing a new backup key…'
+        }
       }
       if (task.error || (c.state === 'error' && c.error)) s.alert = task.error || c.error
     }
@@ -267,7 +286,7 @@
       else if (!online) s = { dot: 'todo', text: "Can't reach Google Drive. The first backup continues when the connection returns.", detail: 'Your library stays on this PC meanwhile.' }
       else if (c.error_code === 'drive_full') s = { dot: 'next', text: `Google Drive is full${c.limit ? ` (${gb(c.used)} of ${gb(c.limit)} GB)` : ''}.${n ? ` ${num(Math.max(0, n - c.done))} files are not backed up yet.` : ''}`, detail: 'Free space in Google Drive, or back up fewer videos in Backup below. Brainamon tries again every 5 minutes.', primary: asked('try-again', 'Try again', tryAgain) }
       else if (c.state === 'error' && c.error) s = { dot: 'next', text: c.error, primary: asked('try-again', 'Try again', tryAgain) }
-      else if (n) s = { dot: 'todo', text: `Backing up for the first time: ${num(c.done)} of ${num(n)} files${whole ? ` (${gb(upBytes)} of ${gb(whole)} GB)` : ''}.`, detail: `${left !== null ? `About ${dur(left)} left · ` : ''}${dur(elapsed)} so far.`, pct: whole ? 100 * upBytes / whole : 100 * c.done / n, bar: 'First backup', leave: true, quiet: [pauseAct] }
+      else if (n) s = { dot: 'todo', text: `Backing up for the first time: ${num(c.done)} of ${num(n)} files${whole ? ` (${gb(upBytes)} of ${gb(whole)} GB)` : ''}.`, detail: `${c.items_total ? `${num(c.items_done ?? 0)} / ${num(c.items_total)} item records backed up. ` : ''}${left !== null ? `About ${dur(left)} left · ` : ''}${dur(elapsed)} so far.`, pct: whole ? 100 * upBytes / whole : 100 * c.done / n, bar: 'First backup', leave: true, quiet: [pauseAct] }
       else s = { dot: 'todo', text: 'Backing up for the first time.', detail: c.upload_step || 'Checking the Google account and what to send…', leave: true, quiet: [pauseAct] }
     }
     else if (!c.on) s = { dot: 'next', text: `Backup is off. Last backup: ${day(c.last_publish)}, ${hm(c.last_publish)}.`, primary: asked('turn-on', W.turnOn, connect) }
@@ -283,7 +302,8 @@
       const u = rec.updated
       s = { dot: 'done', text: `Updated to the backup from ${day(u.published)}, ${hm(u.published)}. This PC is the backup PC again.`, detail: u.kept ? `Kept this PC's ${u.kept} earlier change${u.kept === 1 ? '' : 's'} in a copy of its library database (before update, ${day(u.at)}); not in the newer library.` : phonesLine || undefined, quiet: [asked('dismiss-updated', 'Hide', () => hideUpdated(u.at))] }
     }
-    else if (['starting', 'publishing'].includes(c.state)) s = { dot: 'done', text: `Backing up ${c.total || 'recent'} change${c.total === 1 ? '' : 's'}. Last complete backup ${since}.`, detail: phonesLine || undefined }
+    else if (['starting', 'publishing'].includes(c.state)) s = { dot: 'todo', text: `Backing up ${c.total || 'recent'} change${c.total === 1 ? '' : 's'}. Last complete backup ${since}.`, detail: c.total ? `${num(c.done)} / ${num(c.total)} files${c.items_total ? ` · ${num(c.items_done ?? 0)} / ${num(c.items_total)} item records backed up` : ''}.` : c.upload_step || phonesLine || undefined,
+      pct: c.bytes_total ? 100 * (c.bytes_done ?? 0) / c.bytes_total : c.total ? 100 * c.done / c.total : undefined, bar: 'Backing up changes' }
     else s = { dot: 'done', text: `Your library is safe: backed up at ${since}, unlocked by your passphrase${rec?.verified ? ` or ${file}` : ''}.`, detail: phonesLine || undefined }
 
     // During a task the needed action can sit in a card (the replacement recovery file after a removal)
@@ -349,8 +369,11 @@
     <Label as="span">Status</Label>
     <div><div>
       <Status state={m.s.dot} role="status" aria-live="polite">{m.s.text}</Status>
-      {#if m.s.steps}<Hint as="ol">{#each m.s.steps as step, i (i)}<li>{step}</li>{/each}</Hint>{/if}
-      {#if m.s.pct !== undefined}<Progress label={m.s.bar ?? 'Progress'} pct={Math.round(m.s.pct)} />{/if}
+      {#if m.s.steps}<TaskSteps steps={m.s.steps.map((label, i) => ({ label, state: i < (m.task?.step ?? 1) - 1 ? 'done' : i === (m.task?.step ?? 1) - 1 ? 'active' : 'waiting' }))} />{/if}
+      {#if m.s.bar}<Progress label={m.s.bar} pct={m.s.pct} />{/if}
+      {#if m.s.bar && !m.s.alert && m.task && ['reset_backup', 'switch_account', 'disconnect'].includes(m.task.kind) && ['cleanup', 'deleting'].includes(m.task.stage) && m.task.total > m.task.done}
+        {#key m.task.id}<Hint><DeletionEstimate done={m.task.done} total={m.task.total} /></Hint>{/key}
+      {/if}
       {#if m.s.detail}<Hint>{m.s.detail}</Hint>{/if}
       {#if c.signed_in && (noKey || c.error_code === 'foreign_backup' || c.key_missing)}
         <div id="bp-backup-choices"><BackupChoices account={c.account} onform={open => choicesOpen = open} ondone={() => { noKey = choicesOpen = false; reload(); void loadRec() }} /></div>
@@ -458,7 +481,7 @@
     <div>
       <ItemList items={['library', 'canvases', 'videos']} key={x => x} label="Included in the backup">
         {#snippet item(x)}
-          {#if x === 'library'}Library · {g(SZ.base)} GB<Hint>Items, notes, reports, transcripts, chats, thumbnails.</Hint>
+          {#if x === 'library'}Library{sizes?.items !== undefined ? ` · ${num(sizes.items)} items` : ''} · {g(SZ.base)} GB<Hint>Items, notes, reports, transcripts, chats, thumbnails.</Hint>
           {:else if x === 'canvases'}Canvases · {g(SZ.canvases)} GB
           {:else}Videos · {g(videoBytes)} GB<Hint>{c.options.videos === 'fav' ? `All videos: ${g(SZ.all)} GB.` : c.options.videos === 'off' ? `Favourites: ${g(SZ.fav)} GB.` : `Favourites only: ${g(SZ.fav)} GB.`}</Hint>{/if}
         {/snippet}
@@ -469,6 +492,7 @@
         {/snippet}
       </ItemList>
       <Hint>{g(total)} GB in all, encrypted before upload.</Hint>
+      {#if c.files || sizes?.files}<Hint>{num(c.files || sizes?.files || 0)} files in the backup. One item can include several files; thumbnail packs can contain several items.</Hint>{/if}
       {#if c.skipped_note}<Hint>{c.skipped_note}</Hint>{/if}
       {#if err?.where === 'backup' && !m.reason}<Hint tone="error" role="alert">{err.msg}</Hint>{/if}
     </div>

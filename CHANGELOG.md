@@ -2,6 +2,14 @@
 
 Every release bumps `core/version.py` and adds a section here in the same commit. Newest first.
 
+## 1.1.2 - 2026-11-03
+
+- Desktop and phone: show an estimated deletion count separately from confirmed progress.
+- Desktop and phone: delete selected old backup files with up to four concurrent batches of 100 requests with progress after each confirmed batch, retaining individual failure handling and protection of independent backups.
+- Desktop and phone: backup checklists show checked steps and an animated current step, with item/file counts and upload progress. Completed replacement counts remain visible during old-copy cleanup.
+- Desktop: resetting a backup shows live upload file and byte counts, a numeric percentage, and clear active and waiting steps. The status explains why Google Drive temporarily holds both copies.
+- Desktop: deleting the old backup reports file progress, retries count only remaining files, and completion clears the progress display immediately.
+
 ## 1.1.1 - 2026-11-02
 
 - Desktop: recovery help offers confirmed replacement or deletion of an inaccessible Drive backup, while keeping local content and independent phone backups.

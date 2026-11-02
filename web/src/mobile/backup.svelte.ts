@@ -2,16 +2,16 @@ import { backupTask, beginBackupTask, pauseBackupTask, runBackupTask, type Backu
 import type { Changes } from './mirror/changes'
 import { pairing } from './mirror/pairing'
 
-export const backup = $state({ task: backupTask(), busy: false, step: '', error: '' })
+export const backup = $state({ task: backupTask(), busy: false, step: '', error: '', deleted: undefined as number | undefined })
 export async function runBackup(changes: Changes, kind?: BackupTask['kind'], prefix = '') {
   if (backup.busy) return
-  backup.busy = true; backup.error = ''; backup.step = 'Stopping previous cloud work…'
+  backup.busy = true; backup.deleted = undefined; backup.error = ''; backup.step = 'Stopping previous cloud work…'
   const key = pairing()?.k
   try {
     if (kind) await beginBackupTask(kind, prefix)
     else await pauseBackupTask(false)
     backup.task = backupTask()
-    await runBackupTask(changes, text => { backup.step = text; backup.task = backupTask() })
+    await runBackupTask(changes, (text, deleted) => { backup.step = text; backup.deleted = deleted; backup.task = backupTask() })
     location.replace(location.pathname + '#/backup'); location.reload()
   } catch (e) {
     backup.error = backupTask()?.paused ? '' : (e as Error).message

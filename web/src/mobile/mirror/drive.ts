@@ -322,6 +322,31 @@ export class Drive {
     catch (e) { if (!(e instanceof DriveError) || e.status !== 404) throw e }
   }
 
+  async removeSoloMany(ids: string[], prefix: string, progress?: (done: number) => void): Promise<void> {
+    this.checkpoint()
+    if (ids.length > 100 || new Set(ids).size !== ids.length || !pairing()?.solo || !/^solo-[a-f0-9]{32}-$/.test(prefix)
+        || ids.some(id => !/^[A-Za-z0-9_-]+$/.test(id) || !new RegExp(`^${prefix}[a-f0-9]{32}$`).test(this.listed.get(id) || ''))) throw new DriveError('List and select a standalone phone backup first.')
+    if (!ids.length) return
+    const boundary = 'brainamon-' + crypto.randomUUID()
+    const body = ids.map((id, i) => `--${boundary}\r\nContent-Type: application/http\r\nContent-ID: <delete-${i}>\r\n\r\nDELETE /drive/v3/files/${id} HTTP/1.1\r\n\r\n`).join('') + `--${boundary}--\r\n`
+    const response = await this.call('/batch/drive/v3', { method: 'POST', body, headers: { 'Content-Type': `multipart/mixed; boundary=${boundary}` } }, 3, CALL_TIMEOUT, 'backup')
+    const separator = /boundary=(?:"([^"]+)"|([^;\s]+))/i.exec(response.headers.get('content-type') || '')
+    if (!separator) throw new DriveError('Invalid Drive batch response. Retry to check remaining files.')
+    const results = new Map<number, number>()
+    for (const part of (await response.text()).split('--' + (separator[1] || separator[2])).slice(1, -1)) {
+      const identity = /Content-ID:\s*<response-delete-(\d+)>/i.exec(part)
+      const status = /\r?\nHTTP\/\d(?:\.\d)? (\d{3})(?: |\r?\n)/.exec(part)
+      const index = Number(identity?.[1])
+      if (!identity || !status || index >= ids.length || results.has(index)) throw new DriveError('Invalid Drive batch response. Retry to check remaining files.')
+      results.set(index, Number(status[1]))
+    }
+    if (results.size !== ids.length) throw new DriveError('Incomplete Drive batch response. Retry to check remaining files.')
+    let done = 0
+    const failed: string[] = []
+    ids.forEach((id, i) => { if ([200, 204, 404].includes(results.get(i)!)) progress?.(++done); else failed.push(id) })
+    for (const id of failed) { await this.removeSolo(id, prefix); progress?.(++done) }
+  }
+
   // A replacement uses a fresh key and keeps the selected old copy until read-back verification.
   async createReplacement(key: MirrorKey, name: string, data: Uint8Array): Promise<string> {
     if (!pairing()?.solo || !name.startsWith(await key.soloPrefix()) || !/^solo-[a-f0-9]{32}-[a-f0-9]{32}$/.test(name)) throw new DriveError('Only standalone phone backups can be replaced here.')

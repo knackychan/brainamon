@@ -18,7 +18,11 @@ import base64
 import hashlib
 import http.server
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from email.parser import BytesParser
+from email.policy import default as email_policy
 import random
+import re
 import secrets
 import socket
 import threading
@@ -40,6 +44,8 @@ SPACE = 'appDataFolder'
 
 MULTIPART_MAX = 5 * 1024 * 1024        # Drive's limit for a multipart upload
 CHUNK = 32 * 256 * 1024                # 8 MiB; resumable chunks must be multiples of 256 KiB
+DELETE_BATCH_SIZE = 100
+DELETE_WORKERS = 4
 TIMEOUT = 60
 RETRIES = 7                            # backoff 1, 2, 4 .. 32 s (Google's advice: cap near 32 to 64 s)
 MAX_DELAY = 32
@@ -54,6 +60,27 @@ class DriveError(Exception):
         super().__init__(msg)
         self.status = status
         self.reason = reason
+
+
+def delete_files(client, ids, progress=None, stopped=None):
+    """Use Drive batching when available; small alternate clients retain their delete interface."""
+    try:
+        if callable(getattr(client, 'delete_many', None)):
+            return client.delete_many(ids, progress)
+        for index, fid in enumerate(ids, 1):
+            if client.stop.is_set():
+                raise SignInCancelled('Google Drive work is stopping.')
+            try:
+                client.delete(fid)
+            except DriveError as e:
+                if e.status != 404:
+                    raise
+            if progress:
+                progress(index, len(ids))
+    except SignInCancelled:
+        if stopped and client.stop.is_set():
+            raise stopped() from None
+        raise
 
 
 class SignInCancelled(DriveError):
@@ -345,6 +372,62 @@ class DriveClient:
         except DriveError as e:
             if e.status != 404:        # already gone is fine
                 raise
+
+    def delete_many(self, file_ids: list[str], progress=None) -> None:
+        """Delete supplied IDs in four concurrent batches of up to 100; retry only failed parts."""
+        ids = list(dict.fromkeys(file_ids))
+        if any(not re.fullmatch(r'[A-Za-z0-9_-]+', fid) for fid in ids):
+            raise DriveError('Invalid Drive file identity.')
+        done = 0
+        window = DELETE_BATCH_SIZE * DELETE_WORKERS
+        with ThreadPoolExecutor(DELETE_WORKERS, thread_name_prefix='cm-drive-delete') as pool:
+            # Drain each window before retrying or starting more work; progress stays on the caller thread.
+            for start in range(0, len(ids), window):
+                self._check()
+                batches = [ids[i:i + DELETE_BATCH_SIZE] for i in range(start, min(start + window, len(ids)), DELETE_BATCH_SIZE)]
+                futures = {pool.submit(self._delete_batch, batch): batch for batch in batches}
+                failed = []
+                for future in as_completed(futures):
+                    results = future.result()
+                    self._check()
+                    for i, fid in enumerate(futures[future]):
+                        if results[i] in (200, 204, 404):
+                            done += 1
+                            if progress:
+                                progress(done, len(ids))
+                        else:
+                            failed.append(fid)
+                for fid in failed:
+                    self._check()
+                    self.delete(fid)
+                    done += 1
+                    if progress:
+                        progress(done, len(ids))
+            self._check()
+
+    def _delete_batch(self, batch: list[str]) -> dict[int, int]:
+        self._check()
+        boundary = 'brainamon-' + secrets.token_hex(16)
+        body = ''.join(f'--{boundary}\r\nContent-Type: application/http\r\nContent-ID: <delete-{i}>\r\n\r\nDELETE /drive/v3/files/{fid} HTTP/1.1\r\n\r\n'
+                       for i, fid in enumerate(batch)) + f'--{boundary}--\r\n'
+        _, headers, raw = self._call('POST', 'https://www.googleapis.com/batch/drive/v3', body.encode('ascii'),
+                                    {'Content-Type': f'multipart/mixed; boundary={boundary}'}, max_bytes=2 * 1024 * 1024)
+        content_type = _header(headers, 'Content-Type')
+        message = BytesParser(policy=email_policy).parsebytes(f'Content-Type: {content_type}\r\n\r\n'.encode() + raw)
+        results = {}
+        if not message.is_multipart():
+            raise DriveError('Invalid Drive batch response; retry to check remaining files.')
+        for part in message.iter_parts():
+            identity = re.fullmatch(r'<response-delete-(\d+)>', str(part.get('Content-ID', '')))
+            payload = part.get_payload(decode=True)
+            # application/http is normally an opaque MIME payload.
+            status = re.match(rb'HTTP/\d(?:\.\d)? (\d{3})(?: |\r?\n)', payload or b'')
+            if not identity or not status or int(identity[1]) >= len(batch) or int(identity[1]) in results:
+                raise DriveError('Invalid Drive batch response; retry to check remaining files.')
+            results[int(identity[1])] = int(status[1])
+        if len(results) != len(batch):
+            raise DriveError('Incomplete Drive batch response; retry to check remaining files.')
+        return results
 
     def upload(self, name: str, data: bytes | None = None, path: Path | None = None,
                file_id: str = '', progress=None) -> str:

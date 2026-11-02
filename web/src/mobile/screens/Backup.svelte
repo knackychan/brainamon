@@ -12,7 +12,7 @@
   import { actionBusy, actionLabel, runPhoneAction } from '../actions'
   import { deviceName, isApp, secretsSaved } from '../native'
   import { forget as unpairPhone, token } from '../mirror/pairing'
-  import { disconnectPhoneBackup } from '../mirror/phone-backup'
+  import { disconnectPhoneBackup, listPhoneBackups } from '../mirror/phone-backup'
   import { backup } from '../backup.svelte'
   import PhoneBackupChoices from '../PhoneBackupChoices.svelte'
   import { allowCloudWork, RECONNECT_BUSY, stopCloudWork } from '../mirror/gate'
@@ -44,7 +44,13 @@
   function finishPairing() { sessionStorage.removeItem('bp-pair-setup'); pairingGuide = false; location.hash = '#/lib' }
 
   let name = $state('')
+  let backupFiles = $state<number | null>(null)
   onMount(() => { void deviceName().then(n => { name = n }) })
+  onMount(() => {
+    if (solo && signedIn && !backup.busy) void listPhoneBackups().then(backups => {
+      backupFiles = backups.filter(b => b.current).reduce((n, b) => n + b.files, 0)
+    }).catch(() => { /* keep the count unknown until Drive can be read */ })
+  })
   // the screen opens at its top (the Library's line under the app bar comes from far down a list), and Back lands on
   // the top of More, where the status card is, not where this screen was scrolled to. A teardown reads state as it
   // was (Svelte 5), so the next screen comes from the address.
@@ -157,7 +163,7 @@
     {@render stateRow()}
     {#if phone.note}<MHint role="status">{phone.note}</MHint>{/if}
     {#if st?.id === 'unreachable' && phone.error && !phone.refreshing}<MHint tone="error" role="alert">{phone.error}</MHint>{/if}
-    <MRow id="m-library" title="Library in Google Drive" desc={man ? `${man.items.toLocaleString('en')} items · the PC uploaded ${fmtAgo(man.published)}` : phone.refreshing ? 'Loading your library…' : 'Nothing read from Drive yet'} />
+    <MRow id="m-library" title="Library in Google Drive" desc={man ? `${man.items.toLocaleString('en')} items · ${Object.keys(man.files).length.toLocaleString('en')} files · the PC uploaded ${fmtAgo(man.published)}` : phone.refreshing ? 'Loading your library…' : 'Nothing read from Drive yet'} />
   </MBox>
 
   {#if pairingGuide || !phone.reachable}
@@ -222,6 +228,7 @@
     {#if phone.note}<MHint role="status">{phone.note}</MHint>{/if}
     {#if st?.id === 'unreachable' && phone.round?.error && !phone.refreshing}<MHint tone="error" role="alert">{phone.round.error}</MHint>{/if}
     <MRow id="m-library" title="{phone.rows.length.toLocaleString('en')} item{phone.rows.length === 1 ? '' : 's'} on this phone" desc="Saved here; the backup in Google Drive is encrypted with this phone's own key" />
+    {#if backupFiles !== null}<MRow title="{backupFiles.toLocaleString('en')} backup file{backupFiles === 1 ? '' : 's'} in Google Drive" desc="Saved items, notes and queued edits. Each encrypted phone backup file can contain several items." />{/if}
   </MBox>
 
   <MBox id="m-conn">

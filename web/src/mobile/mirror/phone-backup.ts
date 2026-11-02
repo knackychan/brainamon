@@ -15,9 +15,11 @@ export interface BackupTask {
   phase: 'prepare' | 'upload' | 'install' | 'delete' | 'disconnect' | 'done'
   paused: boolean; files: { id: string; name: string }[]; removed: number
   key?: string; name?: string; id?: string
+  items?: number; uploaded?: boolean; bytes?: number
 }
 interface Snapshot { entries: ChangeEntry[]; doc: { format: number; device: string; at: number; changes: unknown[] } }
 const SNAPSHOT = 'phone_backup_snapshot'
+const DELETE_BATCH_SIZE = 100, DELETE_WORKERS = 4
 const soloName = /^solo-[a-f0-9]{32}-[a-f0-9]{32}$/
 export const backupTask = () => pairing()?.backupTask
 let pauseRequested = false
@@ -77,10 +79,10 @@ export async function pauseBackupTask(on: boolean) {
 }
 
 let running: Promise<void> | null = null
-export function runBackupTask(changes: Changes, progress: (text: string) => void): Promise<void> {
+export function runBackupTask(changes: Changes, progress: (text: string, deleted?: number) => void): Promise<void> {
   return running ??= execute(changes, progress).finally(() => { running = null })
 }
-async function execute(changes: Changes, progress: (text: string) => void): Promise<void> {
+async function execute(changes: Changes, progress: (text: string, deleted?: number) => void): Promise<void> {
   await stopCloudWork()
   const task = backupTask()
   if (!task) return
@@ -102,6 +104,7 @@ async function execute(changes: Changes, progress: (text: string) => void): Prom
     progress('Preparing this phone’s complete backup…')
     await changes.load()
     const entries = structuredClone(changes.list)
+    task.items = changes.overlay([]).length
     const doc = { format: CHANGE_FORMAT, device: deviceId(), at: Date.now(), changes: entries.map(({ id: _i, state: _s, sentAt: _a, chg: _c, canvasLocal: _l, stream: _t, seq: _q, legacy: _g, resend: _r, ...c }) => c) }
     await kv.set(SNAPSHOT, { entries, doc } satisfies Snapshot)
     const key = await MirrorKey.fromText(task.key!)
@@ -113,13 +116,16 @@ async function execute(changes: Changes, progress: (text: string) => void): Prom
     const snapshot = await kv.get<Snapshot>(SNAPSHOT)
     if (!snapshot) throw new Error('The saved replacement is missing. The old backup has been kept. Disconnect backup and keep this phone’s local content.')
     const key = await MirrorKey.fromText(task.key!), plain = new TextEncoder().encode(JSON.stringify(snapshot.doc))
+    task.bytes = plain.length
     check()
     if (task.phase === 'upload') {
       const copies = listed.filter(f => f.name === task.name)
       if (copies.length > 1) throw new Error('Drive has duplicate replacement files. The old backup has been kept. Disconnect backup and keep this phone’s local content.')
       task.id = copies[0]?.id ?? await drive.createReplacement(key, task.name!, await key.seal(task.name!, plain))
+      task.uploaded = true
       await save(task); check()
     }
+    progress('Checking the uploaded replacement; the old backup stays…')
     // Verify again after restart before installing the key or removing any old file.
     listed = await drive.list()
     const opened = await key.open(task.name!, await drive.getRecovered(task.id!, key))
@@ -149,12 +155,29 @@ async function execute(changes: Changes, progress: (text: string) => void): Prom
       const snapshot = await kv.get<Snapshot>(SNAPSHOT), key = await MirrorKey.fromText(task.key!)
       if (!snapshot || new TextDecoder().decode(await key.open(task.name!, await drive.getRecovered(task.id!, key))) !== JSON.stringify(snapshot.doc)) throw new Error('The replacement could not be verified. Remaining old files have been kept. Retry or disconnect backup.')
     }
-    for (; task.removed < task.files.length; task.removed++) {
+    const names = new Map(listed.map(f => [f.id, f.name]))
+    for (; task.removed < task.files.length;) {
       check()
-      const f = task.files[task.removed]
-      progress(`Removing selected backup files · ${task.removed} / ${task.files.length}`)
-      if (listed.some(x => x.id === f.id && x.name === f.name)) await drive.removeSolo(f.id, task.prefix)
-      await save({ ...task, removed: task.removed + 1 })
+      const window = task.files.slice(task.removed, task.removed + DELETE_BATCH_SIZE * DELETE_WORKERS)
+      let done = task.removed
+      progress(`Removing selected backup files · ${done} / ${task.files.length}`, done)
+      const batches = []
+      for (let i = 0; i < window.length; i += DELETE_BATCH_SIZE) batches.push(window.slice(i, i + DELETE_BATCH_SIZE))
+      // Drain all in-flight batches before saving or returning an error; retry re-lists uncertain results.
+      const results = await Promise.allSettled(batches.map(async batch => {
+        check()
+        const present = batch.filter(f => names.get(f.id) === f.name)
+        done += batch.length - present.length
+        let completed = 0
+        await drive.removeSoloMany(present.map(f => f.id), task.prefix, count => {
+          done += count - completed; completed = count
+          progress(`Removing selected backup files · ${done} / ${task.files.length}`, done)
+        })
+      }))
+      for (const result of results) if (result.status === 'rejected') throw result.reason
+      task.removed += window.length
+      await save(task)
+      progress(`Removing selected backup files · ${task.removed} / ${task.files.length}`, task.removed)
     }
     check(); task.phase = task.kind === 'delete' ? 'disconnect' : 'done'; await save(task)
   }

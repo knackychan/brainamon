@@ -9,6 +9,10 @@
   import MButton from './ui/MButton.svelte'
   import MHint from './ui/MHint.svelte'
   import MTextButton from './ui/MTextButton.svelte'
+  import TaskSteps from '../components/ui/TaskSteps.svelte'
+  import Progress from '../components/ui/Progress.svelte'
+  import DeletionEstimate from '../components/ui/DeletionEstimate.svelte'
+  import { amount, num } from '../lib/backup'
 
   let { onclose }: { onclose?: () => void } = $props()
   let choices = $state<PhoneBackup[]>([]), selected = $state(''), busy = $state(false), error = $state(''), listed = $state(false)
@@ -16,6 +20,17 @@
   let alive = true
   const m = mirrorSource
   const connected = $derived((phone.tokenAt, phone.signIn, error, backup.error, m && token(m.pair)))
+  const taskSteps = $derived.by(() => {
+    const task = backup.task
+    if (!task) return []
+    const phase = task.phase
+    const active = task.kind === 'delete' ? (phase === 'disconnect' || phase === 'done' ? 1 : 0)
+      : phase === 'prepare' ? 0 : phase === 'upload' ? task.uploaded ? 2 : 1 : phase === 'install' ? 2 : 3
+    const labels = task.kind === 'delete' ? ['Delete selected backup files', 'Disconnect backup']
+      : ['Prepare replacement backup', `Back up again${task.items !== undefined ? ` · ${num(task.uploaded ? task.items : 0)} / ${num(task.items)} item${task.items === 1 ? '' : 's'}` : ''} · ${task.uploaded ? '1 / 1' : '0 / 1'} file`, 'Check replacement backup', 'Delete old backup files']
+    return labels.map((label, i) => ({ label, state: phase === 'done' || i < active ? 'done' as const : i === active ? 'active' as const : 'waiting' as const }))
+  })
+  const deleted = $derived(backup.deleted ?? backup.task?.removed ?? 0)
   const label = (b: PhoneBackup) => `${b.current ? 'This phone’s backup' : 'Phone backup'} · ${b.prefix.slice(5, 13)} · ${b.files} file${b.files === 1 ? '' : 's'}`
   async function list() {
     busy = true; error = ''; action = ''; selected = ''; choices = []
@@ -31,6 +46,17 @@
   {#if backup.task}
     <MHint>{backup.task.kind === 'replace' ? 'Replace selected phone backup' : 'Delete selected phone backup and disconnect'} · {backup.task.account}</MHint>
     <MHint role="status">{backup.busy ? backup.task.paused ? 'Pausing after the current request…' : backup.step : backup.task.paused ? 'Paused. This task stays saved when you leave or restart.' : 'Task saved. Retry to continue from the last completed step.'}</MHint>
+    <TaskSteps steps={taskSteps} running={backup.busy && !backup.task.paused} />
+    {#if backup.task.phase === 'delete'}
+      <Progress label="Deleting old backup files" pct={backup.task.files.length ? 100 * deleted / backup.task.files.length : undefined} />
+      {#if backup.busy && !backup.task.paused && !backup.error && deleted < backup.task.files.length}
+        <MHint><DeletionEstimate done={deleted} total={backup.task.files.length} /></MHint>
+      {/if}
+      <MHint>{num(deleted)} / {num(backup.task.files.length)} files deleted.{#if backup.busy && !backup.task.paused && deleted < backup.task.files.length}{' '}Waiting for Google Drive to confirm the next files…{/if}</MHint>
+    {:else if backup.task.kind === 'replace' && backup.task.phase !== 'prepare'}
+      <Progress label="Replacement backup upload" pct={backup.task.uploaded ? 100 : undefined} />
+      <MHint>This backup contains {backup.task.items === undefined ? 'the library' : `${num(backup.task.items)} item${backup.task.items === 1 ? '' : 's'}`} and queued edits in one encrypted file{backup.task.bytes ? ` (${backup.task.bytes < 1048576 ? `${num(Math.ceil(backup.task.bytes / 1024))} KB` : amount(backup.task.bytes)})` : ''}. The file is counted after Google confirms the upload.</MHint>
+    {/if}
     {#if backup.error}<MHint tone="error" role="alert">{backup.error}</MHint>{/if}
     <div class="m-row" style="flex-wrap:wrap">
       {#if backup.busy}<MButton size="sm" disabled={backup.task.paused} onclick={pauseBackup}>Pause</MButton>

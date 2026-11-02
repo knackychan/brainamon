@@ -62,6 +62,9 @@ def task(kind, title, step, of, **more):
 
 REMOVING = task('remove_phones', 'Removing all phones', 3, 5, **{})
 REMOVING.update(done=2345, total=5678, bytes_done=4_100_000_000, bytes_total=9_800_000_000)
+RESETTING = task('reset_backup', 'Resetting the backup', 2, 3)
+RESETTING.update(stage='backing-up', steps=[dict(label=label, state=state) for label, state in
+                 [('New key ready', 'done'), ('Backing up again', 'active'), ('Deleting the old backup', 'waiting')]])
 SIGNED_OUT = dict(signed_in=False, running=False, on=False, state='off')
 
 # (name, what GET /api/cloud changes, what GET /api/cloud/recovery changes, texts that show, the primary keys of the window, texts that do not)
@@ -80,6 +83,14 @@ STATES = [
       'First backup running (progress above)', 'Pause backup', 'Choose a recovery passphrase', 'You can do this while the first backup runs.'], ['Save passphrase'], []),
     ('t4b-first-backup-recovered', dict(last_publish=0, state='publishing', done=10, total=5678, bytes_done=1_000_000, bytes_total=9_800_000_000), dict(REC_OK),
      ['Backing up for the first time: 10 of 5,678 files'], ['Done'], ['Choose a recovery passphrase']),
+    ('reset-preparing', dict(task=RESETTING, state='publishing', upload_step='Preparing the encrypted library for upload…'), dict(REC_OK),
+     ['Preparing the encrypted library for upload…', 'Backing up again · in progress', 'Deleting the old backup · waiting', 'Drive temporarily holds both copies.'], ['Done'], ['0%']),
+    ('reset-uploading', dict(task=dict(RESETTING, done=250, total=1000, bytes_done=25 * 1048576, bytes_total=100 * 1048576), state='publishing'), dict(REC_OK),
+     ['Uploading replacement backup: 25% · 250 of 1,000 files (25 MB of 100 MB).', 'Deleting the old backup · waiting'], ['Done'], []),
+    ('reset-small-progress', dict(task=dict(RESETTING, done=10, total=1000, bytes_done=1048576, bytes_total=1000 * 1048576), state='publishing'), dict(REC_OK),
+     ['Uploading replacement backup: <1% · 10 of 1,000 files (1 MB of 1000 MB).'], ['Done'], []),
+    ('reset-deleting', dict(task=dict(RESETTING, stage='cleanup', step=3, done=4, total=10, steps=[dict(label=x['label'], state='active' if n == 2 else 'done') for n, x in enumerate(RESETTING['steps'])])), dict(REC_OK),
+     ['Deleting the old backup: 4 of 10 files.', 'Backing up again · done', 'Deleting the old backup · in progress'], ['Done'], ['Uploading replacement backup:']),
     ('t5-no-recovery', dict(), dict(configured=False),
      ['Backed up at 10:00, but if this PC is lost nothing can unlock the backup.', 'A recovery passphrase unlocks it on another PC.',
       'If this PC is lost, your passphrase or a recovery file unlocks the backup on another PC.'], ['Create recovery passphrase'], ['Choose a recovery passphrase']),
@@ -203,7 +214,7 @@ class Review(shots.Run):
         base = dict(view)
         calls = []
         recovery = {}
-        sizes = dict(base=2_400_000_000, canvases=100_000_000, videos_fav=7_300_000_000, videos_all=19_000_000_000, videos_fav_count=12, videos_all_count=40)
+        sizes = dict(base=2_400_000_000, canvases=100_000_000, videos_fav=7_300_000_000, videos_all=19_000_000_000, videos_fav_count=12, videos_all_count=40, items=3000, files=5678)
         idle_recovery = dict(configured=False, enrolled=False, verified=False, verified_at=0, saved_at=0, setup_at=0, account='', restored=False, restart_required=False,
                              rotation_pending=False, file_outdated=False, replaced_at=0, takeover_ready=False, check=None, activity=None,
                              job={'state': 'idle', 'done': 0, 'total': 0, 'error': '', 'destination': ''}, preview=None)
@@ -296,6 +307,10 @@ class Review(shots.Run):
             route.fulfill(json=view)
 
         ctx.route('**/api/cloud**', cloud_route)
+        ctx.add_init_script('''window.__cloudStreams = [];
+            window.EventSource = class extends EventSource {
+                constructor(...args) { super(...args); window.__cloudStreams.push(this) }
+            };''')
         page = ctx.new_page()
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
@@ -379,6 +394,52 @@ class Review(shots.Run):
             page.wait_for_timeout(250)
             return [path for path, _ in calls[n:]]
 
+        if '--progress-only' in sys.argv:
+            for width in (1440, 390):
+                page.set_viewport_size({'width': width, 'height': 1000 if width == 1440 else 844})
+                uploading = dict(RESETTING, done=250, total=1000, bytes_done=25 * 1048576, bytes_total=100 * 1048576, items_done=750, items_total=3000)
+                open_view(dict(task=uploading, state='publishing'), dict(REC_OK))
+                steps = panel.get_by_role('list', name='Backup steps')
+                expect(steps.get_by_role('listitem')).to_have_count(3)
+                expect(steps.locator('.cycle')).to_have_count(1)
+                expect(steps.locator('li').first.locator('path')).to_have_count(1)
+                expect(panel.get_by_text('750 / 3,000 item records backed up.', exact=False)).to_be_visible()
+                expect(panel.get_by_text('Library · 3,000 items', exact=False)).to_be_visible()
+                expect(panel.get_by_text('5,678 files in the backup.', exact=False)).to_be_visible()
+                expect(panel.get_by_role('progressbar', name='Resetting the backup')).to_have_attribute('aria-valuenow', '25')
+                audit(f'progress-{width}')
+                capture(f'progress-{width}')
+                view.update(seq=view['seq'] + 1, task=dict(uploading, done=500, bytes_done=50 * 1048576, items_done=1500))
+                page.evaluate("data => window.__cloudStreams.forEach(stream => stream.dispatchEvent(new MessageEvent('cloud', {data: JSON.stringify(data)})))", view)
+                expect(panel.get_by_text('1,500 / 3,000 item records backed up.', exact=False)).to_be_visible()
+                expect(panel.get_by_role('progressbar', name='Resetting the backup')).to_have_attribute('aria-valuenow', '50')
+                cleanup = dict(RESETTING, stage='cleanup', step=3, done=100, total=1000, uploaded_items=3000, uploaded_items_total=3000, uploaded_files=4000)
+                open_view(dict(task=cleanup), dict(REC_OK))
+                expect(panel.get_by_role('list', name='Backup steps')).to_contain_text('3,000 / 3,000 item records · 4,000 / 4,000 files')
+                expect(panel.get_by_role('progressbar', name='Resetting the backup')).to_have_attribute('aria-valuenow', '10')
+                expect(panel.get_by_text('100 of 1,000 files confirmed.', exact=False)).to_be_visible()
+                view.update(seq=view['seq'] + 1, task=dict(cleanup, done=120))
+                page.evaluate("data => window.__cloudStreams.forEach(stream => stream.dispatchEvent(new MessageEvent('cloud', {data: JSON.stringify(data)})))", view)
+                expect(panel.get_by_role('progressbar', name='Resetting the backup')).to_have_attribute('aria-valuenow', '12')
+                expect(panel.get_by_text('120 of 1,000 files confirmed.', exact=False)).to_be_visible()
+                expect(panel.locator('.task-steps li:nth-child(2) path')).to_have_count(1)
+                page.emulate_media(reduced_motion='no-preference')
+                page.evaluate("document.documentElement.classList.remove('motion-off')")
+                expect(panel.locator('.deletion-estimate')).to_be_visible()
+                page.wait_for_function("() => Number(document.querySelector('.deletion-estimate').textContent.match(/: ([0-9,]+)/)[1].replaceAll(',',''))>120")
+                expect(panel.get_by_role('progressbar', name='Resetting the backup')).to_have_attribute('aria-valuenow', '12')
+
+                page.emulate_media(reduced_motion='reduce')
+                assert panel.locator('.task-steps .cycle').evaluate("e => getComputedStyle(e).animationName") == 'none'
+                expect(panel.locator('.deletion-estimate')).to_be_hidden()
+                page.emulate_media(reduced_motion='no-preference')
+                audit(f'cleanup-{width}')
+                capture(f'cleanup-{width}')
+            assert not errors, errors
+            ctx.close()
+            print(f'{theme}: live upload/item counts, checklist, cleanup, layouts and reduced motion passed', flush=True)
+            return
+
         # ── A15: every state keeps the rules; each says its words and offers its one primary (README: T, G, B, R, P) ──
         open_view({}, REC_OK)
         card = panel.get_by_role('region', name='Recovery', exact=True)
@@ -437,8 +498,22 @@ class Review(shots.Run):
                 expect(window.get_by_text(text, exact=False).locator('visible=true'), f'{name}: {text} is not shown').to_have_count(0)
             got = audit(name)['pri']
             assert got == pri, f'{name}: primary keys {got}, expected {pri}'
-            if name in ('t6-safe', 't4-first-backup', 't16-removing-phones', 't1-not-connected'):
+            if name in ('t6-safe', 't4-first-backup', 't16-removing-phones', 't1-not-connected') or name.startswith('reset-'):
                 capture(name)
+            if name == 'reset-preparing':
+                assert window.get_by_role('progressbar', name='Resetting the backup').get_attribute('aria-valuenow') is None
+            elif name == 'reset-uploading':
+                expect(window.get_by_role('progressbar', name='Resetting the backup')).to_have_attribute('aria-valuenow', '25')
+            if name.startswith('reset-'):
+                page.set_viewport_size({'width': 390, 'height': 844})
+                audit(name + '-390')
+                capture(name + '-390')
+                page.set_viewport_size({'width': 1440, 'height': 1000})
+            if name == 'reset-uploading':
+                view.update(seq=view['seq'] + 1, task=dict(RESETTING, done=500, total=1000, bytes_done=50 * 1048576, bytes_total=100 * 1048576))
+                page.evaluate("data => window.__cloudStreams.forEach(stream => stream.dispatchEvent(new MessageEvent('cloud', {data: JSON.stringify(data)})))", view)
+                expect(window.get_by_text('Uploading replacement backup: 50% · 500 of 1,000 files (50 MB of 100 MB).', exact=False)).to_be_visible()
+                expect(window.get_by_role('progressbar', name='Resetting the backup')).to_have_attribute('aria-valuenow', '50')
         assert not errors, errors
 
         # C4: the vault line names the files the last round left out for their size and says "Up to date" only when none were

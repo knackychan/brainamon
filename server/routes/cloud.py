@@ -69,7 +69,8 @@ def cloud(request: Request):
 def sizes(request: Request):
     db = reader(request.app.state.db_path)
     rows = [{'id': r[0], 'favourite': bool(r[1])} for r in db.conn.execute('SELECT id, favourite FROM items')]
-    return mirror.estimate(request.app.state.data_dir, rows)
+    return dict(mirror.estimate(request.app.state.data_dir, rows), items=len(rows),
+                files=sum(name != mirror.MANIFEST for name in db.get_sync_state()))
 
 
 @router.post('/api/cloud/connect')

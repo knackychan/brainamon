@@ -12,3 +12,11 @@
     {#each { length: 12 } as _, i (i)}<i class:lit={i < lit} class:lead={i === lit}></i>{/each}
   </div>
 {/if}
+
+<style>
+  :global(.prog.busy) { grid-template-columns: minmax(0, 1fr); }
+  :global(.prog i.lead) { background: linear-gradient(90deg, transparent, var(--accent), transparent) 0 0 / 40% 100% no-repeat; background-color: var(--seg-off); animation: progress-sweep 1s linear infinite; }
+  @keyframes progress-sweep { to { background-position: 170% 0; } }
+  :global(.motion-off .prog i.lead) { animation: none; background-size: 100% 100%; }
+  @media (prefers-reduced-motion: reduce) { :global(.prog i.lead) { animation: none; background-size: 100% 100%; } }
+</style>

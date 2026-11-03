@@ -4,6 +4,8 @@ Every release bumps `core/version.py` and adds a section here in the same commit
 
 ## 1.1.2 - 2026-11-03
 
+- Phone: long Obsidian and Drive sync messages stay within the screen without horizontal viewport scrolling.
+- Phone: narrow settings screens place action buttons below their descriptions, keeping Google Drive and recovery text readable.
 - Desktop and phone: show an estimated deletion count separately from confirmed progress.
 - Desktop and phone: delete selected old backup files with up to four concurrent batches of 100 requests with progress after each confirmed batch, retaining individual failure handling and protection of independent backups.
 - Desktop and phone: backup checklists show checked steps and an animated current step, with item/file counts and upload progress. Completed replacement counts remain visible during old-copy cleanup.

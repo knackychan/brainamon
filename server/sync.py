@@ -35,8 +35,7 @@ import os
 import re
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from itertools import islice
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from datetime import datetime
 from pathlib import Path, PureWindowsPath
 
@@ -55,7 +54,10 @@ INTAKE_FAILED = 'Phone changes not applied'
 GRANT_MS = sync_license.LIFETIME * 1000     # a renewed phone-access record stays valid this long; a phone reads it on every
                                             # Drive call (web/src/mobile/mirror/drive.ts `authorize`) and compares its own clock
 OLD_GRACE_MS = 60_000       # a removal whose click could not list Drive: old-key change files count if Drive stamped them this soon after
-CONTROL_WAIT = 8            # seconds a Remove click waits for an access-record renewal already in flight
+VERIFY_WORKERS = 8          # downloads in flight while checking a re-encrypted copy (deletes keep four)
+VERIFY_BIG = 64 * 1024 * 1024   # a file over this size is held in memory whole while it is checked ...
+VERIFY_BIG_AT_ONCE = 2          # ... so no more than this many of them are read at the same time
+CONTROL_WAIT = 8           # seconds a Remove click waits for an access-record renewal already in flight
 
 
 
@@ -313,7 +315,8 @@ class SyncService:
         self._control_lock = threading.Lock()   # one pass at a time on the phone-access record: its renewal, or the lock-out
         self._rotation_lock = threading.RLock() # read-modify-write of rotation.json from the Remove click and the control thread
         self._grant = ('', 0)               # (key fingerprint, expiry in ms) of the access record this run renewed last
-        self.on_synth = on_synth or (lambda topic, ids: True)       # True: the Synthesize job took it
+        self._checking_copy = False         # `_rotation_finish` is checking the new copy: the Remove task is in its step 4, library and vault
+        self.on_synth =on_synth or (lambda topic, ids: True)       # True: the Synthesize job took it
         self._generation = 0
         self._signin_cancel: threading.Event | None = None
         self._signin_thread: threading.Thread | None = None
@@ -376,8 +379,8 @@ class SyncService:
         it = items[0]
         title, labels = TASKS[it['kind']]
         step = STEPS.get((it['kind'], it['stage']), 1)
-        if it['kind'] == intents.REMOVE and it['stage'] == 'publishing' and str(self.st.get('upload_step', '')).startswith('Verifying'):
-            step = 4
+        if it['kind'] == intents.REMOVE and it['stage'] == 'publishing' and self._checking_copy:
+            step = 4        # the whole check: the library's files, then the Obsidian vault's upload and read-back
         steps = [{'label': label, 'state': 'done' if n < step else 'active' if n == step else 'waiting'} for n, label in enumerate(labels, 1)]
         return {'id': it['id'], 'kind': it['kind'], 'stage': it['stage'], 'title': title, 'step': step, 'of': len(labels), 'steps': steps,
                 'done': self.st.get('done', 0), 'total': self.st.get('total', 0),
@@ -1618,29 +1621,36 @@ class SyncService:
         self._set(rotation='pending')
         return record
 
-    def _rotation_files(self, items, work, stop):
-        """Bound reads/deletes to four requests; drain and record successes before a failure or pause."""
+    def _rotation_files(self, items, work, stop, workers: int = 4):
+        """Bound reads/deletes to `workers` requests in flight (a sliding window: a slow file never idles the others);
+        after a failure or pause nothing new starts, and in-flight successes are drained and yielded first."""
         items = iter(items)
-        with ThreadPoolExecutor(4, thread_name_prefix='cm-rotate') as pool:
+        with ThreadPoolExecutor(workers, thread_name_prefix='cm-rotate') as pool:
             def one(item):
                 if stop.is_set():
                     raise ExportStopped()
                 return work(item)
 
-            while batch := list(islice(items, 4)):
-                if stop.is_set():
-                    raise ExportStopped()
-                futures = {pool.submit(one, item): item for item in batch}
-                error = None
-                for future in as_completed(futures):
+            running, error, end = {}, None, object()
+            while True:
+                while error is None and not stop.is_set() and len(running) < workers:
+                    item = next(items, end)
+                    if item is end:
+                        break
+                    running[pool.submit(one, item)] = item
+                if not running:
+                    break
+                finished, _ = wait(running, return_when=FIRST_COMPLETED)
+                for future in finished:
+                    item = running.pop(future)
                     try:
                         result = future.result()
                     except Exception as e:
                         error = error or e
                     else:
-                        yield futures[future], result
-                if error:
-                    raise error
+                        yield item, result
+            if error:
+                raise error
             if stop.is_set():
                 raise ExportStopped()
 
@@ -1649,42 +1659,55 @@ class SyncService:
             return
         if stop.is_set():
             raise ExportStopped()
-        self._set(upload_step='Verifying the uploaded library with the replacement key…', done=0, total=0)
-        from library import restore
-        found = restore.manifests(client, key)
-        if not found:
-            raise drive_client.DriveError('The re-encrypted library has no manifest yet. Retry the upload.')
-        man = found[0][3]
-        whole, read = sum(int(e.get('size') or 0) for e in man['files'].values()), 0       # plain sizes: the pass shows bytes beside files (S7)
-        def verify(item):
-            logical, entry = item
-            blob = client.download(entry['id'])
-            if logical.startswith('videos/'):
-                key.open_file(logical, blob, entry)
-            else:
-                key.open(logical, blob)
-            return int(entry.get('size') or 0)
+        self._checking_copy = True
+        try:
+            self._set(upload_step='Verifying the uploaded library with the replacement key…', done=0, total=0)
+            from library import restore
+            found = restore.manifests(client, key)
+            if not found:
+                raise drive_client.DriveError('The re-encrypted library has no manifest yet. Retry the upload.')
+            man = found[0][3]
+            whole, read = sum(int(e.get('size') or 0) for e in man['files'].values()), 0       # plain sizes: the pass shows bytes beside files (S7)
+            big = threading.BoundedSemaphore(VERIFY_BIG_AT_ONCE)
+            def verify(item):
+                logical, entry = item
+                size = int(entry.get('size') or 0)
+                held = big if size > VERIFY_BIG else None       # a file is read into memory whole: few big ones at a time
+                if held:
+                    held.acquire()
+                try:
+                    blob = client.download(entry['id'])
+                    if logical.startswith('videos/'):
+                        key.open_file(logical, blob, entry)
+                    else:
+                        key.open(logical, blob)
+                finally:
+                    if held:
+                        held.release()
+                return size
 
-        for index, (_, size) in enumerate(self._rotation_files(man['files'].items(), verify, stop)):
-            read += size
-            self._set(done=index + 1, total=len(man['files']), bytes_done=read, bytes_total=whole)
-        folder = self.writer.read(lambda db: db.get_setting('obsidian_vault', '') or '')
-        if folder and Path(folder).is_dir():
-            self._set(upload_step='Uploading and verifying the vault with the replacement key…', done=0, total=0)
-            self._rotation_vault_round(client, key, Path(folder), retired_files=record['owned'])
-            if self.st.get('vault_state') != 'idle':
-                raise drive_client.DriveError('Rotated vault publication is incomplete; retry before cleanup.')
-            listing = client.list()
-            idx = next(f for f in listing if f['name'] == vault_sync.index_name(key, 'pc'))
-            _, files = vault_sync.decode_index(key.open(vault_sync.INDEX_LOGICAL, client.download(idx['id'])))
-            by_name = {f['name']: f for f in listing}
-            def verify_vault(cid):
-                f = by_name[vault_sync.blob_name(cid)]
-                data = key.open(vault_sync.blob_logical(cid), client.download(f['id']))
-                if key.content_id(data) != cid:
-                    raise mirror.MirrorKeyError('Rotated vault verification failed.')
-            for _ in self._rotation_files(set(files.values()), verify_vault, stop):
-                pass
+            for index, (_, size) in enumerate(self._rotation_files(man['files'].items(), verify, stop, workers=VERIFY_WORKERS)):
+                read += size
+                self._set(done=index + 1, total=len(man['files']), bytes_done=read, bytes_total=whole)
+            folder = self.writer.read(lambda db: db.get_setting('obsidian_vault', '') or '')
+            if folder and Path(folder).is_dir():
+                self._set(upload_step='Uploading and verifying the vault with the replacement key…', done=0, total=0)
+                self._rotation_vault_round(client, key, Path(folder), retired_files=record['owned'])
+                if self.st.get('vault_state') != 'idle':
+                    raise drive_client.DriveError('Rotated vault publication is incomplete; retry before cleanup.')
+                listing = client.list()
+                idx = next(f for f in listing if f['name'] == vault_sync.index_name(key, 'pc'))
+                _, files = vault_sync.decode_index(key.open(vault_sync.INDEX_LOGICAL, client.download(idx['id'])))
+                by_name = {f['name']: f for f in listing}
+                def verify_vault(cid):
+                    f = by_name[vault_sync.blob_name(cid)]
+                    data = key.open(vault_sync.blob_logical(cid), client.download(f['id']))
+                    if key.content_id(data) != cid:
+                        raise mirror.MirrorKeyError('Rotated vault verification failed.')
+                for _ in self._rotation_files(set(files.values()), verify_vault, stop):      # sizes unknown here: four at a time
+                    pass
+        finally:
+            self._checking_copy = False
         record['stage'] = 'cleanup'
         self._save_rotation(record)
         listing = client.list()

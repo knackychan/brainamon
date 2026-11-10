@@ -1,7 +1,7 @@
 """
 ask_chats.py - Data layer for Ask named conversations.
 Each conversation is a JSON file in data/ask_chats/<slug>.json.
-See docs/superpowers/specs/2026-07-04-ask-named-conversations-design.md.
+See archive/2026-11-09/docs/superpowers/specs/2026-07-04-ask-named-conversations-design.md.
 """
 
 import json, re

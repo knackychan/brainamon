@@ -10,9 +10,12 @@ class SyncWords(unittest.TestCase):
         rows = json.loads(node(r"""
             import fs from 'node:fs'
             import { stripTypeScriptTypes } from 'node:module'
+            import { t } from './web/src/lib/i18n/index.ts'
+            globalThis.__syncWordsT = t
             let src = fs.readFileSync('web/src/mobile/lanes.ts', 'utf8')
               .replace(/^import .*$/gm, '')
             const setup = `
+              const t = globalThis.__syncWordsT
               const backup = {task:null,busy:false}; const isApp = false, mirrorSource = {}, solo = false, source = {}, pics = { state: 'idle' }
               const phone = { sync: { end: 'error', msg: 'Waiting for your PC to confirm this phone.' } }
               const driveWork = () => null, syncPaused = () => false, fmtAgo = () => 'just now'

@@ -21,7 +21,7 @@ export class NeedsSignIn extends DriveError {}
 
 export interface DriveFile { id: string; size: number }
 
-// a refused access check, for every screen: the app bar lamp, More > Backup & phones and the line under the app bar
+// a refused access check, for every screen: the app bar lamp, Settings > Backup & phones and the line under the app bar
 // (mirror/phone-state.ts reads network.licenseKind and licenseAt)
 function refused(e: LicenseRequired): LicenseRequired {
   network.licenseLocked = true; network.licenseProblem = e.message; network.licenseKind = e.kind; network.licenseAt = e.at

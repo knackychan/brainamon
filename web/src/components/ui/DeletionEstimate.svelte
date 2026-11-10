@@ -2,7 +2,7 @@
   import { untrack } from 'svelte'
   import { num } from '../../lib/backup'
 
-  let { done, total }: { done: number; total: number } = $props()
+  let { done, total, locale = 'en', words }: { done: number; total: number; locale?: string; words?: (key: string, params?: Record<string, unknown>) => string } = $props()
   let estimated = $state(0)
   let counter: HTMLSpanElement
 
@@ -21,7 +21,7 @@
   })
 </script>
 
-<span bind:this={counter} class="deletion-estimate" aria-live="off">Estimated deletion: {num(Math.max(done, estimated))} / {num(total)} files.</span>
+<span bind:this={counter} class="deletion-estimate" aria-live="off">{words?.('backup.task.estimate', { done: num(Math.max(done, estimated), locale), total: num(total, locale) }) ?? `Estimated deletion: ${num(Math.max(done, estimated))} / ${num(total)} files.`}</span>
 
 <style>
   .deletion-estimate { font-variant-numeric: tabular-nums; }

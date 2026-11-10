@@ -269,7 +269,7 @@
           {#if pairing}
             <div class="pairing">
               <div class="pairing-qr" role="img" aria-label="Phone pairing QR code">{@html pairing.svg}</div>
-              <div><Hint>Scan in Brainamon on your phone: More &gt; Pair with your PC &gt; Scan (a phone already set up: More &gt; Backup &amp; phones &gt; This phone). Code check: {pairing.fingerprint}.</Hint><div class="setup-actions"><Button size="sm" onclick={copyPair}>Copy pairing link</Button><Button size="sm" onclick={() => { pairing = null; pairMessage = '' }}>Hide the QR code</Button></div></div>
+              <div><Hint>Scan in Brainamon on your phone: Settings &gt; Pair with your PC &gt; Scan (a phone already set up: Settings &gt; Backup &amp; phones &gt; This phone). Code check: {pairing.fingerprint}.</Hint><div class="setup-actions"><Button size="sm" onclick={copyPair}>Copy pairing link</Button><Button size="sm" onclick={() => { pairing = null; pairMessage = '' }}>Hide the QR code</Button></div></div>
             </div>
           {:else}<Button variant="pri" disabled={cloudBusy || !cloud.licensed || cloud.rotation === 'pending'} onclick={showPair}>{cloudBusy ? 'Making the code…' : 'Show pairing QR'}</Button>{/if}
           {#if !cloud.licensed}<Hint>Update Brainamon on this PC for payment-free phone pairing, then retry.</Hint>{/if}

@@ -19,6 +19,13 @@ for (const name of readdirSync(dist)) {
   cpSync(dist + name, www + name, { recursive: true })
 }
 for (const f of CARDS) cpSync(cards + f, www + 'cards/' + f)
+// The phone site reader's page scripts (projects/phone-site-reader): assets of the Contributor (debug) build
+// only, copied one by one by name (scrapers/ also holds personal scrape CSVs, which must never reach an APK).
+// packaging/payload_guard.py --release-mobile fails a release bundle that carries any of them.
+const sitesIn = here('../../scrapers/sites/'), sitesOut = here('../android/app/src/debug/assets/sites/')
+rmSync(sitesOut, { recursive: true, force: true })
+mkdirSync(sitesOut, { recursive: true })
+if (existsSync(sitesIn)) for (const name of readdirSync(sitesIn)) if (/^[a-z_]+\.js$/.test(name)) cpSync(sitesIn + name, sitesOut + name)
 // the page's Content-Security-Policy is for the browser: Capacitor injects its bridge as an inline
 // script, which that policy would block, and the app only ever loads its own files
 const page = readFileSync(www + 'mobile.html', 'utf8')

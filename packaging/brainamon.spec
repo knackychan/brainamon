@@ -50,7 +50,8 @@ datas += [(str(ROOT / 'design' / 'card-designs' / 'full-art-v2' / name), 'design
 # Only versioned workers and JS assets: no scrape CSVs, browser state or optional runtime payload.
 datas += [(str(p), 'scrapers') for p in sorted((ROOT / 'scrapers').glob('*.js'))]
 datas += [(str(ROOT / 'scrapers' / name), 'scrapers') for name in
-          ('fb_saved_playwright.py', 'ig_saved_playwright.py', 'reddit_saved_playwright.py')]
+          ('fb_saved_playwright.py', 'ig_saved_playwright.py', 'reddit_saved_playwright.py', 'threads_saved_playwright.py')]
+datas += [(str(ROOT / 'scrapers' / 'sites' / 'threads.js'), 'scrapers/sites')]
 datas += [(str(ROOT / 'packaging' / 'requirements-scraper.txt'), 'packaging')]
 datas += [(str(ROOT / 'LICENSE'), '.'), (str(ROOT / 'THIRD_PARTY_NOTICES.md'), '.')]
 # IANA timezone data so ZoneInfo resolves named zones in the frozen build (no host zoneinfo).

@@ -15,13 +15,17 @@ change is one of:
     {"op": "note", "file", "title", "category", "body", "was", "at"}  a My Note written or edited
     {"op": "note_append", "file", "title", "name", "text", "when", "at"}  one section added at the end of a
                                                                       My Note (Add to Brainamon, note-organic-ui plan 09)
+    {"op": "note_category", "from", "to", "at"}                       a My Notes category renamed on the phone
+                                                                      (manifest `note_category`, spec 2026-11-07)
     {"op": "chat", "slug", "name", "created", "history", "source_ids", "options", "was", "at"}
                                                                       a Wiskit chat asked on the phone (Phase 5)
     {"op": "chat_delete", "slug", "turns", "at"}                      a Wiskit chat deleted on the phone
     {"op": "delete", "uid", "pc", "at"}                               an item deleted on the phone; the PC
                                                                        deletes it too only when `pc` is true
     {"op": "answer", "md", "ids", "at"}                               a phone answer saved as a note
-    {"op": "synth", "topic", "sources", "body", "at"}                 a note synthesized on the phone
+    {"op": "synth", "topic", "sources", "uids", "body", "at"}         a note synthesized on the phone (uids: one
+                                                                      per source, a link saved on the phone's uid,
+                                                                      '' for a PC item; an older phone sends none)
     {"op": "synth_queue", "topic", "ids", "at"}                       too many sources for the phone: the PC
                                                                       runs Synthesize (SYNTH_QUEUE setting)
 
@@ -42,6 +46,9 @@ applied, so the phone drops its pending copy and a file seen twice is skipped. R
 - An addition (note_append) is one "## From <name> - <when>" section at the end of the PC's current
   note (knowledge/filing.py add_section): only the new text travels, so nothing the PC wrote is touched.
   A note gone on the PC (or not a My Note) keeps the text in a new "<title> (from phone)" note.
+- A renamed category (note_category) moves every personal note filed under `from` to `to` and renames it in
+  the stored list. Only the category line changes, never `updated` or the text, so it cannot conflict with an
+  edit; a name the rules refuse (my_notes.clean_category, General) is skipped.
 - A chat replaces the PC's copy (data/ask_chats/<slug>.json) unless the PC added to that chat after
   the phone read it (its `updated` is no longer `was`) and later than the phone's turn: then the
   phone's chat is saved beside it as "<name> (from phone)".
@@ -186,6 +193,8 @@ def apply(db, doc: dict, out: Applied | None = None) -> Applied:
                 wrote_notes |= _note_append(db, ch, out)
             elif op == 'note_delete':
                 wrote_notes |= _note_delete(db, ch, out)
+            elif op == 'note_category':
+                wrote_notes |= _note_category(db, ch, out)
             elif op == 'chat':
                 _chat(db, ch, at, out)
             elif op == 'chat_delete':
@@ -541,6 +550,17 @@ def _note_append(db, ch: dict, out: Applied) -> bool:
     return True
 
 
+def _note_category(db, ch: dict, out: Applied) -> bool:
+    """A My Notes category renamed on the phone: only the two names travel (knowledge/my_notes.py
+    rename_category). A refused name raises, so apply() skips and counts it."""
+    old, new = ch.get('from'), ch.get('to')
+    if not isinstance(old, str) or not isinstance(new, str):
+        raise ValueError('bad note category rename')
+    paths = my_notes.rename_category(db, db.notes_dir, old, new, before=lambda p: _before(db, p))
+    out.notes.extend(p.name for p in paths)
+    return bool(paths)
+
+
 def _note_delete(db, ch: dict, out: Applied) -> bool:
     file = str(ch.get('file') or '')
     path = Path(db.notes_dir) / file if _NOTE_FILE.match(file) else None
@@ -625,9 +645,33 @@ def _new_note(db, ch: dict, out: Applied) -> bool:
         path = _made(db, lambda: ask_core.save_note(db, body, _ids(ch.get('ids'))))
     else:
         topic = str(ch.get('topic') or '').strip()[:120] or 'Phone note'
-        path = _made(db, lambda: knowledge.save_new_note(db.notes_dir, topic, _ids(ch.get('sources')), body)[0])
+        path = _made(db, lambda: knowledge.save_new_note(db.notes_dir, topic, _source_ids(db, ch, out.alias), body)[0])
     out.notes.append(path.name)
     return True
+
+
+def _source_ids(db, ch: dict, alias: dict) -> list:
+    """The PC ids a phone synthesis cites (projects/phone-solo-synthesize). For each entry of
+    `sources`: its `uids` entry when the phone sent one (a link saved on the phone: the alias first,
+    then items.uid, as the link op left it; a uid the library does not hold cites nothing), else the
+    id itself when positive. A negative id with no uid (an older phone) cites nothing."""
+    sources = ch.get('sources') if isinstance(ch.get('sources'), list) else []
+    uids = ch.get('uids') if isinstance(ch.get('uids'), list) else []
+    out = []
+    for n, raw in enumerate(sources):
+        try:
+            sid = int(raw)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        uid = uids[n] if n < len(uids) and isinstance(uids[n], str) else ''
+        if uid:
+            uid = alias.get(uid, uid)
+            row = db.conn.execute('SELECT id FROM items WHERE uid = ?', (uid,)).fetchone()
+            if row:
+                out.append(row[0])
+        elif sid > 0:
+            out.append(sid)
+    return out
 
 
 def _queue(db, ch: dict, out: Applied) -> None:

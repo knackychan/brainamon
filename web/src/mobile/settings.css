@@ -1,0 +1,63 @@
+/* Settings, Backup & phones and Recover a library (projects/phone-settings, spec docs/superpowers/specs/
+   2026-11-07-phone-settings-design.md): the top keys, the page, the hero status, the group rows and the pill.
+   Imported by PageKeys.svelte. Every colour is an existing token; the band is the Wiskit sheet's (.m-sheet-keys). */
+
+/* 1. the top keys: the Wiskit sheet's floating keys and band, fixed over the scrolling page */
+.m-sheet-keys.m-page-keys{position:fixed}
+#m-app .m-page-keys .m-info.m-key{box-sizing:border-box;width:36px;height:36px;min-width:36px;min-height:36px;padding:0;align-self:auto;border:1px solid var(--wg-edge);border-radius:18px;background:var(--case-hi);box-shadow:0 2px 0 var(--wg-edge)}
+#m-app .m-page-keys .m-info.m-key:active{transform:translateY(2px);box-shadow:none}
+
+/* 2. the page: the case colour full width, content under the band, the last row clear of Android's buttons */
+#m-app:has(.m-page){background:var(--case)}
+.m-pad.m-page{gap:0;padding-top:56px;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 16px)}
+.m-page>.m-box{scroll-margin-top:56px}
+.m-page>.m-box:not(.m-group){border:0;border-radius:0;background:none;padding:0;margin-bottom:16px}
+
+/* 3. the hero: the kicker line, the sentence as the title, the detail, the key */
+.m-calm .m-status.m-hero{flex-direction:column;align-items:stretch;gap:8px}
+.m-calm .m-hero p{flex:none;padding-left:0}
+.m-calm .m-hero b{text-indent:0;font:800 19px/1.15 var(--display);font-stretch:85%;text-wrap:balance;overflow-wrap:anywhere}
+.m-calm .m-hero small{margin-top:4px}
+.m-hero-k{display:flex;align-items:center;gap:4px;min-width:0;min-height:28px;margin-block:-8px}
+.m-hero-kick{display:inline-flex;align-items:center;gap:8px;min-width:0;min-height:44px;font:600 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--wg-dim);text-decoration:none}
+.m-hero-kick>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.m-hero-chev{flex:none;width:6px;height:6px;margin-left:1px;border:solid currentColor;border-width:0 1.5px 1.5px 0;transform:rotate(-45deg)}
+.m-calm .m-hero .m-status-dot{flex:none;width:9px;height:9px;margin:0;border-width:1.5px}
+.m-hero-k .m-info{margin:-8px 0}
+.m-hero-key{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.m-calm .m-hero .m-btn{max-width:none}
+
+/* 4. the pill: a page's answer (MButton shape="pill"); the rectangle stays the control inside a group */
+.m-btn.pill{box-sizing:border-box;min-height:44px;padding:0 20px;border-radius:22px;border-color:var(--wg-edge);background:var(--case-hi);color:var(--wg-ink);font:700 14px/1.2 var(--display);font-stretch:92%;letter-spacing:0;text-transform:none}
+.m-btn.pill.pri{border-color:color-mix(in srgb,var(--accent) 78%,#000);background:var(--accent);color:#fff;box-shadow:0 2px 0 color-mix(in srgb,var(--accent) 78%,#000)}
+
+/* 5. the group rows (ui/MGroup.svelte): a line above each, one under the last, no box */
+.m-calm .m-box.m-group{gap:0;padding:0;border:0;border-top:1px solid var(--wg-line);border-radius:0;background:none}
+.m-calm .m-box.m-group:not(:has(~ .m-box.m-group)){border-bottom:1px solid var(--wg-line)}
+.m-group-head{display:flex;align-items:center;gap:4px;min-width:0}
+.m-calm .m-group-head h3{display:block;flex:1;min-width:0;margin:0;font:inherit}
+.m-group-row{box-sizing:border-box;display:flex;align-items:center;gap:10px;width:100%;min-width:0;min-height:52px;padding:8px 0;border:0;background:none;color:var(--wg-ink);text-align:left;text-decoration:none;font:inherit;-webkit-tap-highlight-color:transparent}
+.m-group-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.m-group-dot{flex:none;box-sizing:border-box;width:9px;height:9px;border-radius:50%}
+.m-group-dot.todo{border:1.5px solid var(--wg-edge)}
+.m-group-dot.done{background:var(--m-ok)}
+.m-group-dot.next{background:var(--m-warn)}
+.m-group-dot.busy{background:var(--m-teal)}
+.m-group-words{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.m-group-words b{font:700 15px/1.2 var(--display);font-stretch:92%}
+.m-group.open .m-group-words b{font-weight:800}
+.m-group-words small{font:500 12px/1.3 var(--mono);color:var(--wg-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-group-row>.m-ico{flex:none;width:14px;height:14px;color:var(--wg-dim);transition:transform .15s}
+.m-group-row[aria-expanded="true"]>.m-ico{transform:rotate(180deg)}
+a.m-group-row>.m-ico{transform:rotate(-90deg)}
+.m-group-row>.m-btn{flex:none}
+.m-group-panel{display:flex;flex-direction:column;gap:8px;padding:2px 0 14px}
+.m-group-panel[hidden]{display:none}
+.m-group-sub{margin:6px 0 0;font:800 14px/1.1 var(--display);font-stretch:85%}
+@media (prefers-reduced-motion:reduce){.m-group-row>.m-ico{transition:none}}
+.motion-off .m-group-row>.m-ico{transition:none}
+
+/* 6. Recover a library: the kicker, the title, the word tabs */
+.m-recover-k{font:600 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--wg-dim)}
+.m-recover-t{margin:0;font:800 22px/1.1 var(--display);font-stretch:85%;color:var(--wg-ink)}
+.m-recover-tabs{outline:0}

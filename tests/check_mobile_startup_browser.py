@@ -25,7 +25,7 @@ window.setTimeout = (fn, ms, ...args) => {
 };
 window.clearTimeout = id => { if(!__deadlines.delete(id)) clear(id); };
 window.__expire = () => { const [id, fn] = __deadlines.entries().next().value; __deadlines.delete(id); fn(); };
-window.__pair = JSON.stringify({v:1,k:'A'.repeat(43),c:'',e:'',f:'synthetic-startup',ai:{openai:'synthetic-ai-key'},at:0,solo:true});
+window.__pair = JSON.stringify({v:2,k:'A'.repeat(43),c:'',e:'',f:'4242b08871e4',ai:{openai:'synthetic-ai-key'},at:0,solo:true});
 window.__token = JSON.stringify({access:'synthetic-token',exp:1});
 if(!sessionStorage.getItem('synthetic-secrets')) sessionStorage.setItem('synthetic-secrets', JSON.stringify({'bp-pair':__pair,'bp-gtoken':__token}));
 localStorage.setItem('startup-sentinel','synthetic-kept');
@@ -78,7 +78,8 @@ def main():
                 with sync_playwright() as pw:
                     browser = pw.chromium.launch(headless=True, channel='msedge')
                     # Android packaging removes CSP for its inline bridge; model that environment.
-                    context = browser.new_context(bypass_csp=True, viewport={'width':390, 'height':844})
+                    context = browser.new_context(bypass_csp=True, viewport={'width':390, 'height':844}, locale='en-US')
+                    context.add_init_script("localStorage.setItem('bp-lang','en')")
                     context.route('https://**/*', lambda r: r.abort())
                     context.route('**/api/**', lambda r: r.abort())
 
@@ -113,8 +114,8 @@ def main():
                         assert page.evaluate("sessionStorage.getItem('synthetic-secrets')") == before
 
                     def mounted():
-                        page.locator('#m-app').wait_for()
-                        assert page.locator('nav[aria-label="Sections"]').count() == 1
+                        page.locator('#m-app').wait_for(state='attached')
+                        page.locator('.m-sheet-layer.m-vt-jv').wait_for(state='visible')
                         assert page.locator('#m-startup').count() == 0
                         assert page.evaluate('__writes.length') == 0, 'startup replaced saved credentials'
                         assert page.evaluate("sessionStorage.getItem('synthetic-secrets')") == before
@@ -171,6 +172,9 @@ def main():
                     page.route('**/src/mobile/Mobile.svelte*', lambda r: held.append(r))
                     page.reload(wait_until='domcontentloaded')
                     page.wait_for_function('__deadlines.size === 1 && __reads.length === 2')
+                    for _ in range(100):
+                        if held: break
+                        page.wait_for_timeout(50)
                     assert len(held) == 1
                     page.evaluate('__expire()')
                     failure()
@@ -186,16 +190,16 @@ def main():
                     pwa = context.new_page()
                     pwa.on('pageerror', lambda error: errors.append(str(error)))
                     pwa.add_init_script("""if(!sessionStorage.getItem('pwa-seeded')) {
-                      localStorage.setItem('bp-pair',JSON.stringify({v:1,k:'A'.repeat(43),c:'',e:'',f:'synthetic-pwa',ai:{},at:0,solo:true}));
+                      localStorage.setItem('bp-pair',JSON.stringify({v:2,k:'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE',c:'',e:'',f:'40e2daf0fd31',ai:{},at:0,solo:true}));
                       sessionStorage.setItem('pwa-seeded','yes');
                     }""")
                     pwa.goto(f'http://127.0.0.1:{port}/mobile.html#/jv')
                     pwa.locator('#m-app').wait_for()
                     assert pwa.evaluate("localStorage.getItem('bp-pair')") is None
-                    assert pwa.evaluate("async () => JSON.parse((await import('/src/mobile/native.ts')).secrets.get('bp-pair')).f") == 'synthetic-pwa'
+                    assert pwa.evaluate("async () => JSON.parse((await import('/src/mobile/native.ts')).secrets.get('bp-pair')).f") == '40e2daf0fd31'
                     pwa.reload()
                     pwa.locator('#m-app').wait_for()
-                    assert pwa.evaluate("async () => JSON.parse((await import('/src/mobile/native.ts')).secrets.get('bp-pair')).f") == 'synthetic-pwa'
+                    assert pwa.evaluate("async () => JSON.parse((await import('/src/mobile/native.ts')).secrets.get('bp-pair')).f") == '40e2daf0fd31'
                     assert not errors, errors
                     print('PASS: visible loading; held/rejected reads; explicit Retry; stale callbacks; credentials/storage preserved; 3 healthy reloads; failed/held module recovery; browser vault startup/reload; zero page errors')
                     browser.close()

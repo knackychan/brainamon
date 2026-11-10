@@ -85,6 +85,35 @@ class VaultJsTest(unittest.TestCase):
         self.assertEqual(V.decode_index_full(out['empty'].encode())['generated'], set())
         self.assertIsNone(V.decode_index_full(out['classic'].encode())['generated'])
 
+    def test_pc_status_finds_only_its_record_and_preserves_missing_and_invalid_results(self):
+        node(f"""{TS_RESOLVE}
+            import assert from 'node:assert/strict'
+            const {{ MirrorKey }} = await import('./web/src/mobile/mirror/crypto.ts')
+            const {{ pcStatus }} = await import('./web/src/mobile/vault/sync.ts')
+            const {{ STATUS_LOGICAL, STATUS_PREFIX }} = await import('./web/src/mobile/vault/merge.ts')
+            const key = await MirrorKey.fromText({json.dumps(KEY.text())})
+            const name = STATUS_PREFIX + await key.name('vault/status/pc')
+            let lists = 0, finds = 0, reads = 0, present = true
+            let raw = await key.seal(STATUS_LOGICAL, new TextEncoder().encode(JSON.stringify({{
+              state: 'syncing', step: 'Taking changes', done: '2', total: 9, since: 3, at: 4
+            }})))
+            const drive = {{
+              list: async () => {{ lists++; throw Error('Status must not list the Drive folder') }},
+              find: async n => {{ finds++; assert.equal(n, name); return present ? {{ id: 'status-id', size: raw.length }} : null }},
+              get: async id => {{ reads++; assert.equal(id, 'status-id'); return raw }},
+            }}
+            assert.deepEqual(await pcStatus(drive, key), {{ state: 'syncing', step: 'Taking changes', done: 2,
+              total: 9, since: 3, reason: '', summary: '', last: 0, at: 4 }})
+            assert.deepEqual([finds, reads, lists], [1, 1, 0])
+            present = false
+            assert.equal(await pcStatus(drive, key), null)
+            assert.deepEqual([finds, reads, lists], [2, 1, 0])
+            present = true
+            raw = await key.seal(STATUS_LOGICAL, new TextEncoder().encode('{{bad JSON'))
+            await assert.rejects(() => pcStatus(drive, key), SyntaxError)
+            assert.deepEqual([finds, reads, lists], [3, 2, 0])
+        """)
+
     def test_whole_round_against_a_pc_sealed_drive(self):
         data = {'Ideas/a.md': 'from the pc', 'b.md': 'second'}
         drive = {}
@@ -102,6 +131,7 @@ class VaultJsTest(unittest.TestCase):
             const key = await MirrorKey.fromText({json.dumps(KEY.text())})
             const files = new Map(Object.entries({json.dumps(drive)}).map(([n, b]) => [n, {{ id: n, name: n, data: Buffer.from(b, 'base64') }}]))
             const drive = {{ list: async () => [...files.values()].map(f => ({{ id: f.id, name: f.name, size: f.data.length }})),
+              find: async name => {{ const f = files.get(name); return f ? {{ id: f.id, size: f.data.length }} : null }},
               get: async id => new Uint8Array(files.get(id).data), remove: async id => {{ files.delete(id) }},
               create: async (name, data) => {{ files.set(name, {{ id: name, name, data: Buffer.from(data) }}); return name }} }}
             const mem = new Map([['phone-only.md', new TextEncoder().encode('from the phone')]])
@@ -117,7 +147,8 @@ class VaultJsTest(unittest.TestCase):
         self.assertEqual(out['r']['state'], 'idle', out['r'])
         self.assertEqual(out['pc'], status)
         taking = [x for x in out['steps'] if x[0] in ("Taking the PC's changes", 'Sending to Drive')]
-        self.assertEqual(taking, [["Taking the PC's changes", 0, 2], ["Taking the PC's changes", 1, 2], ['Sending to Drive', 0, 1]])
+        self.assertEqual(taking, [["Taking the PC's changes", 0, 2], ["Taking the PC's changes", 1, 2],
+                                 ["Taking the PC's changes", 2, 2], ['Sending to Drive', 0, 1], ['Sending to Drive', 1, 1]])
         # the round reports from its first step on (listing, scanning), and the bar only moves forward
         self.assertEqual([x[0] for x in out['steps']][:3], ['Reading the Drive list', "Reading the PC's file list", 'Listing the vault folder'])
         self.assertEqual(out['overall'], sorted(out['overall']))

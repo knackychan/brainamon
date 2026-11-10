@@ -1,4 +1,4 @@
-"""The status card, More > Backup & phones, the owner line under the app bar and the lamp (docs/superpowers/plans/
+"""The status card, Settings > Backup & phones, the owner line under the app bar and the lamp (docs/superpowers/plans/
 2026-10-31-phone-backup-phones.md, sub-plan 04) in the phone page, at 360 px in light and dark: a synthetic pairing, a
 mocked Google Drive that holds no access confirmation, synthetic Google tokens. No account, no real Drive, no data folder.
 Run: py tests/check_phone_screens_browser.py
@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 from urllib.parse import urlparse
@@ -19,6 +20,8 @@ from urllib.request import urlopen
 from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tests.phone_groups import open_group, row_line  # noqa: E402  (the group rows, projects/phone-settings)
 ART = ROOT / 'local/ui-blocks/shots/phone-screens'
 RAW = bytes([9]) * 32
 KEY = base64.urlsafe_b64encode(RAW).decode().rstrip('=')
@@ -92,7 +95,8 @@ def main():
                     browser = pw.chromium.launch(headless=True, channel='msedge')
 
                     def phone_page(init: str):
-                        ctx = browser.new_context(viewport={'width': 360, 'height': 800}, is_mobile=True, has_touch=True)
+                        ctx = browser.new_context(viewport={'width': 360, 'height': 800}, is_mobile=True, has_touch=True, locale='en-US')
+                        ctx.add_init_script("localStorage.setItem('bp-lang','en')")
                         ctx.route(base + '/cards/**', lambda r: r.fulfill(path=cards[urlparse(r.request.url).path.removeprefix('/cards/')]))
                         ctx.route('https://www.googleapis.com/**', drive)
                         ctx.add_init_script("localStorage.setItem('bp-wifi','off'); if (!sessionStorage.getItem('fixture')) {"
@@ -108,7 +112,7 @@ def main():
                     page.goto(base + '/mobile.html#/more')
                     card = page.locator('#m-status')
                     expect(card.get_by_text('Connect Google Drive.', exact=True)).to_be_visible()
-                    expect(card.get_by_role('button', name='Connect', exact=True)).to_have_class('m-btn sm pri')
+                    expect(card.get_by_role('button', name='Connect', exact=True)).to_have_class('m-btn pill pri')
                     assert card.get_by_text('Choose sample@example.com', exact=False).count() == 0   # the card never shows the detail
                     assert page.locator('.m-pad > *').first.get_attribute('id') == 'm-status'
                     for moved in ('#m-pair-setup', '#m-conn', '#m-recovery'):             # all on Backup & phones now
@@ -117,7 +121,7 @@ def main():
                     shoot(page, 'more-connect')
                     card.get_by_role('link', name='Backup & phones').click()
                     expect(page).to_have_url(base + '/mobile.html#/backup')
-                    expect(page.locator('.m-ws')).to_have_text('Backup & phones')
+                    expect(page.locator('.m-page-keys .m-ws')).to_have_text('Backup')
                     status = page.locator('#m-backup-status')
                     expect(status.get_by_text('Connect Google Drive.', exact=True)).to_be_visible()
                     expect(status.get_by_text('Choose sample@example.com, the account your PC backs up to.', exact=True)).to_be_visible()
@@ -125,12 +129,13 @@ def main():
                     expect(page.locator('#m-pair-setup').get_by_text('Finish connecting your PC', exact=True)).to_be_visible()
                     ids = page.evaluate("() => [...document.querySelectorAll('.m-pad > .m-box')].map(e => e.id)")
                     assert ids == ['m-backup-status', 'm-pair-setup', 'm-conn', 'm-phone', 'm-recovery'], ids
-                    expect(page.locator('#m-phone').get_by_text('Phone browser', exact=True)).to_be_visible()
+                    expect(row_line(page, 'This phone')).to_have_text('Phone browser · all sent')
+                    expect(open_group(page, 'This phone').get_by_text('Phone browser', exact=True)).to_be_visible()
                     assert page.locator('#m-pair').get_by_role('button', name='Scan').count() == 0        # a browser pastes the link
                     assert page.locator('.m-strip').count() == 0
                     tall(page, '.m-pad')
                     shoot(page, 'backup-connect')
-                    page.locator('#m-recovery').get_by_role('button', name='Show', exact=True).click()
+                    open_group(page, 'Recovery').get_by_role('button', name='Show', exact=True).click()
                     assert page.get_by_label('Recovery code', exact=True).input_value() == KEY
                     page.locator('#m-recovery').get_by_role('button', name='Hide', exact=True).click()
                     expect(page.get_by_label('Recovery code', exact=True)).to_have_count(0)
@@ -147,7 +152,7 @@ def main():
                     page.evaluate(SIGN_IN)
                     strip = page.locator('.m-strip-owner')
                     expect(strip).to_have_text("Backup & phones · This phone's access was removed on your PC.")
-                    expect(page.locator('.m-abar .m-lamp')).to_have_text('Drive · access removed')
+                    expect(page.locator('.m-sync-key')).to_have_attribute('aria-label', 'Drive · access removed')
                     assert strip.bounding_box()['height'] >= 43.5
                     shoot(page, 'library-access-removed')
                     for tab in ('#/canvas', '#/notes', '#/jv'):
@@ -160,16 +165,18 @@ def main():
                     expect(status.get_by_text("This phone's access was removed on your PC.", exact=True)).to_be_visible()
                     expect(status.get_by_text('Still your phone? Open the new pairing link from your PC.', exact=False)).to_be_visible()
                     assert status.get_by_role('button').count() == 0                     # Scan is the app's; the link is below
-                    expect(page.locator('#m-conn .m-lamp')).to_have_text('access removed')     # driveStatus speaks the model
+                    expect(row_line(page, 'Google account')).to_have_text('Access removed')    # driveStatus speaks the model
                     page.evaluate("""async () => {
                       const { mirrorSource: m } = await import('/src/mobile/state.svelte.ts')
                       await m.changes.add({ op: 'fav', uid: 'synthetic-1', on: true })
                       await m.changes.add({ op: 'fav', uid: 'synthetic-2', on: true })
                     }""")
                     expect(status.get_by_text('2 edits wait on this phone.', exact=False)).to_be_visible()
-                    expect(page.locator('#m-phone').get_by_text('2 not sent yet', exact=False)).to_be_visible()
+                    expect(row_line(page, 'This phone')).to_have_text('Phone browser · 2 not sent')
                     shoot(page, 'backup-access-removed')
-                    page.get_by_role('button', name='Unpair this phone', exact=True).click()
+                    phone = open_group(page, 'This phone')
+                    expect(phone.get_by_text('2 not sent yet', exact=False)).to_be_visible()
+                    phone.get_by_role('button', name='Unpair this phone', exact=True).click()
                     expect(page.get_by_role('button', name='Sure? Unpair', exact=True)).to_be_visible()
                     expect(page.get_by_role('alert')).to_have_text("2 edits haven't reached your PC yet. If you unpair now, they never will.")
                     main = page.locator('.m-main')
@@ -179,9 +186,8 @@ def main():
                     expect(page.locator('#m-status').get_by_text("This phone's access was removed on your PC.", exact=True)).to_be_visible()
                     expect(main).to_have_js_property('scrollTop', 0)                           # More opens at its card
                     expect(strip).to_have_count(0)
-                    # Setup's Google Drive row and the Sync box say what the card says, not the access check's message
-                    expect(page.locator('.m-setup')).to_contain_text("This phone's access was removed on your PC.")
-                    expect(page.locator('h3').filter(has_text=re.compile('^Sync')).locator('.m-lamp')).to_have_text('access removed')
+                    # the Sync row says the lamp, not the access check's message
+                    expect(row_line(page, 'Sync')).to_have_text('access removed')
                     tall(page, '#m-status')
                     shoot(page, 'more-access-removed')
                     main.evaluate('e => { e.scrollTop = 400 }')

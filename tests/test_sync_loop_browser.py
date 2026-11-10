@@ -14,6 +14,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+from tests.phone_groups import open_group  # noqa: E402  (Sync is a group on the phone's Settings, projects/phone-settings)
 
 
 class SyncLoopBrowser(unittest.TestCase):
@@ -130,13 +131,14 @@ def fixture(root):
             with sync_playwright() as pw:
                 try:
                     ctx = pw.chromium.launch_persistent_context(str(root / 'browser-profile'), channel='msedge', headless=True,
-                        viewport={'width': 390, 'height': 844},
+                        viewport={'width': 390, 'height': 844}, locale='en-US',
                         args=['--disable-background-networking', '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost'])
                 except Error as e:
                     if 'Executable' in str(e) or 'not found' in str(e):
                         raise unittest.SkipTest('Edge unavailable: ' + str(e).splitlines()[0]) from e
                     raise
                 try:
+                    ctx.add_init_script("localStorage.setItem('bp-lang','en')")
                     ctx.route('**/*', lambda route: route.continue_() if route.request.url.startswith((origin + '/', base + '/')) else route.abort())
                     ctx.add_init_script('if (!localStorage.getItem("fixture-seeded")) {' +
                         'localStorage.setItem("bp-pair",' + json.dumps(json.dumps(pair)) + ');' +
@@ -167,6 +169,8 @@ def fixture(root):
                         check.assertTrue(entered.wait(10), 'no upload entered the gate')
                         page.evaluate("location.hash='/cap'")
                         page.get_by_label('Your content', exact=True).fill('https://example.invalid/from-phone')
+                        page.get_by_role('button', name='Save', exact=True).click()
+                        expect(page.locator('.m-cap-recap')).to_be_visible()
                         page.get_by_role('radio', name='Library item', exact=True).check()
                         page.get_by_role('button', name='Save to Library', exact=True).click()
                         expect(page.get_by_text('Saved as a Library item', exact=True)).to_be_visible()
@@ -192,7 +196,7 @@ def fixture(root):
                             return man['items'] == 2 and any(r['device'] == device and r['seq'] >= 1 for r in man.get('receipts', {}).values())
                         wait_for(acknowledged, 'follow-up manifest did not contain item and acknowledgement')
                     page.evaluate("location.hash='/more'")
-                    page.get_by_role('button', name='Sync now', exact=True).first.click()
+                    open_group(page, 'Sync').get_by_role('button', name='Sync now', exact=True).first.click()
                     page.evaluate("location.hash='/backup'")
                     expect(page.locator('#m-library').get_by_text(re.compile(r'2 items.*[0-9]+ files.*the PC uploaded'))).to_be_visible(timeout=15000)
                     page.wait_for_function("""async () => {

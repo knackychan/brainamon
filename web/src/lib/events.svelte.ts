@@ -7,7 +7,7 @@ import { pushLine, toast, type ConsoleEntry, type ToastLevel } from './ui.svelte
 
 export interface JobSnap {
   id: number; kind: string; label: string; state: 'running' | 'paused' | 'finished' | 'stopped'
-  total: number; done: number; err: number; current: number | null; auto: boolean; t0: number; t1: number
+  total: number; done: number; skipped: number; err: number; current: number | null; auto: boolean; t0: number; t1: number
 }
 export interface JobsState { current: JobSnap | null; last: JobSnap | null; request?: RequestSnapshot | null }
 

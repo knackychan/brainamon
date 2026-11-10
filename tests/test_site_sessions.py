@@ -34,9 +34,19 @@ class ParserTest(unittest.TestCase):
     def test_hostname_boundaries(self):
         self.assertEqual(ss.site_for('https://m.instagram.com/p/1'), 'instagram')
         self.assertEqual(ss.site_for('https://youtu.be/selected'), 'youtube')
+        self.assertEqual(ss.site_for('https://www.threads.com/saved'), 'threads')
+        self.assertEqual(ss.site_for('https://threads.net/saved'), 'threads')
+        self.assertEqual(ss.site_for('https://threads.com.evil/saved'), '')
         for url in ('https://instagram.com.evil/x', 'https://evil/?instagram.com',
                     'https://instagram.com@evil/x', 'https://evil/instagram.com', 'file://instagram.com'):
             self.assertEqual(ss.site_for(url), '')
+
+    def test_threads_browser_state_is_scoped(self):
+        state = {'cookies': [], 'origins': [{'origin': 'https://www.threads.com', 'localStorage': []}]}
+        ss.validate_state(json.dumps(state).encode(), 'threads')
+        state['origins'][0]['origin'] = 'https://threads.com.evil'
+        with self.assertRaises(ValueError):
+            ss.validate_state(json.dumps(state).encode(), 'threads')
 
     def test_state_origin_and_cookie_validation(self):
         state = {'cookies': [], 'origins': [{'origin': 'https://www.instagram.com', 'localStorage': [{'name': 'key', 'value': 'synthetic-secret'}]}]}

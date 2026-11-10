@@ -2,10 +2,12 @@
   import { onMount } from 'svelte'
   import { rest } from '../lib/rest'
 
-  let { pose = 'idle', motionOff = false, id }: {
-    pose?: string; motionOff?: boolean; id?: string
+  // crop: the canvas is only the pose's drawn area (sheet.json `bounds`: left, top, right, bottom), for a
+  // small slot such as the phone dock's Ask box; without it, the whole 96 x 56 cell (every desktop caller)
+  let { pose = 'idle', motionOff = false, id, crop = false }: {
+    pose?: string; motionOff?: boolean; id?: string; crop?: boolean
   } = $props()
-  type Index = { cell: [number, number]; states: Record<string, { row: number; frames: number; fps: number }> }
+  type Index = { cell: [number, number]; states: Record<string, { row: number; frames: number; fps: number; bounds?: [number, number, number, number] }> }
   let cv: HTMLCanvasElement | undefined = $state()
   let sheet: { index: Index; image: HTMLCanvasElement } | null = $state.raw(null)
   let reduced = $state(false)
@@ -35,13 +37,15 @@
     const s = sheet, canvas = cv
     if (!s || !canvas) return
     const state = s.index.states[pose] ?? s.index.states.idle, [w, h] = s.index.cell
-    canvas.width = w; canvas.height = h
+    const b = crop && state.bounds ? state.bounds : [0, 0, w, h]
+    const cw = b[2] - b[0], ch = b[3] - b[1]
+    canvas.width = cw; canvas.height = ch
     const ctx = canvas.getContext('2d')!
     ctx.imageSmoothingEnabled = false
     let frame = 0
     const draw = () => {
-      ctx.clearRect(0, 0, w, h)
-      ctx.drawImage(s.image, (frame++ % state.frames) * w, state.row * h, w, h, 0, 0, w, h)
+      ctx.clearRect(0, 0, cw, ch)
+      ctx.drawImage(s.image, (frame++ % state.frames) * w + b[0], state.row * h + b[1], cw, ch, 0, 0, cw, ch)
     }
     draw()
     if (motionOff || reduced) return

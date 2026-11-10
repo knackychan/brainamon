@@ -12,14 +12,19 @@
 // - a round does not start while Google Drive is not usable (not connected, wrong account, no library): the
 //   panel says why, in the Drive box's words (state.svelte.ts driveStatus).
 // - the read of the library goes first: a round asked for while it runs (or before the first one at app start
-//   has ended) is queued until it ends, so the two do not share Google's rate limit and More > Sync shows
+//   has ended) is queued until it ends, so the two do not share Google's rate limit and Settings > Sync shows
 //   which one runs. A read asked for during a round runs at once.
+import { t } from '../../lib/i18n/index.ts'
+import { fmtDate, fmtTime } from '../../lib/i18n/format.ts'
+import { phoneWords, nativeError } from '../settings-words'
 import { kv } from '../store'
 import { isApp, vaultPick } from '../native'
+import { setVaultName } from '../obsidian'
 import { driveStatus, phone, solo, source } from '../state.svelte'
 import type { PcStatus } from './sync'
 import { progress, type Progress } from '../../lib/progress'
 import { syncPaused, syncPauseReason } from '../network.svelte'
+import { languageWorkChanged, registerLanguageCheck } from '../language-switch.ts'
 
 export interface VaultOpts { on: boolean; uri: string; name: string }
 // outcome: how the last round ended ('' before the first one)
@@ -39,28 +44,28 @@ const MIN_GAP_MS = 60 * 1000          // automatic rounds (after a read of Drive
 // long means it stopped (the app closed, the computer slept) whatever its last words were
 export const PC_STALE_MS = 2 * 60 * 1000
 
-function when(ms: number): string {
-  const d = new Date(ms), t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  return d.toDateString() === new Date().toDateString() ? t : `${d.toLocaleDateString()} ${t}`
+function when(ms: number, localized = false): string {
+  const d = new Date(ms), time = localized ? fmtTime(d, { hour: '2-digit', minute: '2-digit' }, []) : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return d.toDateString() === new Date().toDateString() ? time : `${localized ? fmtDate(d, {}) : d.toLocaleDateString()} ${time}`
 }
 
 // the PC's status as the Settings window words it: the step, done/total, percent and time left while a round runs, else the last round
-export function pcLine(p: PcStatus): string {
+export function pcLine(p: PcStatus, words?: (key: string, params?: Record<string, unknown>) => string): string {
   if (p.state === 'syncing') {
-    if (Date.now() - p.at > PC_STALE_MS) return `No news from the PC since ${when(p.at)}: its round may have stopped`
-    const pr = pcProgress(p)
+    if (Date.now() - p.at > PC_STALE_MS) return (words?.('backup.vault.stale', { when: when(p.at, !!words) }) ?? `No news from the PC since ${when(p.at)}: its round may have stopped`)
+    const pr = pcProgress(p, words)
     return `${p.step} ${p.done}/${p.total}${pr ? ` · ${pr.pct}%${pr.left ? ` · ${pr.left}` : ''}` : ''}`
   }
-  if (p.state === 'off') return `Vault sync is off on the PC (Settings > Obsidian & map > Vault sync with phone) · reported ${when(p.at)}`
-  if (p.state === 'starting' || p.state === 'stopping') return `${p.state === 'starting' ? 'Starting' : 'Stopping'} on the PC · reported ${when(p.at)}`
-  if (p.state === 'brake') return `Held on the PC: ${p.reason} (Apply deletions anyway in Settings > Obsidian & map)`
-  if (p.state === 'error') return p.reason
-  return `Last round ${when(p.last)}${p.summary ? ` · ${p.summary}` : ''}`
+  if (p.state === 'off') return (words?.('backup.vault.pcOff', { when: when(p.at, !!words) }) ?? `Vault sync is off on the PC (Settings > Obsidian & map > Vault sync with phone) · reported ${when(p.at)}`)
+  if (p.state === 'starting' || p.state === 'stopping') return (words?.(p.state === 'starting' ? 'backup.vault.pcStarting' : 'backup.vault.pcStopping', { when: when(p.at, !!words) }) ?? `${p.state === 'starting' ? 'Starting' : 'Stopping'} on the PC · reported ${when(p.at)}`)
+  if (p.state === 'brake') return (words?.('backup.vault.pcHeld', { detail: p.reason }) ?? `Held on the PC: ${p.reason} (Apply deletions anyway in Settings > Obsidian & map)`)
+  if (p.state === 'error') return words?.('shared.native.vault.detail', { detail: p.reason }) ?? p.reason
+  return (words?.('backup.vault.lastRound', { when: when(p.last, !!words), summary: p.summary ? ` · ${p.summary}` : '' }) ?? `Last round ${when(p.last)}${p.summary ? ` · ${p.summary}` : ''}`)
 }
 
 // the PC round's bar, paced on the PC's own clock (at: when it wrote the status), so the phone's clock does not matter
-export function pcProgress(p: PcStatus): Progress | null {
-  return p.state === 'syncing' && p.total > 0 && Date.now() - p.at <= PC_STALE_MS ? progress(p.done, p.total, p.since, p.at) : null
+export function pcProgress(p: PcStatus, words?: (key: string, params?: Record<string, unknown>) => string): Progress | null {
+  return p.state === 'syncing' && p.total > 0 && Date.now() - p.at <= PC_STALE_MS ? progress(p.done, p.total, p.since, p.at, words) : null
 }
 
 export async function readPc() {
@@ -80,14 +85,16 @@ export async function saveVaultOpts() { await kv.set('vault', { ...vault.opts })
 
 let halt: (() => void) | null = null        // the running round's Stop
 let running = false                         // a round's own promise has not ended (an abandoned one still counts)
+registerLanguageCheck(() => vault.busy || vault.queued || running ? 'settings.language.unsavedWork' : null)
 
 // Stop syncing: the round stops after the file it is on; the panel shows it at once
 export function stopVault() { halt?.() }
 
-// Choose / Start / Stop, shared by More > Sync (the vault's row) and More > Obsidian vault
+// Choose / Start / Stop, shared by Settings > Sync (the vault's row) and Settings > Obsidian
 export async function pickVaultFolder() {
-  try { const r = await vaultPick(); vault.opts = { ...vault.opts, uri: r.uri, name: r.name }; await saveVaultOpts(); await kv.del('vault-state'); vault.line = '' }
-  catch (e) { if ((e as Error).message !== 'cancelled') vault.line = (e as Error).message }
+  // the chosen folder is the vault, so Open in Obsidian uses its name from now on (a name typed later still wins)
+  try { const r = await vaultPick(); if (r.name) setVaultName(r.name); vault.opts = { ...vault.opts, uri: r.uri, name: r.name }; await saveVaultOpts(); await kv.del('vault-state'); vault.line = '' }
+  catch (e) { if ((e as Error).message !== 'cancelled') vault.line = nativeError('vault', e) }
 }
 // Stop syncing is asked of the round first (it finishes the file it is on), then saved
 export async function setVaultOn(on: boolean) { if (!on) stopVault(); vault.opts = { ...vault.opts, on }; await saveVaultOpts(); if (on) runVault() }
@@ -96,15 +103,16 @@ export async function setVaultOn(on: boolean) { if (!on) stopVault(); vault.opts
 // .trash, on the user's click, between rounds
 export async function removeOldPages() {
   if (vault.busy || vault.queued || running || !source.vaultRemoveLegacy) return
-  vault.busy = true; vault.step = 'Moving old pages to .trash'; vault.line = ''
+  vault.busy = true; vault.step = t('backup.vault.movingOld'); vault.line = ''
+  languageWorkChanged()
   try {
     const n = await source.vaultRemoveLegacy()
     vault.legacy = 0
-    vault.line = `${n} old page${n === 1 ? '' : 's'} moved to .trash.`
+    vault.line = t('backup.vault.oldMoved', { n })
     const st = await kv.get<{ legacy?: number }>('vault-state')
     if (st) await kv.set('vault-state', { ...st, legacy: 0 })
-  } catch (e) { vault.line = (e as Error).message }
-  finally { vault.busy = false; vault.step = '' }
+  } catch (e) { vault.line = nativeError('vault', e) }
+  finally { vault.busy = false; vault.step = ''; languageWorkChanged() }
 }
 
 // the library is being read from Google Drive (on its own or within Sync now), or the first read has not ended
@@ -114,57 +122,61 @@ export async function runVault(force = false, auto = false) {
   if (vault.busy || vault.queued || !vault.opts.on || !vault.opts.uri || !source.syncVault) return
   if (syncPaused()) return
   if (auto && Date.now() - vault.lastAt < MIN_GAP_MS) return
-  if (running) { vault.line = 'The last round is still finishing a file. Try again in a moment.'; return }
+  if (running) { vault.line = t('backup.vault.stillFinishing'); return }
   if (!driveStatus().ok) return                   // the panel shows why (Vault.svelte)
   if (driveReading()) {
     vault.queued = true
-    try { while (driveReading() && !syncPaused()) await new Promise(res => setTimeout(res, 500)) } finally { vault.queued = false }
+    languageWorkChanged()
+    try { while (driveReading() && !syncPaused()) await new Promise(res => setTimeout(res, 500)) } finally { vault.queued = false; languageWorkChanged() }
     // the read decides: Google Drive may want a sign-in now, or Stop syncing came meanwhile
     if (!vault.opts.on || !driveStatus().ok || syncPaused()) return
   }
   const stop = new AbortController()
   const t0 = Date.now()
-  let tick = t0, stepAt = t0, stoppedAt = 0, step = '', over = false          // over: the panel no longer waits for this round
-  vault.busy = true; vault.stopping = false; vault.brake = ''; vault.line = ''; vault.step = 'Starting'; vault.prog = { pct: 0, left: '' }
+  let tick = t0, stepAt = t0, stoppedAt = 0, step = '', displayStep = '', over = false          // over: the panel no longer waits for this round
+  vault.busy = true; vault.stopping = false; vault.brake = ''; vault.line = ''; vault.step = t('backup.vault.starting'); vault.prog = { pct: 0, left: '' }
+  languageWorkChanged()
   halt = () => {
     if (vault.stopping) return
-    vault.stopping = true; stoppedAt = Date.now(); vault.step = 'Stopping after this file'
+    vault.stopping = true; stoppedAt = Date.now(); vault.step = t('backup.vault.stoppingAfter')
     stop.abort()
   }
   let cut: (why: string) => void = () => {}
   const cutting = new Promise<{ cut: string }>(res => { cut = why => res({ cut: why }) })
   const dog = window.setInterval(() => {
-    if (vault.stopping) { if (Date.now() - stoppedAt > STOP_GRACE_MS) cut('Stopped. The file being written finishes in the background.') }
+    if (vault.stopping) { if (Date.now() - stoppedAt > STOP_GRACE_MS) cut(t('backup.vault.stoppedBackground')) }
     else if (Date.now() - tick > (step === LISTING ? 2 * STALL_MS : STALL_MS)) {
       stop.abort()
-      cut(`No progress for ${step === LISTING ? 4 : 2} minutes${step ? ` (at "${step}")` : ''}. The round was stopped: check the connection, then Sync now.`)
+      cut(t('backup.vault.stalled', { minutes: step === LISTING ? 4 : 2, step: step ? t('backup.vault.stalledAt', { step: displayStep || step }) : '' }))
     }
   }, 2000)
   readPc()
   running = true
-  const round = source.syncVault(force, (name, done, total, overall = 0) => {
+  const round = source.syncVault(force, (name, done, total, overall = 0, display) => {
     tick = Date.now()
     if (over || vault.stopping) return
     if (name !== step) { step = name; stepAt = tick }
-    vault.prog = { pct: Math.min(99, Math.floor(overall * 100)), left: total > 0 ? progress(done, total, stepAt).left : '' }
-    vault.step = `${name}${total > 0 ? ` ${done}/${total}` : ''}${vault.prog.left ? ` · ${vault.prog.left}` : ''}`
-  }, stop.signal).then(r => ({ r }), (e: Error) => ({ e }))
-  round.finally(() => { running = false })
+    displayStep = display ?? name
+    vault.prog = { pct: Math.min(99, Math.floor(overall * 100)), left: total > 0 ? progress(done, total, stepAt, Date.now(), phoneWords).left : '' }
+    vault.step = `${display ?? name}${total > 0 ? ` ${done}/${total}` : ''}${vault.prog.left ? ` · ${vault.prog.left}` : ''}`
+  }, stop.signal, phoneWords).then(r => ({ r }), (e: Error) => ({ e }))
+  round.finally(() => { running = false; languageWorkChanged() })
   try {
     const o = await Promise.race([round, cutting])
     over = true
     if ('r' in o && o.r.legacy !== undefined) vault.legacy = o.r.legacy
-    if (syncPaused()) { vault.line = syncPauseReason(); vault.outcome = 'waiting' }
+    if (syncPaused()) { vault.line = syncPauseReason(phoneWords); vault.outcome = 'waiting' }
     else if ('cut' in o) { vault.line = o.cut; vault.outcome = 'error' }
-    else if ('e' in o) { vault.line = o.e.message; vault.outcome = 'error' }
+    else if ('e' in o) { vault.line = nativeError('vault', o.e); vault.outcome = 'error' }
     else if (o.r.state === 'brake') { vault.brake = o.r.reason; vault.outcome = 'brake' }
-    else if (o.r.state === 'stopped') { vault.line = `Stopped. ${o.r.summary || o.r.reason}`; vault.outcome = 'stopped' }
+    else if (o.r.state === 'stopped') { vault.line = t('backup.vault.stopped', { detail: o.r.summary || o.r.reason }); vault.outcome = 'stopped' }
     else if (o.r.state === 'waiting') { vault.line = o.r.reason; vault.outcome = 'waiting' }
-    else { vault.line = `${new Date().toLocaleTimeString()} · ${o.r.summary}`; vault.outcome = 'ok' }
+    else { vault.line = `${fmtTime(new Date(), {})} · ${o.r.summary}`; vault.outcome = 'ok' }
   } finally {
     clearInterval(dog)
     halt = null
     vault.busy = false; vault.stopping = false; vault.step = ''; vault.prog = null; vault.lastAt = Date.now()
+    languageWorkChanged()
   }
 }
 

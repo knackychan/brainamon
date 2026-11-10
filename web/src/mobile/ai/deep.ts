@@ -9,7 +9,7 @@
 // Run by Node in the tests (type stripping): no parameter properties, imports with .ts.
 import { ftsTerms } from './text.ts'
 import { hybridRank, topk, type Hit, type VectorRows } from './search.ts'
-import { cut, fill, PYWS, splitJoin, strip, type Item, type Note } from './quick.ts'
+import { cut, fill, PYWS, splitJoin, strip, type DisplayWords, type Item, type Note } from './quick.ts'
 import { plain } from '../../lib/note-format.ts'
 
 export interface Tool { name: string; description: string; parameters: Record<string, unknown> }
@@ -114,20 +114,20 @@ export function reportSection(text: string, header: string): string {
 }
 
 // librarian.describe_call: the progress line shown for a tool call
-export function describeCall(name: string, args: Record<string, unknown> = {}): string {
+export function describeCall(name: string, args: Record<string, unknown> = {}, words?: DisplayWords): string {
   args = args || {}
   const q = oneLine(args.query ? pyStr(args.query) : '', 80)
-  if (name === 'find_topics') return `Looking at topics: "${q}"`
-  if (name === 'topic_items') return 'Browsing a topic' + (q ? `: "${q}"` : '')
+  if (name === 'find_topics') return words ? words('wiskit.progress.topics', { query: q }) : `Looking at topics: "${q}"`
+  if (name === 'topic_items') return words ? words(q ? 'wiskit.progress.topicQuery' : 'wiskit.progress.topic', { query: q }) : 'Browsing a topic' + (q ? `: "${q}"` : '')
   if (name === 'search_library') {
     const cat = args.category, page = pyInt(args.offset || 0) ?? 0
-    return `Searching the library: "${q}"` + (cat ? ` in ${pyStr(cat)}` : '') + (page ? ` (more results from #${page + 1})` : '')
+    return words ? words('wiskit.progress.library', { query: q, category: cat ? words('wiskit.progress.inCategory', { category: pyStr(cat) }) : '', page: page ? words('wiskit.progress.more', { n: page + 1 }) : '' }) : `Searching the library: "${q}"` + (cat ? ` in ${pyStr(cat)}` : '') + (page ? ` (more results from #${page + 1})` : '')
   }
-  if (name === 'read_items') return `Reading ${Array.isArray(args.ids) ? args.ids.length : args.ids ? cps(pyStr(args.ids)) : 0} item(s) in detail`
-  if (name === 'search_notes') return `Searching your notes: "${q}"`
-  if (name === 'find_resources') return `Looking for websites and tools: "${q}"`
-  if (name === 'related_items') return `Finding items related to [id ${pyStr(args.id)}]`
-  return `Using ${name}`
+  if (name === 'read_items') return words ? words('wiskit.progress.read', { n: Array.isArray(args.ids) ? args.ids.length : args.ids ? cps(pyStr(args.ids)) : 0 }) : `Reading ${Array.isArray(args.ids) ? args.ids.length : args.ids ? cps(pyStr(args.ids)) : 0} item(s) in detail`
+  if (name === 'search_notes') return words ? words('wiskit.progress.notes', { query: q }) : `Searching your notes: "${q}"`
+  if (name === 'find_resources') return words ? words('wiskit.progress.resources', { query: q }) : `Looking for websites and tools: "${q}"`
+  if (name === 'related_items') return words ? words('wiskit.progress.related', { id: pyStr(args.id) }) : `Finding items related to [id ${pyStr(args.id)}]`
+  return words ? words('wiskit.progress.using', { name }) : `Using ${name}`
 }
 
 // librarian.read_profile: the user's 'About me' note body
@@ -214,8 +214,8 @@ export interface AuxRow { key: string; kind: 'topic' | 'note'; payload: AuxPaylo
 // OpenAI key) the others are embedded on the phone (`cache`: text hash -> vector, kept by the
 // caller), without it they are left out, as the desktop leaves them out without an embeddings key.
 export async function auxRows(live: AuxEntry[], model: string, stored: AuxVectors | null, cache: Map<string, ArrayLike<number>>,
-  embed: ((texts: string[]) => Promise<ArrayLike<number>[]>) | null, batch: number, onProgress?: (line: string) => void,
-  canContinue?: () => boolean): Promise<{ rows: AuxRow[]; fresh: Map<string, ArrayLike<number>>; hashes: string[] }> {
+  embed: ((texts: string[]) => Promise<ArrayLike<number>[]>) | null, batch: number, onProgress?: (line: string, display?: string) => void,
+  canContinue?: () => boolean, words?: DisplayWords): Promise<{ rows: AuxRow[]; fresh: Map<string, ArrayLike<number>>; hashes: string[] }> {
   const pc = new Map<string, [string, number]>()
   if (stored && stored.model === model) stored.keys.forEach((k, i) => pc.set(k, [stored.hashes[i], i]))
   const hashes: string[] = []
@@ -232,7 +232,7 @@ export async function auxRows(live: AuxEntry[], model: string, stored: AuxVector
   const fresh = new Map<string, ArrayLike<number>>()
   const todo = live.map((_, i) => i).filter(i => !vecs[i])
   if (todo.length && embed) {
-    onProgress?.(`Indexing ${todo.length} topic and note sections (one-time)`)
+    onProgress?.(`Indexing ${todo.length} topic and note sections (one-time)`, words?.('wiskit.progress.indexing', { n: todo.length }))
     for (let s = 0; s < todo.length; s += batch) {
       if (canContinue && !canContinue()) break
       const part = todo.slice(s, s + batch)

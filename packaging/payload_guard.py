@@ -57,6 +57,26 @@ def inspect_payload(path):
     return sorted(set(bad))
 
 
+# The phone site reader (projects/phone-site-reader) stays in the Contributor (debug) build until Fred decides
+# about Play: a release bundle must carry neither its page scripts nor its classes.
+SITE_ASSETS = re.compile(r'(^|/)assets/sites/')
+SITE_CLASSES = (b'Lapp/brainamon/mobile/SiteActivity;', b'Lapp/brainamon/mobile/SiteReader;')
+
+
+def site_reader_parts(path):
+    """Entries of an APK or AAB that belong to the site reader; names only."""
+    bad = []
+    with zipfile.ZipFile(path) as archive:
+        for item in archive.infolist():
+            if item.is_dir():
+                continue
+            if SITE_ASSETS.search(item.filename):
+                bad.append(item.filename)
+            elif item.filename.endswith('.dex') and any(c in archive.read(item) for c in SITE_CLASSES):
+                bad.append(item.filename)
+    return sorted(bad)
+
+
 if __name__ == '__main__':
     import sys
     try:
@@ -64,6 +84,11 @@ if __name__ == '__main__':
         if leaks:
             print(f'Private payload files ({len(leaks)}): ' + ', '.join(leaks), file=sys.stderr)
             raise SystemExit(1)
+        if '--release-mobile' in sys.argv[2:]:
+            reader = site_reader_parts(sys.argv[1])
+            if reader:
+                print(f'Site reader parts in a release bundle ({len(reader)}): ' + ', '.join(reader), file=sys.stderr)
+                raise SystemExit(1)
         print('Payload private-file gate passed.')
     except (OSError, ValueError, zipfile.BadZipFile) as error:
         print(type(error).__name__ + ': payload inspection failed', file=sys.stderr)

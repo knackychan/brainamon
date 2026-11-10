@@ -41,7 +41,7 @@ export async function canvasHash(e: { op: string; op_id?: string; canvas_id?: st
 }
 
 export function normalizeCanvas(raw: unknown): CanvasProposal {
-  if (!obj(raw)) throw new Error('Give a canvas proposal object.')
+  if (!obj(raw)) throw Object.assign(new Error('Give a canvas proposal object.'), { displayKey: 'common.error.canvasProposalObject' })
   const problems: string[] = []
   const extra = Object.keys(raw).filter(k => !['canvas_id', 'new_name', 'layout', 'arrange', 'elements'].includes(k))
   if (extra.length) problems.push(`unknown field(s): ${extra.sort().join(', ')}`)
@@ -190,7 +190,7 @@ export function checkCanvas(p: CanvasProposal, base: CanvasDocument | null, name
   items: Map<number, ItemView>, sizes: Map<number, [number, number]>, frames: Set<string> = new Set()) {
   if (p.canvas_id && (!base || base.id !== p.canvas_id || !Array.isArray(base.items))) error([`no canvas with id ${p.canvas_id} (list_canvases gives the ids)`])
   if (!p.canvas_id) {
-    const found = names.find(r => r.name.trim().toLowerCase() === p.new_name?.toLowerCase())
+    const found = names.find(r => strip(r.name).toLowerCase() === p.new_name?.toLowerCase())
     if (found) error([`a canvas named '${found.name}' exists: add to it with canvas_id ${found.id}, or choose another new_name`])
   }
   const have = new Map((base?.items ?? []).map(e => [e.id, e])), problems: string[] = []
@@ -230,9 +230,9 @@ export function applyCanvasLocal(p: CanvasProposal, base: CanvasDocument | null,
   const doc: CanvasDocument = base ? structuredClone(base) : { id: canvasId, name: p.new_name || '', created: at, items: [] }
   const have = new Map(doc.items.map(e => [e.id, e])), built: CanvasElement[] = []
   for (const e of p.elements) {
-    if (e.kind === 'frame') throw new Error('Extracted frames are unavailable in the phone library. Use thumbnails or text.')
+    if (e.kind === 'frame') throw Object.assign(new Error('Extracted frames are unavailable in the phone library. Use thumbnails or text.'), { displayKey: 'common.error.canvasFrames' })
     const old = e.kind === 'existing' ? have.get(e.id!) : null
-    if (e.kind === 'existing' && !old) throw new Error(`No element ${e.id} on this canvas.`)
+    if (e.kind === 'existing' && !old) throw Object.assign(new Error(`No element ${e.id} on this canvas.`), { displayKey: 'common.error.canvasElementMissing', displayParams: { id: e.id } })
     const dims = e.kind === 'thumbnail' ? sizes.get(e.item_id!) : null
     const el: CanvasElement = old ?? (e.kind === 'thumbnail'
       ? { id: '', type: 'image', source: 'db', item_id: e.item_id, label: e.label ?? '', w: 220, h: dims ? pyRound(220 * dims[1] / dims[0]) : 165, x: 0, y: 0 }

@@ -7,6 +7,7 @@ import re
 import unittest
 from collections import Counter
 from pathlib import Path
+from tests.phone_catalog import english
 
 ROOT = Path(__file__).resolve().parents[1]
 # the plan's inventory search over the plan's places (what rg finds there, without rg)
@@ -28,8 +29,13 @@ CODE_COMMENT = re.compile(r'^\s*(//|/\*|\*)')
 PY_COMMENT = re.compile(r'^\s*#')
 # the words that tell the user which phone needs which code (P4)
 P4 = "Phones paired with this PC keep working; phones paired with another PC scan this PC's code once (Add a phone)."
-PAIR = 'More > Pair with your PC > Scan (a phone already set up: More > Backup & phones > This phone)'
-CODE = 'On a paired phone: More > Backup & phones > Recovery code > Show.'
+PAIR = 'Settings > Pair with your PC > Scan (a phone already set up: Settings > Backup & phones > This phone)'
+CODE = 'On a paired phone: Settings > Backup & phones > Recovery code > Show.'
+# the phone's own sources: a "Settings > X" there is a phone place unless its sentence is about the PC
+PHONE = ('web/src/mobile/', 'web/src/components/ForgotPassphrase.svelte', 'tests/fixtures/phone_states.json')
+PC_WORDS = re.compile(r'\b(PC|PC\'s|desktop|Android)\b')
+# sentences whose "it" is the PC named in the sentence before (mirror/phone-state.ts, the replaced PC)
+PC_SAID = ('Scan the new code on it: ', 'Open the new pairing link from it: ')
 
 
 def files():
@@ -64,8 +70,14 @@ def read(rel):
 def names(rel):
     """Box titles, row titles, keys and quoted words of one phone screen: the places a path can name."""
     src = read(rel)
-    out = set(re.findall(r'<h3>([^<{]+)', src)) | set(re.findall(r'title="([^"{]+)"', src))
+    out = set(re.findall(r'<h3>([^<{]+)', src)) | set(re.findall(r'(?:title|kicker)="([^"{]+)"', src))
     out |= set(re.findall(r'>([^<>{}\n]+)</M(?:Button|TextButton)>', src)) | set(re.findall(r"'([A-Z][^'\n]{2,40})'", src))
+    # Catalog moves retain the same navigation labels and their actual component wiring.
+    keys = re.findall(r"(?:title|kicker)=\{t\('([^']+)'\)\}", src)
+    keys += re.findall(r">\{t\('([^']+)'\)\}</M(?:Button|TextButton)>", src)
+    for body in re.findall(r'>([^<]*)</M(?:Button|TextButton)>', src):
+        keys += re.findall(r"t\('([^']+)'\)", body)
+    out.update(english(key) for key in keys)
     return {plain(n).strip() for n in out}
 
 
@@ -77,6 +89,8 @@ class CopyPlacesTest(unittest.TestCase):
     def test_a_pc_place_named_on_the_phone_or_in_a_guide_is_a_real_label(self):
         block = read('web/src/lib/backup.ts').split('export const W = {', 1)[1].split('\n}', 1)[0]
         labels = [v.rstrip('…') for v in re.findall(r"\w+: '([^']+)'", block)] + ['Recovery']   # Recovery: the page's own group title
+        # the phone's Settings > Backup & phones names its own groups and rows (projects/phone-settings)
+        labels += names('web/src/mobile/screens/Backup.svelte') | names('web/src/mobile/PhoneRecovery.svelte')
         wrong = []
         for path, text in files():
             for n, line in enumerate(plain(text).split('\n'), 1):
@@ -87,20 +101,30 @@ class CopyPlacesTest(unittest.TestCase):
         self.assertEqual(wrong, [])
 
     def test_a_phone_place_named_anywhere_exists_on_the_phone(self):
+        # the phone's Settings (#/more) was called More until projects/phone-settings: no visible line says More > any more
         more = names('web/src/mobile/screens/More.svelte') | names('web/src/mobile/Vault.svelte') | {'Backup & phones'}
         backup = names('web/src/mobile/screens/Backup.svelte') | names('web/src/mobile/PhoneRecovery.svelte')
-        wrong = []
+        wrong = [f'{path}:{n}: {line.strip()[:60]}' for path, text in files() for n, line in visible(path, text) if 'More > ' in line]
         for path, text in files():
+            if not path.startswith(PHONE):
+                continue
             for n, line in visible(path, text):
-                for m in re.finditer(r'More > ', line):
+                for m in re.finditer(r'Settings > ', line):
+                    said = re.split(r"\. |['\"`]", line[:m.start()])[-1]
+                    if PC_WORDS.search(said) or said.endswith(PC_SAID):
+                        continue                                  # a PC place, checked by the test above
                     rest = line[m.end():].lstrip('*')
                     if not any(rest.startswith(p) for p in more):
-                        wrong.append(f'{path}:{n}: More > {rest[:50]}')
+                        wrong.append(f'{path}:{n}: Settings > {rest[:50]}')
                     elif rest.startswith('Backup & phones > '):
                         sub = rest[len('Backup & phones > '):].lstrip('*')
                         if not any(sub.startswith(p) for p in backup):
-                            wrong.append(f'{path}:{n}: More > Backup & phones > {sub[:40]}')
+                            wrong.append(f'{path}:{n}: Settings > Backup & phones > {sub[:40]}')
         self.assertEqual(wrong, [])
+        # the places the PC and the guides name on the phone, word for word
+        self.assertIn("Open it in the phone app: Settings > Recover a library…, then File.", read('library/recovery.py'))
+        for name in ('Sync', 'Wiskit on this phone', 'Obsidian', "Clear the phone's copy", 'Pair with your PC', 'Use without a PC', 'Recover a library…'):
+            self.assertIn(name, more)
 
     def test_the_phone_says_recovery_file_where_its_screens_do(self):
         # the format names and the saved file's name stay (brainamon-phone-backup-kit, Brainamon-phone-recovery-kit-N.json)

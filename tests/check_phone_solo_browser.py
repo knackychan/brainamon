@@ -1,4 +1,4 @@
-"""More, More > Backup & phones and Recover a library… for the phone without a PC (docs/superpowers/plans/
+"""Settings, Settings > Backup & phones and Recover a library… for the phone without a PC (docs/superpowers/plans/
 2026-10-31-phone-backup-phones.md, sub-plan 05) in the phone page, at 360 px in light and dark. Each state is reached by
 its cause: no Google sign-in, a Google token that ran out, the first backup round still waiting for Drive, Google Drive
 out of reach, no recovery yet, a passphrase set, a recovery file downloaded but not checked, the file checked. A
@@ -28,6 +28,7 @@ from playwright.sync_api import expect, sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from library import mirror  # noqa: E402  (the phone's backup names come from the desktop's MirrorKey)
+from tests.phone_groups import open_group, row_line  # noqa: E402  (the group rows, projects/phone-settings)
 
 ART = ROOT / 'local/ui-blocks/shots/phone-solo'
 RAW = bytes([11]) * 32
@@ -104,9 +105,9 @@ def fits(page):
 
 
 def shoot(page, name):
-    """The whole screen in both themes: the page scrolls inside .m-main, so the viewport grows to its content for the
-    picture, then comes back to 360 x 800."""
-    more = page.evaluate("() => { const m = document.querySelector('.m-main'); return m ? m.scrollHeight - m.clientHeight : 0 }")
+    """The whole screen in both themes: the page scrolls inside .m-main (a sheet inside .m-sheet-body), so the
+    viewport grows to its content for the picture, then comes back to 360 x 800."""
+    more = page.evaluate("() => { const m = document.querySelector('.m-sheet-body') || document.querySelector('.m-main'); return m ? m.scrollHeight - m.clientHeight : 0 }")
     page.set_viewport_size({'width': 360, 'height': 800 + max(0, more)})
     for theme in ('light', 'dark'):
         page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
@@ -170,7 +171,8 @@ def main():
                     browser = pw.chromium.launch(headless=True, channel='msedge')
 
                     def phone_page(signed_in: bool, token: bool):
-                        ctx = browser.new_context(viewport={'width': 360, 'height': 800}, is_mobile=True, has_touch=True, accept_downloads=True)
+                        ctx = browser.new_context(viewport={'width': 360, 'height': 800}, is_mobile=True, has_touch=True, accept_downloads=True, locale='en-US')
+                        ctx.add_init_script("localStorage.setItem('bp-lang','en')")
                         ctx.route('https://**/*', lambda r: r.abort())
                         ctx.route('**/api/**', lambda r: r.abort())
                         ctx.route(base + '/cards/**', lambda r: r.fulfill(path=cards[urlparse(r.request.url).path.removeprefix('/cards/')]))
@@ -215,15 +217,15 @@ def main():
                     expect(page).to_have_url(base + '/mobile.html#/backup')
                     on_backup(page, 'solo: only on this phone', 'solo-local')
                     expect(page.locator('#m-library')).to_contain_text('0 items on this phone')
-                    recovery = page.locator('#m-recovery')
-                    expect(recovery.locator('.m-status b')).to_have_text('Not set up')
-                    expect(recovery.locator('.m-status small')).to_have_text('Available once this phone backs up to Google Drive.')
+                    expect(row_line(page, 'Recovery')).to_have_text('Not set up')       # the row says it, the group not again
+                    recovery = open_group(page, 'Recovery')
+                    expect(recovery.locator('.m-status')).to_have_count(0)
                     assert page.get_by_role('button', name='Set up recovery', exact=True).count() == 0
                     recovery.get_by_role('link', name='Recover a library…', exact=True).click()
                     expect(page).to_have_url(base + '/mobile.html#/recover')
-                    expect(page.locator('.m-ws')).to_have_text('Recover a library')
+                    expect(page.locator('.m-page-keys .m-ws')).to_have_text('Recover')
                     rbox = page.locator('#m-recover')
-                    expect(rbox.get_by_text('A passphrase or recovery file needs Google Drive', exact=False)).to_be_visible()
+                    expect(rbox.get_by_text('Connect Google Drive on Backup & phones to use a passphrase or recovery file.', exact=True)).to_be_visible()
                     expect(rbox.get_by_role('button', name='Find recovery setups', exact=True)).to_be_disabled()
                     tall(page, '.m-pad')
                     shoot(page, 'recover-solo-local')
@@ -259,16 +261,16 @@ def main():
                     drive.release()
                     page.wait_for_function(SETTLED)
                     on_backup(page, 'solo: no recovery yet', 'solo-recovery')
+                    expect(row_line(page, 'Recovery')).to_have_text('Not set up')
                     recovery = page.locator('#m-recovery')
-                    expect(recovery.locator('.m-status small')).to_have_text('If this phone is lost, your passphrase or a recovery file unlocks the backup on a new phone.')
                     on_more(page, 'solo: no recovery yet', 'solo-recovery')
 
                     drive.mode = 'abort'
-                    sync = page.locator('.m-box').filter(has=page.get_by_role('heading', name=re.compile('^Sync')))
+                    sync = open_group(page, 'Sync')
                     sync.get_by_role('button', name='Sync now', exact=True).click()
                     card = page.locator('#m-status')
                     expect(card.locator('.m-status b')).to_have_text('Google Drive could not be reached.', timeout=30000)
-                    expect(card.get_by_role('button', name='Retry', exact=True)).to_have_class('m-btn sm pri')
+                    expect(card.get_by_role('button', name='Retry', exact=True)).to_have_class('m-btn pill pri')
                     tall(page, '#m-status')
                     shoot(page, 'more-solo-unreachable')
                     page.evaluate("location.hash = '#/backup'")
@@ -307,6 +309,7 @@ def main():
 
                     # Save recovery file…: a browser download, saved for this page's session
                     page.evaluate("location.hash = '#/backup'")
+                    recovery = open_group(page, 'Recovery')
                     with page.expect_download() as download:
                         recovery.get_by_role('button', name='Save recovery file…', exact=True).click()
                     kit = Path(folder) / 'kit.json'
@@ -315,6 +318,7 @@ def main():
                     expect(recovery.get_by_text(re.compile(r'^Passphrase set \d{1,2} \w+\.$'))).to_be_visible()
                     expect(recovery.get_by_text('Download requested. A browser download is not confirmed until you open the file.', exact=True)).to_be_visible()
                     on_backup(page, 'solo: recovery file not checked', 'solo-check-file')
+                    recovery = open_group(page, 'Recovery')
                     assert recovery.get_by_role('button', name='Check recovery file…', exact=True).count() == 0     # the Status has it
                     drive.mode = 'hold'
                     page.evaluate("async () => { const { refresh } = await import('/src/mobile/state.svelte.ts'); void refresh() }")
@@ -335,6 +339,7 @@ def main():
                         page.locator('#m-status').get_by_role('button', name='Check recovery file…', exact=True).click()
                     chooser.value.set_files(str(kit))
                     expect(page).to_have_url(base + '/mobile.html#/backup')
+                    expect(recovery.locator('button.m-group-row')).to_have_attribute('aria-expanded', 'true')   # the link opened it
                     expect(recovery.get_by_text('Recovery file checked against your backup.', exact=True)).to_be_visible(timeout=30000)
                     expect(recovery.locator('.m-status b')).to_have_text(re.compile(r'^Passphrase set \d{1,2} \w+ · recovery file checked$'))
                     on_backup(page, 'solo: backed up', 'solo-ok')
@@ -349,6 +354,7 @@ def main():
                     drive.files['file-older'] = {'name': f"vi-phone-recovery-{older['header']['library']}-{'e' * 32}.json",
                                                  'body': json.dumps(older, separators=(',', ':')).encode()}
                     page.evaluate("location.hash = '#/backup'")
+                    recovery = open_group(page, 'Recovery')
                     recovery.get_by_role('link', name='Recover a library…', exact=True).click()
                     expect(page).to_have_url(base + '/mobile.html#/recover')
                     rbox = page.locator('#m-recover')
@@ -366,7 +372,7 @@ def main():
                     rbox.get_by_role('button', name='Find backup', exact=True).click()
                     keep = rbox.locator('#phone-recovery-keep')
                     expect(keep).to_contain_text('no record of a backup', timeout=60000)
-                    expect(rbox.get_by_role('button', name='Restore on an empty phone', exact=True)).to_have_class('m-btn sm pri')
+                    expect(rbox.get_by_role('button', name='Restore on an empty phone', exact=True)).to_have_class('m-btn pill pri')
                     assert rbox.get_by_role('button', name='Reconnect this phone', exact=True).count() == 0
                     tall(page, '.m-pad')
                     shoot(page, 'recover-solo-found')

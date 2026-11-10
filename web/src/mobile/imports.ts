@@ -8,6 +8,7 @@
 export const MAX_IMPORT_BYTES = 60 * 1024 * 1024
 export const NOT_SAVED = 'This is not Instagram\'s saved posts. Choose the zip Instagram sent, or saved_posts.json from inside it.'
 export const TOO_BIG = `That file is over ${MAX_IMPORT_BYTES / 1024 / 1024} MB. Ask Instagram for Saved only, in JSON (step 3).`
+const importIssue = (code: 'importNotSaved' | 'importTooBig') => Object.assign(new Error(code === 'importTooBig' ? TOO_BIG : NOT_SAVED), { code })
 
 // one saved post, ready to become a link
 export interface Saved { url: string; at: number; caption: string; creator: string; tags: string }
@@ -28,7 +29,7 @@ const val = (lv: LV[], label: string) => text(lv.find(x => x.label === label)?.v
 const group = (lv: LV[], title: string) => list(lv.find(x => x.title === title)?.dict).map(d => list(d.dict))
 
 export function parseSaved(data: unknown): Parsed {
-  if (!Array.isArray(data)) throw new Error(NOT_SAVED)
+  if (!Array.isArray(data)) throw importIssue('importNotSaved')
   const posts: Saved[] = []
   let skipped = 0, shaped = 0
   for (const e of data as { label_values?: unknown; timestamp?: unknown }[]) {
@@ -48,7 +49,7 @@ export function parseSaved(data: unknown): Parsed {
     const ts = typeof e.timestamp === 'number' && e.timestamp > 0 ? Math.round(e.timestamp * 1000) : 0
     posts.push({ url, at: ts, caption: caption.slice(0, 5000), creator: (val(owner, 'Username') || val(owner, 'Name')).slice(0, 120), tags: tags.join(', ') })
   }
-  if (data.length && !shaped) throw new Error(NOT_SAVED)
+  if (data.length && !shaped) throw importIssue('importNotSaved')
   return { posts, skipped }
 }
 
@@ -61,11 +62,11 @@ const isZip = (b: Uint8Array) => b.length >= 4 && u32(b, 0) === 0x04034b50
 export function zipEntries(b: Uint8Array): ZipEntry[] {
   let end = -1
   for (let i = b.length - 22; i >= Math.max(0, b.length - 22 - 0xffff); i--) if (u32(b, i) === 0x06054b50) { end = i; break }
-  if (end < 0) throw new Error(NOT_SAVED)
+  if (end < 0) throw importIssue('importNotSaved')
   const out: ZipEntry[] = []
   let p = u32(b, end + 16)
   for (let k = u16(b, end + 10); k > 0; k--) {
-    if (p + 46 > b.length || u32(b, p) !== 0x02014b50) throw new Error(NOT_SAVED)
+    if (p + 46 > b.length || u32(b, p) !== 0x02014b50) throw importIssue('importNotSaved')
     const n = u16(b, p + 28)
     out.push({ name: new TextDecoder().decode(b.subarray(p + 46, p + 46 + n)), method: u16(b, p + 10), packed: u32(b, p + 20), size: u32(b, p + 24), at: u32(b, p + 42) })
     p += 46 + n + u16(b, p + 30) + u16(b, p + 32)
@@ -74,16 +75,16 @@ export function zipEntries(b: Uint8Array): ZipEntry[] {
 }
 
 export async function unzipEntry(b: Uint8Array, z: ZipEntry): Promise<Uint8Array> {
-  if ([z.packed, z.size, z.at].includes(0xffffffff) || z.size > MAX_IMPORT_BYTES) throw new Error(TOO_BIG)   // ZIP64: over 4 GB
-  if (z.at + 30 > b.length || u32(b, z.at) !== 0x04034b50) throw new Error(NOT_SAVED)
+  if ([z.packed, z.size, z.at].includes(0xffffffff) || z.size > MAX_IMPORT_BYTES) throw importIssue('importTooBig')   // ZIP64: over 4 GB
+  if (z.at + 30 > b.length || u32(b, z.at) !== 0x04034b50) throw importIssue('importNotSaved')
   const start = z.at + 30 + u16(b, z.at + 26) + u16(b, z.at + 28)
-  if (start > b.length || z.packed > b.length - start) throw new Error(NOT_SAVED)
+  if (start > b.length || z.packed > b.length - start) throw importIssue('importNotSaved')
   const raw = b.subarray(start, start + z.packed)
   if (z.method === 0) {
-    if (raw.length !== z.size) throw new Error(NOT_SAVED)
+    if (raw.length !== z.size) throw importIssue('importNotSaved')
     return raw
   }
-  if (z.method !== 8) throw new Error(NOT_SAVED)
+  if (z.method !== 8) throw importIssue('importNotSaved')
   const reader = new Blob([new Uint8Array(raw)]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader()
   const chunks: Uint8Array[] = []
   let size = 0
@@ -92,30 +93,30 @@ export async function unzipEntry(b: Uint8Array, z: ZipEntry): Promise<Uint8Array
       const { done, value } = await reader.read()
       if (done) break
       size += value.length
-      if (size > MAX_IMPORT_BYTES) throw new Error(TOO_BIG)
+      if (size > MAX_IMPORT_BYTES) throw importIssue('importTooBig')
       chunks.push(value)
     }
-    if (size !== z.size) throw new Error(NOT_SAVED)
+    if (size !== z.size) throw importIssue('importNotSaved')
     const out = new Uint8Array(size)
     let at = 0
     for (const chunk of chunks) { out.set(chunk, at); at += chunk.length }
     return out
   } catch (e) {
     await reader.cancel().catch(() => {})
-    throw new Error(e instanceof Error && e.message === TOO_BIG ? TOO_BIG : NOT_SAVED)
+    throw importIssue((e as { code?: string }).code === 'importTooBig' ? 'importTooBig' : 'importNotSaved')
   } finally { reader.releaseLock() }
 }
 
 // the picked file's bytes (the zip, or saved_posts.json) as saved posts; throws NOT_SAVED / TOO_BIG
 export async function readExport(b: Uint8Array): Promise<Parsed> {
-  if (b.length > MAX_IMPORT_BYTES) throw new Error(TOO_BIG)
+  if (b.length > MAX_IMPORT_BYTES) throw importIssue('importTooBig')
   if (isZip(b)) {
     const z = zipEntries(b).find(e => /(^|\/)saved_posts\.json$/i.test(e.name))
-    if (!z) throw new Error(NOT_SAVED)
+    if (!z) throw importIssue('importNotSaved')
     b = await unzipEntry(b, z)
   }
   let data: unknown
-  try { data = JSON.parse(new TextDecoder().decode(b).replace(/^﻿/, '')) } catch { throw new Error(NOT_SAVED) }
+  try { data = JSON.parse(new TextDecoder().decode(b).replace(/^﻿/, '')) } catch { throw importIssue('importNotSaved') }
   return parseSaved(data)
 }
 

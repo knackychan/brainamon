@@ -166,6 +166,7 @@ class ChangeIntakeTest(Library):
         self.assertTrue(self.svc._publish())
         man, files = read_mirror(self.drive, self.key)
         self.assertEqual(man['canvas_change'], 1)
+        self.assertEqual(man['note_category'], 1)
         self.assertEqual(man['reader'], mirror.READER)
         self.assertEqual(json.loads(files['canvas-results.json'])[op], receipt)
 
@@ -459,6 +460,23 @@ class ChangeIntakeTest(Library):
         self.assertEqual(len(store.load('knee-a1b2')['history']), 3)
         self.assertEqual([c['name'] for c in store.list_chats() if 'phone' in c['name']], ['knee? (from phone)'])
 
+    def test_phone_synthesis_cites_links_saved_on_the_phone(self):
+        """projects/phone-solo-synthesize: a note synthesized on a phone with no PC names its own links by uid
+        (`uids`, one per entry of `sources`, '' for a PC item); the PC cites the item the link op made and the PC
+        id as sent; a phone id with no uid (an older phone) cites nothing."""
+        t = int(time.time() * 1000)
+        uid = 'ab' * 16
+        self.phone([
+            {'op': 'link', 'uid': uid, 'url': 'https://www.youtube.com/watch?v=synth1', 'note': 'wall sits', 'category': '', 'at': t},
+            {'op': 'synth', 'topic': 'Wall sits', 'sources': [-5, self.ids[0], -6], 'uids': [uid, '', ''],
+             'body': '## Wall sits\n\nHold 45 s.', 'at': t},
+        ], at=t)
+        self.assertTrue(self.svc._intake())
+        new_id = self.writer.read(lambda db: db.conn.execute('SELECT id FROM items WHERE uid = ?', (uid,)).fetchone()[0])
+        note = (self.data / 'notes' / 'wall-sits.md').read_text(encoding='utf-8')
+        self.assertIn('sources: ' + ','.join(str(i) for i in sorted({new_id, self.ids[0]})) + '\n', note)
+        self.assertNotIn('-5', note)
+
     def test_phone_item_delete(self):
         """An item deleted on the phone with `pc` goes from the PC library with its folder; "only on
         this phone" (pc false or missing) and an unknown uid leave the library alone."""
@@ -645,7 +663,7 @@ class ChangeIntakeTest(Library):
                 objectStoreNames: { contains: n => n in stores },
                 createObjectStore(n, opts) { stores[n] = { opts, m: new Map(), n: 0 } },
                 transaction(n) {
-                  const s = stores[n], t = { objectStore: () => ({
+                  const t = { objectStore: name => { const s = stores[name]; return ({
                     get: k => req(structuredClone(s.m.get(k))),
                     getAll: () => req([...s.m.values()].map(v => structuredClone(v))),
                     getAllKeys: () => req([...s.m.keys()]),
@@ -653,7 +671,7 @@ class ChangeIntakeTest(Library):
                     put(v, k) { k = keyOf(s, v, k); s.m.set(k, structuredClone(v)); return req(k) },
                     delete(k) { s.m.delete(k); return req(undefined) },
                     clear() { s.m.clear(); return req(undefined) },
-                  }) }
+                  }) } }
                   setTimeout(() => setTimeout(() => t.oncomplete?.()))
                   return t
                 },

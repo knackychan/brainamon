@@ -18,6 +18,7 @@
 import type { FullItem, Row } from './source/types'
 import type { Draft } from '../lib/capture'
 import type { RawCanvasProposal, CanvasDocument } from './ai/canvas'
+import { canonJson } from './ai/canvas.ts'
 
 const DB = 'brainamon-phone', VERSION = 2
 export const ITEM_CAP = 400           // full items kept (a few KB each), beyond the pinned ones
@@ -28,7 +29,7 @@ export interface MirrorEntry { v: string; data: string | ArrayBuffer }
 export interface ChangeEntry {
   id?: number; at: number; state: 'queued' | 'sending' | 'sent'; sentAt?: number; chg?: string     // chg: the change file it went in
   stream?: string; seq?: number; legacy?: boolean; resend?: boolean   // paired with a PC: its batch number (mirror/changes.ts)
-    op: 'link' | 'details' | 'fav' | 'edit' | 'category_batch' | 'canvas' | 'note' | 'note_append' | 'note_delete' | 'chat' | 'chat_delete' | 'answer' | 'synth' | 'synth_queue' | 'delete'
+    op: 'link' | 'details' | 'fav' | 'edit' | 'category_batch' | 'canvas' | 'note' | 'note_append' | 'note_delete' | 'note_category' | 'chat' | 'chat_delete' | 'answer' | 'synth' | 'synth_queue' | 'delete'
   op_id?: string; canvas_id?: string; proposal?: RawCanvasProposal; refs?: Record<string, string>; sizes?: Record<string, [number, number]>
   canvasLocal?: { base: CanvasDocument | null; result: CanvasDocument; assets: { uid?: string; file?: string; blob: Blob }[];
     status: 'pending' | 'synced' | 'refused'; reason?: string; pc?: number }   // pc: the PC canvas's modified time when it refused
@@ -37,13 +38,16 @@ export interface ChangeEntry {
   tags?: string               // link: hashtags from an Import (mobile-import/PLAN.md), comma-separated
   creator?: string; desc?: string; thumb?: string        // details: read from the link's page (thumb: base64 JPEG)
   fields?: Record<string, string>; was?: Record<string, unknown> | string; title?: string; body?: string
+  plain?: string              // edit: the card's own text before an AI description, kept on this phone only (Tools' Undo, never sent)
   stamps?: import('../lib/note-format').Stamp[]          // note: the plan 01 stamp list when the phone changed it
   // Phase 5: a chat asked on the phone, an answer saved as a note, a synthesized or queued note
   slug?: string; name?: string; created?: string; history?: { role: 'user' | 'assistant'; content: string }[]
   source_ids?: number[]; options?: Record<string, unknown>; md?: string; ids?: number[]; topic?: string; sources?: number[]
+  uids?: string[]             // synth: one per source, a link saved on this phone's uid ('' for a PC item), so the PC can cite it
   turns?: number              // chat_delete: the turns the phone saw (the PC keeps a chat it went on with)
     entries?: { uid: string; from: string; category: string }[]  // one approved Wiskit batch
   pc?: boolean                // delete: the PC deletes the item too (else only the phone hides it)
+  from?: string; to?: string  // note_category: a My Notes category renamed (lib/note-category.ts)
 }
 export interface OutboxEntry {
   id?: number; url: string; note: string; category: string; added: number
@@ -87,31 +91,57 @@ function tx<T>(store: string, mode: IDBTransactionMode, f: (s: IDBObjectStore) =
   }))
 }
 
+async function requiredTx<T>(store: string, mode: IDBTransactionMode, f: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+  const d = await open()
+  if (!d) throw Object.assign(new Error('Phone storage is unavailable. Retry when storage is available.'), { displayKey: 'common.error.storageUnavailableRetry' })
+  return new Promise<T>((resolve, reject) => {
+    try {
+      const transaction = d.transaction(store, mode), request = f(transaction.objectStore(store))
+      transaction.oncomplete = () => resolve(request.result)
+      transaction.onerror = transaction.onabort = () => reject(transaction.error || Object.assign(new Error('Phone storage could not complete the operation.'), { displayKey: 'common.error.storageOperation' }))
+    } catch (error) { reject(error) }
+  })
+}
+
 // ── kv ───────────────────────────────────────────────────────────────────────
 export const kv = {
   get: <T>(k: string) => tx<T>('kv', 'readonly', s => s.get(k)),
+  getRequired: <T>(k: string) => requiredTx<T | undefined>('kv', 'readonly', s => s.get(k)),
+  setOfflineRequired: (k: string, v: unknown) => requiredTx<IDBValidKey>('kv', 'readwrite', s => s.put(v, k)),
   set: (k: string, v: unknown) => tx('kv', 'readwrite', s => { s.put(v, k) }),
+  setRequired: async (k: string, v: unknown): Promise<void> => {
+    const d = await open()
+    if (!d) throw Object.assign(new Error('Phone storage could not save vault sync progress.'), { displayKey: 'common.error.storageVault' })
+    await new Promise<void>((resolve, reject) => {
+      try {
+        const t = d.transaction('kv', 'readwrite')
+        t.objectStore('kv').put(v, k)
+        t.oncomplete = () => resolve()
+        t.onerror = t.onabort = () => reject(t.error || Object.assign(new Error('Phone storage could not save vault sync progress.'), { displayKey: 'common.error.storageVault' }))
+      } catch (e) { reject(e) }
+    })
+  },
   del: (k: string) => tx('kv', 'readwrite', s => { s.delete(k) }),
 }
 
 // Canvas review commits must report storage failures and keep the pending card retryable.
 export async function putCanvasPending(key: string, value: unknown, signal?: AbortSignal): Promise<void> {
   const d = await open()
-  if (!d) throw new Error('Phone storage is unavailable.')
+  if (!d) throw Object.assign(new Error('Phone storage is unavailable.'), { displayKey: 'common.error.storageUnavailable' })
   await new Promise<void>((resolve, reject) => {
     try {
       signal?.throwIfAborted()
       const t = d.transaction('kv', 'readwrite')
       t.objectStore('kv').put(value, key)
       t.oncomplete = () => resolve()
-      t.onerror = t.onabort = () => reject(t.error || new Error('Phone storage did not save the proposal.'))
+      t.onerror = t.onabort = () => reject(t.error || Object.assign(new Error('Phone storage did not save the proposal.'), { displayKey: 'common.error.proposalNotSaved' }))
     } catch (e) { reject(e) }
   })
 }
 
 export async function declineCanvasPending(key: string, token: string): Promise<void> {
   const d = await open()
-  if (!d) throw new Error('Phone storage is unavailable.')
+  if (!d) throw Object.assign(new Error('Phone storage is unavailable.'), { displayKey: 'common.error.storageUnavailable' })
   await new Promise<void>((resolve, reject) => {
     try {
       const t = d.transaction('kv', 'readwrite'), s = t.objectStore('kv')
@@ -120,25 +150,39 @@ export async function declineCanvasPending(key: string, token: string): Promise<
         s.delete(key)
       }
       t.oncomplete = () => resolve()
-      t.onerror = t.onabort = () => reject(t.error || new Error('This proposal is no longer pending.'))
+      t.onerror = t.onabort = () => reject(t.error || Object.assign(new Error('This proposal is no longer pending.'), { displayKey: 'common.error.proposalPending' }))
     } catch (e) { reject(e) }
   })
 }
 
 export async function approveCanvas(key: string, token: string, entry: ChangeEntry): Promise<number> {
+  return (await queueCanvas(entry, { key, token })).id!
+}
+
+export const canvasWire = (e: ChangeEntry) => canonJson({ op: e.op, op_id: e.op_id, canvas_id: e.canvas_id, at: e.at, proposal: e.proposal, refs: e.refs, sizes: e.sizes })
+export async function queueCanvas(entry: ChangeEntry, review?: { key: string; token: string }): Promise<ChangeEntry> {
   const d = await open()
-  if (!d) throw new Error('Phone storage is unavailable.')
-  return new Promise<number>((resolve, reject) => {
+  if (!d) throw Object.assign(new Error('Phone storage is unavailable.'), { displayKey: 'common.error.storageUnavailable' })
+  return new Promise<ChangeEntry>((resolve, reject) => {
     try {
       const t = d.transaction(['changes', 'kv'], 'readwrite'), pending = t.objectStore('kv')
-      let id = 0
-      pending.get(key).onsuccess = e => {
-        if ((e.target as IDBRequest).result?.token !== token) { t.abort(); return }
-        t.objectStore('changes').add(entry).onsuccess = r => { id = Number((r.target as IDBRequest).result) }
-        pending.delete(key)
+      const changes = t.objectStore('changes')
+      let saved: ChangeEntry, problem = ''
+      changes.getAll().onsuccess = e => {
+        const old = ((e.target as IDBRequest).result as ChangeEntry[]).find(x => x.op === 'canvas' && x.op_id === entry.op_id)
+        if (old) {
+          if (canvasWire(old) !== canvasWire(entry)) { problem = 'Canvas operation ID was reused with different content.'; t.abort(); return }
+          saved = old; return
+        }
+        const add = () => { changes.add(entry).onsuccess = r => { saved = { ...entry, id: Number((r.target as IDBRequest).result) } } }
+        if (!review) { add(); return }
+        pending.get(review.key).onsuccess = p => {
+          if ((p.target as IDBRequest).result?.token !== review.token) { problem = 'This proposal is no longer pending.'; t.abort(); return }
+          add(); pending.delete(review.key)
+        }
       }
-      t.oncomplete = () => resolve(id)
-      t.onerror = t.onabort = () => reject(t.error || new Error('Phone storage did not apply the canvas.'))
+      t.oncomplete = () => resolve(saved!)
+      t.onerror = t.onabort = () => reject(new Error(problem || t.error?.message || 'Phone storage did not apply the canvas.'))
     } catch (e) { reject(e) }
   })
 }
@@ -146,8 +190,10 @@ export async function approveCanvas(key: string, token: string, entry: ChangeEnt
 // ── full items ───────────────────────────────────────────────────────────────
 export const items = {
   get: (id: number) => tx<StoredItem>('items', 'readonly', s => s.get(id)),
+  getRequired: (id: number) => requiredTx<StoredItem | undefined>('items', 'readonly', s => s.get(id)),
   all: () => tx<StoredItem[]>('items', 'readonly', s => s.getAll()).then(v => v ?? []),
   put: (v: StoredItem) => tx('items', 'readwrite', s => { s.put(v) }),
+  putRequired: (v: StoredItem) => requiredTx<IDBValidKey>('items', 'readwrite', s => s.put(v)),
   del: (id: number) => tx('items', 'readwrite', s => { s.delete(id) }),
   clear: () => tx('items', 'readwrite', s => { s.clear() }),
 }
@@ -168,7 +214,9 @@ export const outbox = {
   all: () => tx<OutboxEntry[]>('outbox', 'readonly', s => s.getAll()).then(v => (v ?? []).sort((a, b) => b.added - a.added)),
   add: (e: OutboxEntry) => tx<IDBValidKey>('outbox', 'readwrite', s => s.add(e)).then(k => (typeof k === 'number' ? k : undefined)),
   put: (e: OutboxEntry) => tx('outbox', 'readwrite', s => { s.put(e) }),
+  putRequired: (e: OutboxEntry) => requiredTx<IDBValidKey>('outbox', 'readwrite', s => s.put(e)),
   del: (id: number) => tx('outbox', 'readwrite', s => { s.delete(id) }),
+  delRequired: (id: number) => requiredTx<undefined>('outbox', 'readwrite', s => s.delete(id)),
 }
 
 // ── capture drafts ───────────────────────────────────────────────────────────
@@ -200,22 +248,37 @@ export const files = {
   clear: () => tx('files', 'readwrite', s => { s.clear() }),
 }
 export const changes = {
+  async addBatch(entries: ChangeEntry[], drop: number[] = []): Promise<ChangeEntry[]> {
+    const d = await open()
+    if (!d) throw Object.assign(new Error('Phone storage is unavailable. Keep saved results and retry.'), { displayKey: 'common.error.storageKeepImport' })
+    return new Promise((resolve, reject) => {
+      const saved = entries.map(e => ({ ...e }))
+      const t = d.transaction('changes', 'readwrite')
+      t.oncomplete = () => resolve(saved)
+      t.onerror = t.onabort = () => reject(t.error || Object.assign(new Error('Phone storage did not save the import.'), { displayKey: 'common.error.importNotSaved' }))
+      try {
+        const s = t.objectStore('changes')
+        for (const e of saved) s.add(e).onsuccess = r => { e.id = Number((r.target as IDBRequest).result) }
+        for (const id of drop) s.delete(id)
+      } catch (e) { t.abort(); reject(e) }
+    })
+  },
   async forChat(signal?: AbortSignal): Promise<ChangeEntry[]> {
     const d = await open()
-    if (!d) throw new Error('Phone storage is unavailable.')
+    if (!d) throw Object.assign(new Error('Phone storage is unavailable.'), { displayKey: 'common.error.storageUnavailable' })
     signal?.throwIfAborted()
     return new Promise((resolve, reject) => {
       try {
         const t = d.transaction('changes', 'readonly')
         const r = t.objectStore('changes').getAll()
         t.oncomplete = () => resolve(r.result)
-        t.onerror = t.onabort = () => reject(t.error || new Error('Phone storage could not read the chat queue.'))
+        t.onerror = t.onabort = () => reject(t.error || Object.assign(new Error('Phone storage could not read the chat queue.'), { displayKey: 'common.error.chatRead' }))
       } catch (e) { reject(e) }
     })
   },
   async saveChat(entry: ChangeEntry, signal?: AbortSignal): Promise<number> {
     const d = await open()
-    if (!d) throw new Error('Phone storage is unavailable.')
+    if (!d) throw Object.assign(new Error('Phone storage is unavailable.'), { displayKey: 'common.error.storageUnavailable' })
     return new Promise<number>((resolve, reject) => {
       try {
         signal?.throwIfAborted()
@@ -224,33 +287,45 @@ export const changes = {
         let id: number
         request.onsuccess = () => { id = Number(request.result) }
         t.oncomplete = () => resolve(id)
-        t.onerror = t.onabort = () => reject(t.error || new Error('Phone storage did not save the chat.'))
+        t.onerror = t.onabort = () => reject(t.error || Object.assign(new Error('Phone storage did not save the chat.'), { displayKey: 'common.error.chatNotSaved' }))
       } catch (e) { reject(e) }
     })
   },
   all: () => tx<ChangeEntry[]>('changes', 'readonly', s => s.getAll()).then(v => (v ?? []).sort((a, b) => (a.id ?? 0) - (b.id ?? 0))),
   add: (e: ChangeEntry) => tx<IDBValidKey>('changes', 'readwrite', s => s.add(e)).then(k => (typeof k === 'number' ? k : undefined)),
-  put: (e: ChangeEntry) => tx('changes', 'readwrite', s => { s.put(e) }),
+  put: (e: ChangeEntry) => tx<IDBValidKey>('changes', 'readwrite', s => s.put(e)).then(k => (typeof k === 'number' ? k : undefined)),
   del: (id: number) => tx('changes', 'readwrite', s => { s.delete(id) }),
+  async delConfirmed(id: number): Promise<boolean> {
+    const d = await open()
+    if (!d) return false
+    return new Promise(resolve => {
+      try {
+        const t = d.transaction('changes', 'readwrite')
+        t.oncomplete = () => resolve(true)
+        t.onerror = t.onabort = () => resolve(false)
+        t.objectStore('changes').delete(id)
+      } catch { resolve(false) }
+    })
+  },
   // a fresh start without a PC, or a solo library removed from the phone (plans/08-phone-solo.md)
   clear: () => Promise.all([tx('changes', 'readwrite', s => { s.clear() }), kv.del('hidden'), kv.del('delivery')]),   // with what deletes hid
 }
 
 // journal entries and kv records saved together, or not at all: rejects when IndexedDB did not save them. Without IndexedDB
 // (a private window) the phone keeps its journal in memory, as everywhere in this file.
-export async function journal(put: ChangeEntry[], del: number[], set: Record<string, unknown> = {}): Promise<void> {
+export async function journal(put: ChangeEntry[], del: number[], set: Record<string, unknown> = {}): Promise<boolean> {
   const d = await open()
   if (!d) {
     for (const e of put) await changes.put(e)
     for (const id of del) await changes.del(id)
     for (const [k, v] of Object.entries(set)) await kv.set(k, v)
-    return
+    return false
   }
   await new Promise<void>((resolve, reject) => {
     let t: IDBTransaction
     try { t = d.transaction(['changes', 'kv'], 'readwrite') } catch (e) { reject(e); return }
     t.oncomplete = () => resolve()
-    t.onerror = t.onabort = () => reject(t.error || new Error('Phone storage did not save the changes.'))
+    t.onerror = t.onabort = () => reject(t.error || Object.assign(new Error('Phone storage did not save the changes.'), { displayKey: 'common.error.changesNotSaved' }))
     try {
       const c = t.objectStore('changes'), s = t.objectStore('kv')
       for (const e of put) c.put(e)
@@ -261,17 +336,18 @@ export async function journal(put: ChangeEntry[], del: number[], set: Record<str
       reject(e)
     }
   })
+  return true
 }
 
 export async function updateCanvasChange(entry: ChangeEntry | null, id: number): Promise<void> {
   const d = await open()
-  if (!d) throw new Error('Phone storage is unavailable.')
+  if (!d) throw Object.assign(new Error('Phone storage is unavailable.'), { displayKey: 'common.error.storageUnavailable' })
   await new Promise<void>((resolve, reject) => {
     try {
       const t = d.transaction('changes', 'readwrite'), s = t.objectStore('changes')
       if (entry) s.put(entry); else s.delete(id)
       t.oncomplete = () => resolve()
-      t.onerror = t.onabort = () => reject(t.error || new Error('Phone storage could not save the canvas result.'))
+      t.onerror = t.onabort = () => reject(t.error || Object.assign(new Error('Phone storage could not save the canvas result.'), { displayKey: 'common.error.canvasResultNotSaved' }))
     } catch (e) { reject(e) }
   })
 }

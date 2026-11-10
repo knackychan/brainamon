@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
+from tests.phone_groups import open_group  # noqa: E402  (About is a group on the phone's Settings, projects/phone-settings)
 WEB_DIST = ROOT / 'web/dist'
 DOCUMENTS = (
     ('Privacy policy', 'mobile-shell/store/privacy-policy.md'),
@@ -58,7 +59,8 @@ class LegalDocumentsBrowser(unittest.TestCase):
                                 for surface, width in (('desktop', 1280), ('phone', 390)):
                                     with self.subTest(theme=theme, surface=surface):
                                         context = browser.new_context(viewport={'width': width, 'height': 900},
-                                                                      color_scheme=theme, has_touch=surface == 'phone')
+                                                                      color_scheme=theme, has_touch=surface == 'phone', locale='en-US')
+                                        context.add_init_script("localStorage.setItem('bp-lang','en')")
                                         external = []
 
                                         def route(request):
@@ -93,7 +95,7 @@ class LegalDocumentsBrowser(unittest.TestCase):
                                                 page.keyboard.press('Tab')
                                                 expect(dialog.locator('summary').first).to_be_focused()
                                             else:
-                                                expect(page.get_by_role('heading', name='Privacy and licenses')).to_be_visible()
+                                                expect(open_group(page, 'About').get_by_role('heading', name='Privacy and licenses')).to_be_visible()
                                                 self.assertEqual(page.evaluate("sessionStorage.getItem('cm-auth')"), None)
                                             legal = page.locator('.legal-documents')
                                             expect(legal).to_be_visible()
@@ -107,6 +109,7 @@ class LegalDocumentsBrowser(unittest.TestCase):
                                                 page.keyboard.press('Enter')
                                                 text = legal.locator('pre').nth(i)
                                                 expect(text).to_be_visible()
+                                                expect(text).to_have_attribute('lang', 'en')
                                                 self.assertEqual(text.text_content().replace('\r\n', '\n'),
                                                                  (ROOT / source).read_text(encoding='utf-8'))
                                                 self.assertTrue(text.evaluate('(e) => e.scrollWidth <= e.clientWidth + 1'))
@@ -167,7 +170,11 @@ class LegalDocumentsBrowser(unittest.TestCase):
                                                 context.set_offline(False)
                                                 page.set_viewport_size({'width': width, 'height': 900})
                                                 page.evaluate("location.hash = '#/cap'")
-                                                notice = page.locator('.m-cap-dock').get_by_text('PDFs are read as soon as you add them', exact=False)
+                                                self.assertEqual(page.locator('.m-cap-dock').get_by_text('PDFs are read as soon as you add them', exact=False).count(), 0)
+                                                page.get_by_role('button', name='More info: Adding content', exact=True).click()
+                                                help_dialog = page.get_by_role('dialog', name='Adding content', exact=True)
+                                                expect(help_dialog).to_be_visible()
+                                                notice = help_dialog.get_by_text('PDFs are read as soon as you add them', exact=False)
                                                 expect(notice).to_be_visible()
                                                 self.assertTrue(notice.evaluate('(e) => e.scrollWidth <= e.clientWidth + 1'))
                                                 page.screenshot(path=str(screenshots / 'phone-light-capture.png'))

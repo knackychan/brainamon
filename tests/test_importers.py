@@ -104,6 +104,23 @@ class ScrapeWatchTest(unittest.TestCase):
         self.assertIn('reddit_saved_', scrape_watch.CSV_PREFIXES)
         self.assertIn('/saved.json', scrape_watch.script_for('reddit'))
 
+    def test_threads_csv_is_watched(self):
+        with tempfile.TemporaryDirectory() as td:
+            got = []
+            w = scrape_watch.Watcher(td, got.append)
+            csv = Path(td) / 'threads_saved_2026-01-01.csv'
+            csv.write_text('url\n')
+            self.assertEqual(w.scan(), [])
+            self.assertEqual(w.scan(), [csv])
+            self.assertEqual(got, [csv])
+
+    def test_threads_unsave_is_rejected(self):
+        from fastapi import HTTPException
+        from server.routes.io import scraper_playwright
+        with self.assertRaises(HTTPException) as err:
+            scraper_playwright(None, {'platform': 'threads', 'unsave': True, 'unsave_confirmed': True})
+        self.assertEqual(err.exception.status_code, 400)
+
     def test_playwright_args_per_platform(self):
         for key in scrape_watch.PLAYWRIGHT:
             with self.subTest(key=key):

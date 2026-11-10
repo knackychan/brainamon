@@ -1,7 +1,8 @@
 // The one key a PhoneState offers (mirror/phone-state.ts ActionId), run with the flows the phone already has: the
-// status card on More and the Status group of More > Backup & phones press it. Without a PC, Back up to Google Drive is
+// status card on More and the Status group of Settings > Backup & phones press it. Without a PC, Back up to Google Drive is
 // Connect, Set up recovery opens the Recovery group's form, and Check recovery file… opens the file chooser at once (inside
 // the tap) and shows its outcome in that group (recovery.svelte.ts).
+import { connectLabel } from './settings-words'
 import type { ActionId, PhoneAction } from './mirror/phone-state'
 import { openBackupBox } from './onboard.svelte'
 import { checkFile, rec } from './recovery.svelte'
@@ -27,4 +28,4 @@ export async function runPhoneAction(id: ActionId): Promise<void> {
 
 // while its flow runs the key waits, and a Google key says which step it is in (as More's own keys do)
 export const actionBusy = (id: ActionId) => GOOGLE.includes(id) ? phone.connecting : (RECOVERY.includes(id) && (rec.busy || phone.connecting)) || phone.refreshing || (!!phone.sync && !phone.sync.end)
-export const actionLabel = (a: PhoneAction) => GOOGLE.includes(a.id) && phone.connecting ? `${phone.connectStep || 'Connecting'}…` : a.label
+export const actionLabel = (a: PhoneAction) => GOOGLE.includes(a.id) && phone.connecting ? connectLabel(phone.connectStep) : a.label

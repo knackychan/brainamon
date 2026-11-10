@@ -7,7 +7,7 @@ module; nothing else parses `.env` or stores keys in the DB / QSettings.
 
 Canonical key names (also the names the Anthropic / OpenAI SDKs read natively):
     ANTHROPIC_API_KEY   — Claude (AI describe, auto-categorize, video analysis)
-    OPENAI_API_KEY      — OpenAI (Whisper transcription + OpenAI analysis provider)
+    OPENAI_API_KEY      — OpenAI (audio transcription + OpenAI analysis provider)
 
 Usage:
     from core import config

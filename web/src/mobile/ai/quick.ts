@@ -8,6 +8,7 @@
 import { ftsTerms, W } from './text.ts'
 import { hybridRank, type Hit } from './search.ts'
 
+export type DisplayWords = (key: string, params?: Record<string, unknown>) => string
 export interface AskPrompts {
   limits: Record<string, number>
   list_words: string; followup_words: string; system: string
@@ -22,6 +23,9 @@ export interface AskPrompts {
 export interface Item {
   id: number; url?: string; description?: string; short_desc?: string; creator?: string; category?: string | null
   ai_desc?: string; transcript?: string; tags?: string; key?: string; created?: number; type?: string
+  // Synthesize's parts (synth.ts): the report (the whole file on the PC; a paired phone passes its Key information,
+  // `key`), the owner's note on the item (a link saved on the phone, or the PC's column)
+  report?: string; notes?: string
 }
 export interface Note { filename: string; topic: string; body: string }
 export interface Turn { role: 'user' | 'assistant'; content: string }
@@ -170,7 +174,7 @@ export class Quick {
   fallbackLabel(reason = '') { return this.P.fallback + (reason ? ` (${reason})` : '') }
 
   // ask_core.build_turn
-  buildTurn(lib: Lib, q: string, rows: Item[], history: Turn[], retrieval = '', budget?: { max_items: number; research_chars: number; control_chars: number }) {
+  buildTurn(lib: Lib, q: string, rows: Item[], history: Turn[], retrieval = '', budget?: { max_items: number; research_chars: number; control_chars: number }, words?: DisplayWords, onInfo?: (text: string) => void, displayRetrieval = retrieval) {
     const P = this.P, listMode = this.isList(q)
     const notes = this.relevantNotes(lib, q)
     let carried = this.carriedItems(lib, history, q)
@@ -197,6 +201,14 @@ export class Quick {
     if (notes.length) info += fill(P.info_notes, { n: notes.length, files: notes.map(n => n.filename).join(', ') })
     if (listMode) info += P.info_list
     if (retrieval) info += fill(P.info_retrieval, { retrieval })
+    if (words && onInfo) {
+      let display = words('wiskit.info.sent', { n: rows.length })
+      if (carried.length) display += words('wiskit.info.carried', { n: carried.length })
+      if (notes.length) display += words('wiskit.info.notes', { n: notes.length, files: notes.map(n => n.filename).join(', ') })
+      if (listMode) display += words('wiskit.info.list')
+      if (retrieval) display += words('wiskit.info.retrieval', { retrieval: displayRetrieval })
+      onInfo(display)
+    }
     const hist = history.slice(-(this.L.history_turns * 2))
     let ask = fill(P.ask, { question: q })
     if (listMode) ask += P.list_ask

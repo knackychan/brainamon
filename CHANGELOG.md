@@ -2,6 +2,28 @@
 
 Every release bumps `core/version.py` and adds a section here in the same commit. Newest first.
 
+## 1.1.3 - 2026-11-10
+
+- Phone and desktop: phone languages foundation (English, French, Taiwan Traditional Chinese preview) across Add, import and Voice.
+- Phone: dock shell, Add sheet, Notes manager, Settings, Wiskit chat, canvas composer and Tools panel rework.
+- Desktop and phone: file transcription uses gpt-transcribe.
+- Desktop: Remove all phones shows progress at once (the button turns into "Removing all phones…" with a bar) and cannot be pressed twice while the request runs.
+- Desktop: checking the new copy after Remove all phones reads eight files at a time (at most two files over 64 MiB, to keep memory low) without waiting for the slowest of a group, so large libraries finish sooner.
+- Desktop: Removing all phones stays on "Checking the new copy" while your Obsidian vault is uploaded and read back, instead of falling back to "Re-encrypting: 0 of 0 files".
+
+## Android 137.1.03 - 2026-11-10
+
+- Phone: same changes as desktop 1.1.3 (languages preview, dock shell, Add sheet, Notes manager, Wiskit chat, canvas composer, Tools panel).
+
+## Android 137.1.02 - 2026-11-04
+
+- Phone: every settings row keeps its button, switch or choice on the right, beside its words, on every screen width.
+- Phone: one Obsidian card holds the vault folder, its sync with the PC and the vault name Open in Obsidian uses.
+- Phone: Open in Obsidian uses the synced vault folder's name unless you typed another; choosing a folder saves its name.
+- Phone: the Obsidian row in Sync shows Stop while a round runs and Sync now otherwise.
+- Phone: Wiskit shows a single provider as text, and each AI key field has its Save button beside it.
+- Phone: help moves into info overlays; searchable category and collection pickers; mobile versioning is independent of the desktop app.
+
 ## 1.1.2 - 2026-11-03
 
 - Phone: long Obsidian and Drive sync messages stay within the screen without horizontal viewport scrolling.

@@ -51,7 +51,7 @@ To add recovery before losing a device:
    the old file is reported as out of date until the new one is saved and read back (**Save new recovery file…**).
 4. Keep the passphrase separately. The kit contains an independent secret and an
    offline key envelope, not the library, Google authorization, API keys or license.
-   An already paired phone also offers More > Backup & phones > Recovery > Export recovery file,
+   An already paired phone also offers Settings > Backup & phones > Recovery > Export recovery file,
    using Android's folder picker or a browser download. Treat every kit/phone file
    and original pairing/recovery code as a secret.
 
@@ -259,8 +259,8 @@ implementation ledger (private development record).
 ## Standalone phone backup
 
 A phone used without a PC can back up its library journal to Google Drive without
-pairing or a license. In **More > No PC?**, choose **Start**. Then in
-**More > Backup & phones**, choose **Back up to Google Drive**, and under **Recovery**
+pairing or a license. In **Settings > Use without a PC**, choose **Start**. Then in
+**Settings > Backup & phones**, choose **Back up to Google Drive**, and under **Recovery**
 choose **Set up recovery**, enter or generate a passphrase, then **Save passphrase**,
 **Save recovery file…** and **Check recovery file…**. Keep the recovery file outside
 the phone and the passphrase separately. The **Original recovery code** remains
@@ -274,11 +274,11 @@ This is a separate collection of encrypted files, not a folder in My Drive.
 The backup contains the library journal (saved links, edits, notes, chats and
 approved canvas changes), not a full copy of app storage, AI keys or cached media.
 
-On an empty replacement phone, use **More > No PC? > Recover a library…** (a phone
-already used without a PC: **More > Backup & phones > Restore from Google Drive**).
+On an empty replacement phone, use **Settings > Recover a library…** (a phone
+already used without a PC: **Settings > Backup & phones > Recovery > Recover a library…**).
 Under **Unlock with**, choose **Passphrase** to find an uploaded setup, **File** to open
 the saved recovery file, or **Code** for the original 43-character key. A passphrase or
-a file needs Google Drive first: **Start** under **No PC?**, then
+a file needs Google Drive first: **Start** beside **Use without a PC** in Settings, then
 **Back up to Google Drive** with the account that holds the backup. The code option
 works before connecting; connect the same account afterward. The code field also takes
 a pairing link or the text of an exported phone recovery file. **Find backup** unlocks
@@ -349,7 +349,7 @@ copies you intentionally want removed; retain a complete backup first if you may
    provider's available app-data/file controls. Disconnect without the checkbox stops sync
    and removes the PC authorization; it keeps the cloud copy. Turning off sync keeps both
    the sign-in and cloud copy.
-3. **Remove each phone's local copy deliberately.** More > Backup & phones > Unpair this phone
+3. **Remove each phone's local copy deliberately.** Settings > Backup & phones > Unpair this phone
    (paired mode) or Remove from this phone (solo mode) removes that phone connection and its
    pairing/token material.
    Saved-offline content and some queued/local records can remain. For complete app-storage

@@ -52,7 +52,8 @@ class BrowserTransports(unittest.TestCase):
                         browser = playwright.chromium.launch(channel='msedge', headless=True,
                             args=['--disable-background-networking', '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost'])
                         try:
-                            context = browser.new_context()
+                            context = browser.new_context(locale='en-US')
+                            context.add_init_script("localStorage.setItem('bp-lang','en')")
                             context.route('**/*', lambda route: route.continue_() if route.request.url.startswith(origin + '/') else route.abort())
                             page = context.new_page()
                             replies = []

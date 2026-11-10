@@ -136,12 +136,14 @@ class ExportTest(unittest.TestCase):
         for name in ('/absolute.py', '../escape.py', 'a/../escape.py', 'C:/escape.py',
                      'a\\escape.py', 'a//b', 'a/./b', 'a/file:stream', 'a/NUL.txt', 'a/CON',
                      'a/trailing.', 'a/trailing ', '.git/config', 'data/content.db',
-                     'local/settings.json', 'projects/private.py', '.env', '.env.backup',
+                     'local/settings.json', 'projects/private.py', 'archive/old.py', '.env', '.env.backup',
                      'mobile-shell/debug.keystore', 'cookies.txt', 'a/private.key',
                      'a/access.key.dpapi', 'node_modules/a.js', 'a\n.py', 'a/e\u0301.py'):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 export.destination(name)
         self.assertEqual(export.destination('.env.example'), '.env.example')
+        with self.assertRaises(ValueError):
+            export.checked_path('archive/old.py', source_input=True)
 
     def test_website_and_unowned_collisions_are_rejected_even_for_identical_bytes(self):
         for name in ('docs/index.html', 'docs/privacy/index.html', 'docs/img/new.png', 'design/other.js'):

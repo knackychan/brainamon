@@ -23,7 +23,7 @@
   const job = $derived(live.jobs.current)
   const last = $derived(live.jobs.last)
   const request = $derived(live.jobs.request?.state === 'pending' ? live.jobs.request : null)
-  const n = $derived(job ? job.done + job.err : 0)
+  const n = $derived(job ? job.done + (job.skipped ?? 0) + job.err : 0)
   const lit = $derived(job && job.total ? Math.min(12, Math.floor(12 * n / job.total)) : 0)
   const paused = $derived(job?.state === 'paused')
   // the segment being filled: the one after the lit run (none when paused or full)
@@ -98,8 +98,9 @@
       <Button onclick={() => runCmd('progress')}>Progress</Button>
     </div>
     {#if job.err}<p class="rj-err">{job.err} failed</p>{/if}
+    {#if job.skipped}<p class="rj-step">{job.skipped} skipped · Nothing to describe yet: open it online once or add a note.</p>{/if}
   {:else if !request}
-    <p class="rj-row rj-idle"><span class="l">idle{last ? ` · last: ${short(last.kind)} ${last.done}/${last.total}${last.err ? `, ${last.err} failed` : ''}${last.state === 'stopped' ? ', stopped' : ''}` : ''}</span>
+    <p class="rj-row rj-idle"><span class="l">idle{last ? ` · last: ${short(last.kind)} ${last.done}/${last.total}${last.skipped ? `, ${last.skipped} skipped` : ''}${last.err ? `, ${last.err} failed` : ''}${last.state === 'stopped' ? ', stopped' : ''}` : ''}</span>
       {#if last}<Button onclick={() => runCmd('progress')}>Progress</Button>{/if}</p>
   {/if}
   {#if drive}

@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
+from tests.phone_groups import open_group  # noqa: E402  (About is a group on the phone's Settings, projects/phone-settings)
 
 
 @unittest.skipUnless(importlib.util.find_spec('playwright'), 'requires installed Playwright and Edge')
@@ -73,7 +74,8 @@ class LicensedBrowser(unittest.TestCase):
                         try:
                             for theme in ('light','dark'):
                                 app.state.writer.call(lambda db: db.set_setting('automatic_updates','1'))
-                                ctx = browser.new_context(viewport={'width':1280,'height':900}, color_scheme=theme)
+                                ctx = browser.new_context(viewport={'width':1280,'height':900}, color_scheme=theme, locale='en-US')
+                                ctx.add_init_script("localStorage.setItem('bp-lang','en')")
                                 ctx.route('**/*', lambda route: route.continue_() if route.request.url.startswith((origin+'/',base_drive+'/')) else route.abort())
                                 page = ctx.new_page()
                                 errors=[]; page.on('pageerror', lambda e: errors.append(str(e)))
@@ -150,7 +152,8 @@ class LicensedBrowser(unittest.TestCase):
                                 page.set_viewport_size({'width':390,'height':844})
                                 page.goto(origin + '/mobile.html#cm-auth=' + app.state.api_token)
                                 page.goto(origin + '/mobile.html#/more')
-                                page.get_by_text('Privacy and licenses',exact=True).wait_for(timeout=15000)
+                                page.locator('.m-page-keys').wait_for(timeout=15000)
+                                open_group(page, 'About').get_by_role('heading', name='Privacy and licenses').wait_for(timeout=15000)
                                 page.screenshot(path=str(output / f'phone-{theme}-local.png'))
                                 self.assertEqual(page.evaluate('document.documentElement.scrollWidth > innerWidth'),False)
                                 self.assertEqual(errors,[])

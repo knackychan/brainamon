@@ -18,6 +18,7 @@ from playwright.sync_api import expect, sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from tests.check_phone_solo_browser import PAIR, ACCOUNT
+from tests.phone_groups import open_group  # the group rows, projects/phone-settings
 
 ART = Path(tempfile.mkdtemp(prefix='brainamon-mobile-remediation-'))
 OLD = 'solo-' + 'f' * 32 + '-'
@@ -111,7 +112,8 @@ def main():
                 browser = pw.chromium.launch(headless=True, channel='msedge', args=['--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost'])
                 for theme, width in [('light', 360), ('dark', 320)]:
                     drive, errors = Drive(), []
-                    ctx = browser.new_context(viewport={'width': width, 'height': 844}, is_mobile=True, has_touch=True, service_workers='block')
+                    ctx = browser.new_context(viewport={'width': width, 'height': 844}, is_mobile=True, has_touch=True, service_workers='block', locale='en-US')
+                    ctx.add_init_script("localStorage.setItem('bp-lang','en')")
                     seed = {'bp-pair': json.dumps(dict(PAIR, g=ACCOUNT)), 'bp-gtoken': json.dumps({'access': 'synthetic', 'exp': 4e12}),
                             'bp-wifi': 'off', 'bp-theme': theme}
                     ctx.add_init_script("window.__bpDevSolo=true;if(!sessionStorage.getItem('fixture')){sessionStorage.setItem('fixture','1');for(const [k,v]of Object.entries(" + json.dumps(seed) + "))localStorage.setItem(k,v)}")
@@ -231,7 +233,7 @@ def main():
                     assert len(drive.posts) <= 2  # replacement, then the edit queued during it
                     shot('replacement-complete')
                     drive.refuse = True
-                    page.get_by_role('button', name='Manage phone backups…').click()
+                    open_group(page, 'Google account').get_by_role('button', name='Manage phone backups…').click()
                     expect(page.locator('#phone-backup-choices').get_by_role('button', name='Connect Google Drive')).to_be_visible()
                     expect(page.locator('#phone-backup-choices').get_by_role('alert')).to_contain_text('sign in again')
                     shot('expired-authorization', '#phone-backup-choices')
@@ -242,12 +244,12 @@ def main():
                     expect(page.locator('#phone-backup-choices select option')).to_have_count(3)
                     page.get_by_role('button', name='Close', exact=True).click()
                     page.evaluate("location.hash='#/more'")
-                    page.get_by_role('button', name='Pause sync', exact=True).click()
+                    open_group(page, 'Sync').get_by_role('button', name='Pause sync', exact=True).click()
                     page.reload()
                     expect(page.locator('#m-status')).to_contain_text('Sync paused by you.')
                     shot('sync-paused')
                     page.locator('#m-status').get_by_role('button', name='Resume sync').click()
-                    ai = page.locator('#m-ai')
+                    ai = open_group(page, 'Wiskit on this phone')
                     ai.get_by_label('OpenAI API key', exact=True).fill('openai-synthetic')
                     ai.get_by_label('Anthropic API key', exact=True).fill('anthropic-draft')
                     ai.get_by_role('button', name='Save OpenAI key').click()
@@ -262,7 +264,7 @@ def main():
                       await m.changes.add({op:'fav',uid:'e'.repeat(32),on:true});window.__sending=m.flush().catch(()=>{})}""")
                     page.wait_for_timeout(250)
                     assert drive.held
-                    page.get_by_role('button', name='Disconnect', exact=True).click()
+                    open_group(page, 'Google account').get_by_role('button', name='Disconnect', exact=True).click()
                     page.get_by_role('button', name='Confirm disconnect', exact=True).click()
                     expect(page.get_by_role('button', name='Stopping cloud work…', exact=True)).to_be_visible()
                     drive.release()

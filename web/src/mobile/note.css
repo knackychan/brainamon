@@ -15,93 +15,75 @@
   --np-ink:#e9e3d3; --np-dim:#979388; --np-tint:rgba(162,157,255,.1); --np-tint-2:rgba(162,157,255,.18);
   --np-solid:#24252c}
 
-/* while a note is open the tab bar steps aside (the bar docks at the bottom of the screen) */
-html.np-ed #m-app > .m-tabs{display:none}
+/* while a note is open the dock steps aside (the editor's bar docks at the bottom of the screen) */
+html.np-ed .m-dock{display:none}
+/* an open note fills the sheet: no list padding around the paper (Notes.svelte np-bleed) */
+.m-pad.np-bleed{padding:0;gap:0;min-height:100%}
+.m-pad.np-bleed>.m-hint{margin:8px 20px}
 
-/* the My notes list: note cards (plans/08-note-cards.md, NoteCard.svelte). The Library item card's
-   classic frame (design/card-designs/cards.css, read only) adapted for a note: silver frame, a
-   shelf-tinted window with ticket notches, the top of the note on dot paper, a ticket strip. The card
-   is an object, so it keeps its light colours in the dark theme, as the item cards do. */
+/* the My notes list: note card A (projects/phone-notes-manager, spec section 4, NoteCard.svelte): a page of the
+   notebook (dot paper, the keys' hard shadow), the shelf as a coloured tab, the title, the note's 14-line head
+   fading into the paper. The paper and its inks follow the theme (--np-*); the tab keeps its light tint and dark
+   text in both, as the tints did. */
 #m-app{--np-cd-0:#8fd3ae;--np-cd-1:#8ab8f0;--np-cd-2:#f59a7c;--np-cd-3:#f2cf5b;--np-cd-4:#b9a6f2}
 .np-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding-bottom:12px}
 .np-cards>.m-empty{grid-column:1/-1}
-.np-cd{display:block;width:100%;min-width:0;aspect-ratio:63/88;padding:5px;border:0;border-radius:13px;color:#151515;text-align:left;cursor:pointer;
-  background:linear-gradient(125deg,#c6c9ce 0%,#f7f8f9 20%,#9aa0a6 42%,#eef0f2 64%,#adb2b8 84%,#e3e5e8 100%);
-  box-shadow:0 10px 16px -10px rgba(0,0,0,.55),0 1px 0 rgba(0,0,0,.18);transition:transform .12s ease-out;-webkit-tap-highlight-color:transparent}
-.np-cd:active{transform:scale(.97)}
+.np-cd{box-sizing:border-box;display:flex;flex-direction:column;width:100%;min-width:0;aspect-ratio:63/88;padding:0;overflow:hidden;
+  border:1px solid var(--wg-edge);border-radius:12px;background:var(--m-dot-grid) 0 0/12px 12px,var(--np-paper);color:var(--np-ink);
+  text-align:left;cursor:pointer;box-shadow:0 3px 0 var(--wg-edge);transition:transform .12s,box-shadow .12s;-webkit-tap-highlight-color:transparent}
+.np-cd:active{transform:translateY(3px);box-shadow:none}
 .np-cd:focus-visible{outline:2px solid var(--ink-indigo);outline-offset:3px}
-.np-cd-win{--ny:calc(100% - 52px);position:relative;display:flex;flex-direction:column;height:100%;border-radius:8px;overflow:hidden;
-  background:radial-gradient(circle at 20% 10%,rgba(255,255,255,.35),transparent 50%),repeating-linear-gradient(135deg,rgba(255,255,255,.07) 0 2px,transparent 2px 6px),
-    linear-gradient(165deg,color-mix(in srgb,var(--t) 45%,#fff),var(--t) 55%,color-mix(in srgb,var(--t) 78%,#000));
-  -webkit-mask:radial-gradient(circle at 0 var(--ny),transparent 4px,#000 4.5px) left/51% 100% no-repeat,radial-gradient(circle at 100% var(--ny),transparent 4px,#000 4.5px) right/51% 100% no-repeat;
-          mask:radial-gradient(circle at 0 var(--ny),transparent 4px,#000 4.5px) left/51% 100% no-repeat,radial-gradient(circle at 100% var(--ny),transparent 4px,#000 4.5px) right/51% 100% no-repeat}
-.np-cd-hd{flex:none;display:grid;grid-template-columns:auto 1fr;align-items:center;align-content:start;row-gap:4px;height:54px;padding:6px 7px 0}
-.np-cd-stage{justify-self:start;padding:2px 6px;border-radius:8px;background:linear-gradient(#fff,#c4c7cc);box-shadow:inset 0 0 0 .6px rgba(0,0,0,.4);
-  font:italic 800 7.5px/1 var(--display);letter-spacing:.06em;text-transform:uppercase;color:#222}
-.np-cd-rank{justify-self:end;font:800 6.5px/1 var(--display);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
-.np-cd-rank b{font:900 14px/.9 var(--display);font-stretch:80%;letter-spacing:-.02em}
-.np-cd-nm{grid-column:1/-1;align-self:start;font:800 13.5px/1.04 var(--display);font-stretch:74%;text-wrap:balance;
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.np-cd-page{position:relative;flex:1;min-height:0;display:block;margin:0 7px;padding:3px 7px 0;border-radius:2px;overflow:hidden;
-  background:#f7f6f2 radial-gradient(circle,rgba(42,34,208,.24) .8px,transparent 1.2px) 6px 0/12px 12px;
-  box-shadow:0 0 0 2px #f4f4f4,0 0 0 3px rgba(0,0,0,.4),0 3px 7px rgba(0,0,0,.35);
-  font:500 9px/12px var(--display);color:#1f1f22;overflow-wrap:anywhere}
-.np-cd-page::after{content:"";position:absolute;left:0;right:0;bottom:0;height:22px;background:linear-gradient(rgba(247,246,242,0),#f7f6f2)}
+.np-cd-tab{flex:none;display:block;height:20px;padding:0 10px;background:var(--t);font:600 8.5px/20px var(--mono);letter-spacing:.1em;
+  text-transform:uppercase;color:#151515;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.np-cd-nm{flex:none;display:-webkit-box;padding:9px 10px 0;font:800 13px/15px var(--display);font-stretch:85%;letter-spacing:-.01em;
+  text-wrap:balance;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.np-cd-page{position:relative;flex:1;min-height:0;display:block;padding:6px 10px 0;overflow:hidden;
+  font:500 9px/12px var(--display);color:var(--np-ink);overflow-wrap:anywhere}
+.np-cd-page::after{content:"";position:absolute;left:0;right:0;bottom:0;height:26px;background:linear-gradient(transparent,var(--np-paper))}
 .np-cd-page :is(p,ul,ol,blockquote,h2,h3){margin:0}
 .np-cd-page :is(h2,h3){margin-top:4px;font:800 10px/12px var(--display);font-stretch:85%}
 .np-cd-page :is(ul,ol){padding-left:11px}
-.np-cd-page hr{margin:5px 0;border:0;border-top:1px solid rgba(0,0,0,.2)}
+.np-cd-page hr{margin:5px 0;border:0;border-top:1px solid var(--np-edge)}
 .np-cd-page code{font:500 8px/12px var(--mono)}
 .np-cd-page ul.np-check{padding-left:0;list-style:none}
 .np-cd-page ul.np-check>li{position:relative;padding-left:11px;opacity:1;text-decoration:none}
-.np-cd-page ul.np-check>li::before{content:"";position:absolute;left:0;top:2.5px;width:6px;height:6px;border:1px solid #1f1f22;border-radius:1.5px}
-.np-cd-page ul.np-check>li[data-done]{color:#77736a;text-decoration:line-through}
-.np-cd-page ul.np-check>li[data-done]::before{background:#1f1f22}
+.np-cd-page ul.np-check>li::before{content:"";position:absolute;left:0;top:2.5px;width:6px;height:6px;border:1px solid var(--np-ink);border-radius:1.5px}
+.np-cd-page ul.np-check>li[data-done]{color:var(--np-dim);text-decoration:line-through}
+.np-cd-page ul.np-check>li[data-done]::before{background:var(--np-ink)}
 .np-cd-page ul.np-check>li::after{content:none}
 .np-cd-page blockquote{padding-left:6px;border-left:2px solid color-mix(in srgb,var(--t) 70%,#000);font-style:italic}
-.np-cd-page .np-cd-empty{color:#77736a;font-style:italic}
-.np-cd-pn{position:relative;flex:none;height:52px;display:flex;flex-direction:column;gap:5px;margin-top:8px;padding:9px 8px 5px;
-  background:linear-gradient(color-mix(in srgb,var(--t) 10%,#fbfaf6),color-mix(in srgb,var(--t) 6%,#f0eee7))}
-.np-cd-pn::before{content:"";position:absolute;left:8px;right:8px;top:3px;border-top:1px dashed rgba(0,0,0,.24)}
-.np-cd-stats{margin-top:auto;display:grid;grid-template-columns:1.3fr .8fr 1fr;padding:3px 0;border-block:.6px solid rgba(0,0,0,.2)}
-.np-cd-stats>span{min-width:0;display:grid;gap:2px;padding:0 4px}
-.np-cd-stats>span:first-child{padding-left:0}
-.np-cd-stats>span+span{border-left:.6px solid rgba(0,0,0,.14)}
-.np-cd-stats small{font:500 6.5px/1 var(--mono);color:#666}
-.np-cd-stats b{font:800 9px/1.1 var(--display);font-stretch:85%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.np-cd-ft{display:flex;align-items:center;gap:4px;min-width:0;font:500 6px/1 var(--mono);color:#5a5a5a;white-space:nowrap}
-.np-cd-ft>span:not(.np-cd-bc){min-width:0;overflow:hidden;text-overflow:ellipsis}
-.np-cd-ft i{flex:none;width:5px;height:5px;background:#151515;transform:rotate(45deg)}
-.np-cd-bc{flex:none;margin-left:auto;width:22px;height:7px;background:repeating-linear-gradient(90deg,#151515 0 1px,transparent 1px 2.5px,#151515 2.5px 4px,transparent 4px 5px)}
+.np-cd-page .np-cd-empty{color:var(--np-dim);font-style:italic}
 @media (prefers-reduced-motion:reduce){.np-cd{transition:none}}
+.motion-off .np-cd{transition:none}
 
-.np{position:relative;display:flex;flex-direction:column;min-height:100%;color:var(--np-ink)}
+.np{position:relative;display:flex;flex:1 0 auto;flex-direction:column;min-height:100%;color:var(--np-ink);background:var(--m-dot-grid) 0 0/16px 16px,var(--case)}
 .np ::selection{background:var(--np-tint-2)}
 
-/* the header: category pill, autosave lamp, undo/redo, the note menu */
-.np-head{position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:6px;min-width:0;padding:10px 8px 8px 12px;background:var(--np-paper);
-  border-bottom:1px solid transparent;transition:border-color .15s}
-.np-pill{position:relative;display:inline-flex;min-width:0;max-width:52%}
-.np-pill select{appearance:none;-webkit-appearance:none;max-width:100%;min-height:32px;border:0;border-radius:999px;padding:0 28px 0 13px;
-  background:var(--ink-indigo);color:var(--np-paper);font:600 12px/1.2 var(--display);text-overflow:ellipsis;white-space:nowrap;overflow:hidden;
-  box-shadow:0 6px 14px -8px var(--ink-indigo)}
-.np-pill::after{content:"";position:absolute;right:12px;top:50%;width:6px;height:6px;margin-top:-5px;border:solid var(--np-paper);border-width:0 1.6px 1.6px 0;
-  transform:rotate(45deg);pointer-events:none}
-.np-pill select option{background:var(--np-paper);color:var(--np-ink)}
-.np-led{display:inline-flex;align-items:center;gap:5px;flex:none;color:var(--np-dim);font:500 10.5px/1 var(--mono);white-space:nowrap}
-.np-led i{width:7px;height:7px;border-radius:50%;background:var(--m-ok)}
+/* the floating keys (spec 2026-11-07 phone note page, section 1): Back, the category tag whose dot is the
+   save state, the undo/redo pill and the note menu; the page scrolls under them */
+.np-head{position:sticky;top:0;z-index:5;box-sizing:border-box;display:flex;align-items:center;gap:8px;min-width:0;height:52px;padding:8px 12px 0;pointer-events:none}
+.np-head>*{pointer-events:auto}
+.np-head>.m-picker-inline{flex:0 1 auto;display:flex;align-items:center;min-width:0}
+.np-tag{display:inline-flex;align-items:center;gap:6px;min-width:0}
+.np-tag-name{min-width:0;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.np-tag .m-ico{flex:none;width:10px;height:10px}
+.np-tag[data-s=error]{background:var(--m-danger)}
+.np-led{display:block;flex:none;width:8px;height:8px}
+.np-led i{display:block;width:8px;height:8px;border-radius:50%;background:var(--m-ok)}
 .np-led:is([data-s=pending],[data-s=saving]) i{background:var(--sig,#c9820e)}
-.np-led[data-s=error]{color:var(--m-danger)}
-.np-led[data-s=error] i{background:var(--m-danger)}
+.np-led[data-s=error] i{background:#fff}
+.np-undo{flex:none;box-sizing:border-box;display:flex;align-items:center;height:36px;border:1px solid var(--wg-edge);border-radius:18px;background:var(--case-hi);color:var(--case-ink);box-shadow:0 2px 0 var(--wg-edge)}
+.np-undo .np-ic{width:38px;height:34px;border-radius:17px}
+.np-undo>i{width:1px;height:18px;background:var(--wg-edge)}
 .np-ic{flex:none;display:grid;place-items:center;width:40px;height:40px;padding:0;border:0;border-radius:12px;background:transparent;color:var(--np-ink)}
 .np-ic svg,.nb svg,.np-x svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .np-ic:active,.nb:active{background:var(--np-tint)}
 .np-ic:disabled{opacity:.35}
 .np-ic[aria-expanded=true]{background:var(--np-tint-2);color:var(--ink-indigo)}
 
-/* the page: dots every 24 px on the row lines; 1 cell left, 3 cells right, bottom clears the bar */
-.np-page{position:relative;flex:1;min-height:0;padding:24px 72px 208px 24px;
-  background-image:radial-gradient(circle,var(--np-dot) 1.15px,transparent 1.7px);background-size:24px 24px;background-position:-12px -12px}
+/* the page: the title starts under the key row; 28 px right (stamps may sit over line ends), the bottom
+   clears the formatting pill and Android's buttons. The dots are on .np */
+.np-page{position:relative;flex:1;min-height:0;padding:8px 28px calc(208px + env(safe-area-inset-bottom,0px)) 20px}
 .np-col{position:relative;min-width:0;max-width:720px}
 /* the title wraps on 24 px rows: one blank half-row above and below */
 .np-title{display:block;width:100%;min-height:48px;margin:0;padding:12px 0;border:0;outline:0;background:transparent;color:var(--np-ink);resize:none;overflow:hidden;
@@ -124,7 +106,7 @@ html.np-ed #m-app > .m-tabs{display:none}
 .np-body hr{height:24px;margin:0 0 24px;border:0;background:radial-gradient(circle,var(--ink-indigo) 1.3px,transparent 1.8px) 0 50%/12px 24px repeat-x;opacity:.55}
 .np-body b,.np-body strong{font-weight:700}
 .np-body mark[data-mark]{padding:1px 2px;margin:0 -2px}
-.np-body:empty::before{content:"Start writing. The star key on the bar opens the stamps.";color:var(--np-dim);opacity:.75}
+.np-body:empty::before{content:attr(data-placeholder);color:var(--np-dim);opacity:.75}
 /* the editor's task button */
 .np-body [data-task]{position:absolute;left:-23px;top:4px;width:16px;height:16px;border:1.5px solid var(--ink-indigo);border-radius:3px 2px 4px 2px;background:var(--np-solid);color:var(--ink-indigo);padding:0;line-height:12px;font-size:13px;cursor:pointer}
 .np-body li[data-block=task]{position:relative;list-style:none;padding-left:0}
@@ -151,10 +133,12 @@ html.np-ed #m-app > .m-tabs{display:none}
 .np-target{position:absolute;border:1.5px dashed var(--ink-indigo);border-radius:10px;background:var(--np-tint);pointer-events:none;transition:left .08s ease-out,top .08s ease-out}
 .np-ghost{position:fixed;z-index:60;pointer-events:none;opacity:.9;filter:drop-shadow(0 8px 10px rgba(30,26,110,.25))}
 
-/* the dock: formatting bar, above the tab bar; on the keyboard while typing */
-.np-dock{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--np-solid);color:var(--np-ink);border-top:1px solid var(--np-edge)}
-html.typing .np-dock{bottom:0}
-.np-bar{display:flex;align-items:center;height:52px;padding:0 4px 0 2px}
+/* the formatting bar: a floating pill above Android's buttons (the .m-dock rule); full width on the
+   keyboard while typing (the WebView then ends at the keyboard's top) */
+.np-dock{position:fixed;left:10px;right:10px;bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:30;overflow:hidden;background:var(--np-solid);color:var(--np-ink);border:1px solid var(--wg-edge);border-radius:24px;box-shadow:0 3px 0 var(--wg-edge)}
+html.typing .np-dock{left:0;right:0;bottom:0;border:0;border-top:1px solid var(--np-edge);border-radius:0;box-shadow:none}
+.np-bar{display:flex;align-items:center;height:48px;padding:0 6px 0 4px}
+html.typing .np-bar{height:52px;padding:0 4px 0 2px}
 .np-bar-sc{flex:1;min-width:0;display:flex;align-items:center;gap:1px;overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain;
   -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 18px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 18px),transparent)}
 .np-bar-sc::-webkit-scrollbar{display:none}
@@ -202,6 +186,8 @@ html.typing .nb.done{display:grid}
 .np-sh-hd h3{flex:1;min-width:0;margin:0;font:800 16px/1.15 var(--display);font-stretch:85%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .np-x{display:grid;place-items:center;width:36px;height:36px;padding:0;border:0;border-radius:10px;background:var(--wg-2);color:var(--wg-ink)}
 .np-x svg{width:14px;height:14px;stroke-width:1.8}
+.np-sh-led{margin:-6px 0 12px;color:var(--wg-dim);font:500 11px/1.3 var(--mono)}
+.np-sh-led[data-s=error]{color:var(--m-danger)}
 .np-size{flex:none}
 .np-size button{min-width:34px}
 .np-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin-bottom:10px;padding:2px;border-radius:12px;

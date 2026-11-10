@@ -9,6 +9,8 @@ every Add to canvas lands) is kept in the DB setting v6_active_canvas.
 import os
 import re
 import tempfile
+import hashlib
+import json
 
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -112,6 +114,101 @@ async def rename(cid: str, request: Request, body: dict = Body(...)):
     await request.app.state.writer.run(write)
     _changed(request, cid, rev_of(_path(cs, cid)))
     return next(_row(e) for e in cs.list_canvases() if e['id'] == cid)
+
+
+@router.post('/api/canvases/draft')
+async def draft(request: Request, body: dict = Body(...)):
+    """One manual addition, including its retry marker, published by the existing canvas engine."""
+    safe = lambda n: type(n) is int and 0 <= n <= 2 ** 53 - 1
+    if set(body) != {'op_id', 'canvas_id', 'at', 'proposal', 'base_rev', 'sizes'}:
+        raise HTTPException(400, 'Invalid canvas addition fields.')
+    op, cid, raw, sizes = (body[k] for k in ('op_id', 'canvas_id', 'proposal', 'sizes'))
+    if not isinstance(op, str) or not re.fullmatch('[0-9a-f]{32}', op) or not safe(body['at']):
+        raise HTTPException(400, 'Invalid canvas addition identity.')
+    if not isinstance(cid, str) or cid == 'index' or not re.fullmatch('[A-Za-z0-9_-]{1,64}', cid):
+        raise HTTPException(400, 'Invalid canvas target.')
+    if not isinstance(raw, dict) or set(raw) not in ({'canvas_id', 'layout', 'elements'}, {'new_name', 'layout', 'elements'}):
+        raise HTTPException(400, 'Invalid canvas addition proposal.')
+    if raw['layout'] not in ('rows', 'columns'):
+        raise HTTPException(400, 'Invalid layout.')
+    def unicode_ok(v):
+        if isinstance(v, str):
+            return not any(0xD800 <= ord(c) <= 0xDFFF for c in v)
+        if isinstance(v, dict):
+            return all(unicode_ok(k) and unicode_ok(x) for k, x in v.items())
+        return all(unicode_ok(x) for x in v) if isinstance(v, list) else True
+    if not unicode_ok(raw):
+        raise HTTPException(400, 'Remove invalid characters from the name or note.')
+    try:
+        p = canvas_plan.normalize(raw)
+    except canvas_plan.ProposalError as e:
+        raise HTTPException(400, str(e)) from e
+    existing = p['canvas_id'] is not None
+    if (existing and (p['canvas_id'] != cid or not safe(body['base_rev']) or not body['base_rev'])) or (
+            not existing and (body['base_rev'] is not None or not re.fullmatch('[0-9a-f]{32}', cid))):
+        raise HTTPException(400, 'Invalid canvas revision or target.')
+    ids, notes = [], 0
+    for e in raw['elements']:
+        if e.get('kind') == 'thumbnail' and set(e) == {'kind', 'item_id'}:
+            iid = e['item_id']
+            if not safe(iid) or not iid or iid in ids:
+                raise HTTPException(400, 'Duplicate or invalid picked image.')
+            ids.append(iid)
+        elif e.get('kind') == 'text' and set(e) == {'kind', 'text', 'color'}:
+            notes += 1
+        else:
+            raise HTTPException(400, 'Invalid canvas addition element.')
+    if notes > 1 or not isinstance(sizes, dict) or set(sizes) != {str(i) for i in ids} or any(
+            not isinstance(v, list) or len(v) != 2 or any(not safe(n) or not 0 < n <= 100000 for n in v)
+            for v in sizes.values()):
+        raise HTTPException(400, 'Invalid selected thumbnail dimensions or note count.')
+    digest = hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode('utf-8')).hexdigest()
+    cs = store(request)
+
+    def write(db):
+        deleted = canvas_plan.deleted_ops(db).get(op)
+        if deleted:
+            raise HTTPException(410 if deleted == [cid, digest] else 409,
+                                'This canvas was deleted.' if deleted == [cid, digest] else 'Canvas operation ID was reused with different content.')
+        # The ID is global, so a replay cannot redirect a previous operation to another board.
+        for row in cs.list_canvases():
+            doc = cs.load_canvas(row['id']) or {}
+            marker = (doc.get('phone_ops') or {}).get(op)
+            if marker:
+                if row['id'] != cid or marker != digest:
+                    raise HTTPException(409, 'Canvas operation ID was reused with different content.')
+                return {'canvas_id': cid}, False
+        path = _path(cs, cid)
+        if existing:
+            data = _load(cs, cid)
+            if rev_of(path) != body['base_rev']:
+                raise HTTPException(409, 'Canvas changed. Check the board and tap Add again.')
+            if any(e.get('source') == 'db' and e.get('item_id') in ids for e in data['items']):
+                raise HTTPException(400, 'A picked image is already on this canvas.')
+        elif path.exists():
+            raise HTTPException(409, 'The new canvas ID is occupied.')
+        try:
+            canvas_plan.check(db, cs.canvas_dir, p)
+            from PIL import Image
+            for iid in ids:
+                try:
+                    with Image.open(db.item_dir(iid) / 'thumb.jpg') as image:
+                        image.load()
+                        current = list(image.size)
+                except (OSError, ValueError) as e:
+                    raise HTTPException(400, f'Could not read thumbnail for item {iid}.') from e
+                if current != sizes[str(iid)]:
+                    raise HTTPException(409, 'Canvas changed. Check the board and tap Add again.')
+            result = canvas_plan.apply(db, cs, p, body['base_rev'] or 0,
+                                       phone={'op_id': op, 'canvas_id': cid, 'at': body['at'], 'hash': digest})
+        except canvas_plan.ProposalError as e:
+            raise HTTPException(404 if e.code == 'missing_canvas' else 400, str(e)) from e
+        return {'canvas_id': result['canvas_id']}, True
+
+    result, changed = await request.app.state.writer.run(write)
+    if changed:
+        _changed(request, cid, rev_of(_path(cs, cid)))
+    return result
 
 
 @router.delete('/api/canvases/{cid}')

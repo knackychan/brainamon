@@ -32,12 +32,12 @@ export interface PairedInput {
 // Before the first read has finished the phone does not ask for a sign-in: the start renews an expired token once
 // (state.svelte.ts renewSignIn) and the state says Connecting meanwhile. A confirmed account whose token ran out or
 // was refused is "sign in again"; a pairing with no confirmed account is "connect".
-export function pairedFacts(i: PairedInput): PhoneFacts {
+export function pairedFacts(i: PairedInput, moment: typeof clock = clock): PhoneFacts {
   return {
     pause: i.pause,
     mode: 'pc', app: i.app, online: i.online, wifiWait: i.online && i.paused, refreshing: i.refreshing, tried: i.tried,
     signedIn: !i.refused && (i.token || !i.tried), account: i.account, pcAccount: i.pcAccount, mismatch: i.mismatch,
-    access: i.access, hadAccess: i.last > 0, since: clock(i.access === 'expired' ? i.accessAt : i.last, i.now),
+    access: i.access, hadAccess: i.last > 0, since: moment(i.access === 'expired' ? i.accessAt : i.last, i.now),
     noLibrary: i.noLibrary?.cause ?? '', noLibraryText: i.noLibrary?.message ?? '', reachable: i.reachable, tooOld: i.tooOld,
     checked: i.checked, unsent: i.pend.unsent, waiting: i.pend.waiting, resending: i.pend.resending, recovery: 'none',
   }
@@ -77,6 +77,6 @@ export function soloFacts(i: SoloInput): PhoneFacts {
 export function unpairEdits(p: { unsent: number; waiting: number; held: number }, refused: boolean): number {
   return p.unsent + p.held + (refused ? p.waiting : 0)
 }
-export const unpairWarning = (n: number) => !n ? '' : n === 1
+export const unpairWarning = (n: number, words?: (key: string, params?: Record<string, unknown>) => string) => n && typeof words === 'function' ? words('backup.warning.unsentUnpair', { n }) : !n ? '' : n === 1
   ? "1 edit hasn't reached your PC yet. If you unpair now, it never will."
   : `${n} edits haven't reached your PC yet. If you unpair now, they never will.`

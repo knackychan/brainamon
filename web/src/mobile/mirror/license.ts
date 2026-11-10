@@ -11,7 +11,7 @@ export const ACCESS_INACTIVE = 'Your PC needs an update. It is using older phone
 export const ACCESS_DISABLED = 'Your PC disabled this phone’s access. Pair again only with a new code you trust from your PC. Saved content and queued edits stay here.'
 export const PC_REPLACED = 'Your PC changed (restored or reinstalled): its access confirmation is signed with a new key. Pair again with the new code from your PC. Saved content and queued edits stay here.'
 export const WEBVIEW_OLD = 'Update your browser or Android System WebView to verify phone access. Saved content and queued edits stay here.'
-// Why access was refused; More > Backup & phones words each one (mirror/phone-state.ts):
+// Why access was refused; Settings > Backup & phones words each one (mirror/phone-state.ts):
 //   missing   no confirmation in Drive: the PC removed this phone's access, or has not confirmed it yet
 //   expired   the PC has not renewed it (off, offline, signed out of Google, or backing up elsewhere now)
 //   replaced  a confirmation with a valid license signed by another PC key: the PC was restored or reinstalled.
@@ -98,7 +98,7 @@ export async function verifyGrant(envelope: { body: string; sig: string }, fp: s
   }
 }
 
-// When this pairing last had its access confirmed: More > Backup & phones says "Last access 15:05" once the PC removes
+// When this pairing last had its access confirmed: Settings > Backup & phones says "Last access 15:05" once the PC removes
 // it, and tells a removal (access before) from a first confirmation still on its way. Saved at most once a minute;
 // unavailable storage keeps no history, and the phone then says less.
 const ACCESS_SEEN = 'bp-access'

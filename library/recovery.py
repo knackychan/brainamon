@@ -165,7 +165,7 @@ def import_key(text):
     if text.startswith('{'):
         value = parse(text)
         if value.get('format') == 'brainamon-phone-backup-kit':
-            raise RecoveryError('This recovery file belongs to a standalone phone backup. Open it in the phone app: More > No PC? > Recover a library…, then File.')
+            raise RecoveryError('This recovery file belongs to a standalone phone backup. Open it in the phone app: Settings > Recover a library…, then File.')
         if value.get('format') == KIT_FORMAT and type(value.get('version')) is int and value['version'] == 1:
             key = unlock(value.get('record'), secret=value.get('secret'))
             return key, kit(value['record'], value['secret'])

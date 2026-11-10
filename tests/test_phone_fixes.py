@@ -16,15 +16,17 @@ CATS = ['SPORT', 'COOKING', 'INTERESTING']
 ITEMS = [
     {'id': 11, 'category': 'COOKING', 'creator': 'chef', 'type': 'Reel', 'description': 'Breakfast bowl in five minutes', 'short_desc': 'Fast breakfast ideas',
      'url': 'https://www.instagram.com/reel/X/', 'analysis_done': 0, 'transcript': ''},
-    {'id': 12, 'category': 'AI', 'creator': 'dev', 'type': 'Video', 'description': '', 'short_desc': 'Build a local search tool',
+    {'id': 12, 'category': 'AI', 'creator': 'dev', 'type': 'Video', 'description': 'Build a local search tool', 'short_desc': 'Build a local search tool',
      'url': 'https://youtu.be/abc', 'analysis_done': 0, 'transcript': ''},
     {'id': 13, 'category': 'SPORT', 'creator': 'coach', 'type': 'Reel', 'description': 'Knee prehab', 'short_desc': 'A gentle warm-up',
      'url': 'https://www.facebook.com/reel/1', 'analysis_done': 1, 'transcript': '  Step one, warm up.  '},
-    {'id': 14, 'category': 'X', 'creator': '', 'type': 'Post', 'description': '',
+    {'id': 14, 'category': 'X', 'creator': '', 'type': 'Post', 'description': 'A useful discussion',
      'url': 'https://www.reddit.com/r/a/comments/b/c/', 'analysis_done': 0, 'transcript': ''},
     {'id': 15, 'category': 'SPORT', 'creator': 'r/bodyweightfitness', 'type': 'Post',
      'description': 'Knee drill\n\nDo it daily.\n\nTop comments:\n- u/a (12): Works for me',
      'url': 'https://www.reddit.com/r/bodyweightfitness/comments/b/c/', 'analysis_done': 0, 'transcript': ''},
+    {'id': 16, 'category': 'X', 'creator': '', 'type': 'Post', 'description': 'NO_CONTENT', 'notes': 'Specific note',
+     'url': 'https://example.com/16', 'analysis_done': 0, 'transcript': 'NO_CONTENT'},
 ]
 REPLIES = ['{"category": "cooking", "tags": "Recipe, Breakfast"}', '```json\n{"category": "SPORT", "tags": ""}\n```',
            'Sure: {"category": "SPORT", "tags": "mobility"} done', '{"category": "NOPE", "tags": "x"}', 'no json here']
@@ -37,7 +39,7 @@ ROWS = [
 ROUTES = [
     {'tab': 'lib'}, {'tab': 'lib', 'item': 5}, {'tab': 'cv', 'canvas': 'abc'}, {'tab': 'cv', 'canvas': None},
     {'tab': 'cap'}, {'tab': 'notes', 'note': 'a.md'}, {'tab': 'notes', 'mynote': 'b.md'}, {'tab': 'notes', 'synth': ''},
-    {'tab': 'notes'}, {'tab': 'jv', 'chats': True}, {'tab': 'jv', 'chats': False}, {'tab': 'more', 'imp': True}, {'tab': 'more'},
+    {'tab': 'notes'}, {'tab': 'jv', 'chats': True}, {'tab': 'jv', 'chats': False}, {'tab': 'cap', 'imp': True}, {'tab': 'more'},
 ]
 
 
@@ -67,7 +69,7 @@ class PhoneFixesTest(unittest.TestCase):
             console.log(JSON.stringify(__DATA__.map(r => parentHash(r))))
         """.replace('__DATA__', json.dumps(ROUTES))))
         self.assertEqual(out, ['', '#/lib', '#/canvas', '#/lib', '#/lib', '#/notes', '#/notes', '#/notes', '#/lib',
-                               '#/jv', '#/lib', '#/more', '#/lib'])
+                               '#/jv', '#/lib', '#/cap', '#/lib'])
 
     def test_library_box_uses_the_full_text_ids(self):
         out = json.loads(node(test_phone_js.TS_RESOLVE + """
@@ -115,6 +117,48 @@ class PhoneFixesTest(unittest.TestCase):
             {'category': 'SPORT', 'tags': 'mobility'}, {'category': 'INTERESTING', 'tags': 'x'}])
         self.assertIn('did not answer', out['parse'][4])
         self.assertEqual(out['merge'], ['a, b, c', 'x, y', 'keep'])
+
+    def test_describe_content_rules_match_the_phone(self):
+        cases = [
+            {'url': 'https://test.com/', 'description': 'test.com'},
+            {'url': 'https://www.test.com/', 'description': 'test.com/'},
+            {'url': 'https://test.com/', 'description': 'www.test.com'},
+            {'url': 'https://www.test.com/', 'description': 'test.com/ A caption'},
+            {'url': 'https://test.com/', 'description': 'https://test.com/ A caption'},
+            {'url': 'https://test.com/', 'description': 'NO_CONTENT'},
+            {'url': 'https://test.com/', 'notes': 'A note'},
+            {'url': 'https://test.com/', 'transcript': 'words'},
+            {'url': 'https://test.com/', 'report': 'A report'},
+        ]
+        got = json.loads(node("""
+            import { hasDescribeContent } from './web/src/mobile/ai/describe.ts'
+            console.log(JSON.stringify(__DATA__.map(it => [hasDescribeContent(it, false), hasDescribeContent(it, true)])))
+        """.replace('__DATA__', json.dumps(cases))))
+        self.assertEqual(got, [[tasks.has_describe_content(it, False), tasks.has_describe_content(it, True)] for it in cases])
+        self.assertEqual([x[0] for x in got], [False, False, False, True, True, False, True, True, True])
+
+    def test_describe_skips_empty_and_sentinel_without_storing(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(tasks.ai_client, 'complete_vision', return_value='NO_CONTENT') as ai:
+            bare = {'id': 5, 'url': 'https://test.com/', 'description': 'test.com'}
+            self.assertIsNone(tasks.describe_item(bare, 'anthropic', 'm', d))
+            ai.assert_not_called()
+            self.assertIsNone(tasks.describe_item({**bare, 'description': 'Caption'}, 'anthropic', 'm', d))
+            ai.assert_called_once()
+            thumb = Path(d) / 'items' / '5' / 'thumb.jpg'
+            thumb.parent.mkdir(parents=True)
+            thumb.write_bytes(b'image')
+            self.assertIsNone(tasks.describe_item(bare, 'anthropic', 'm', d))
+            self.assertEqual(ai.call_count, 2)
+
+    def test_mirror_card_does_not_count_sentinel_as_done(self):
+        from library import mirror
+        item = {'id': 5, 'creator': '', 'type': 'Post', 'category': 'INTERESTING', 'tags': [],
+                'description': 'https://test.com/', 'ai_desc': ' NO_CONTENT ', 'url': 'https://test.com/',
+                'platform': 'web', 'has_thumb': False, 'processed': True, 'created': 0}
+        card = mirror.row(item, None)
+        self.assertFalse(card['ai'])
+        self.assertEqual(card['desc'], item['description'])
+        self.assertEqual(card['title'], item['description'])
 
 
 class AiDescIntakeTest(ChangeIntakeTest):

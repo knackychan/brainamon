@@ -1,9 +1,9 @@
 <script lang="ts">
   export interface TaskStep { label: string; state: 'done' | 'active' | 'waiting' }
-  let { steps, running = true }: { steps: TaskStep[]; running?: boolean } = $props()
+  let { steps, running = true, words }: { steps: TaskStep[]; running?: boolean; words?: (key: string, params?: Record<string, unknown>) => string } = $props()
 </script>
 
-<ul class="task-steps" aria-label="Backup steps">
+<ul class="task-steps" aria-label={words?.('backup.task.stepsLabel') ?? 'Backup steps'}>
   {#each steps as step, index (index)}
     <li aria-current={step.state === 'active' ? 'step' : undefined}>
       <svg class:cycle={step.state === 'active' && running} width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -14,7 +14,7 @@
           {#if step.state === 'done'}<path d="m4 8 2.5 2.5L12 5" fill="none" stroke="currentColor" stroke-width="1.8" />{/if}
         {/if}
       </svg>
-      <span>{step.label}{' '}<small> · {step.state === 'done' ? 'done' : step.state === 'waiting' ? 'waiting' : running ? 'in progress' : 'paused'}</small></span>
+      <span>{step.label}{' '}<small> · {step.state === 'done' ? (words?.('backup.task.step.done') ?? 'done') : step.state === 'waiting' ? (words?.('backup.task.step.waiting') ?? 'waiting') : running ? (words?.('backup.task.step.active') ?? 'in progress') : (words?.('backup.task.step.paused') ?? 'paused')}</small></span>
     </li>
   {/each}
 </ul>

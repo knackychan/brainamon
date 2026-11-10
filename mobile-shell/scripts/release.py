@@ -8,8 +8,8 @@ The upload key stays on this PC (never in the repo, never on GitHub). Default pl
 
 Steps: web/dist (npm run build, unless --skip-web), the phone page into the app (npm run sync),
 gradlew bundleRelease assembleRelease, the private-file gate on both outputs, apksigner on the APK.
-Version name = core/version.py; version code = major*1000000 + minor*1000 + patch (0.2.4 -> 2004),
-so it grows with every desktop release; BRAINAMON_VERSION_CODE overrides it. Passwords come from
+Version name and code come from mobile-shell/version.json, independently of the desktop.
+BRAINAMON_VERSION_NAME / BRAINAMON_VERSION_CODE override them. Passwords come from
 BRAINAMON_UPLOAD_STORE_PASSWORD / BRAINAMON_UPLOAD_KEY_PASSWORD or are asked for, never saved.
 
 Output: dist/android/Brainamon-<version>.aab (upload to Play) and Brainamon-<version>.apk (your own
@@ -17,6 +17,7 @@ device tests only: the app is distributed through Play only), each with a .sha25
 """
 import getpass
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -45,9 +46,14 @@ def sdk() -> Path:
 
 
 def version() -> tuple[str, int]:
-    name = re.search(r"__version__ = '([^']+)'", (ROOT / 'core' / 'version.py').read_text(encoding='utf-8')).group(1)
-    major, minor, patch = (int(x) for x in name.split('.'))
-    return name, int(os.environ.get('BRAINAMON_VERSION_CODE') or major * 1_000_000 + minor * 1_000 + patch)
+    mobile = json.loads((SHELL / 'version.json').read_text(encoding='utf-8'))
+    name = os.environ.get('BRAINAMON_VERSION_NAME') or mobile['versionName']
+    code = os.environ.get('BRAINAMON_VERSION_CODE') or mobile['versionCode']
+    if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', name):
+        raise ValueError('Android versionName must be a nonempty, file-safe version name')
+    if type(code) not in (int, str) or not re.fullmatch(r'[0-9]+', str(code)) or not 1 <= int(code) <= 2_100_000_000:
+        raise ValueError('Android versionCode must be an integer from 1 to 2100000000')
+    return name, int(code)
 
 
 def create_key():
@@ -93,7 +99,8 @@ def main():
     aab = ANDROID / 'app' / 'build' / 'outputs' / 'bundle' / 'release' / 'app-release.aab'
     apk = ANDROID / 'app' / 'build' / 'outputs' / 'apk' / 'release' / 'app-release.apk'
     for p in (aab, apk):
-        run([sys.executable, ROOT / 'packaging' / 'payload_guard.py', p], ROOT)
+        # --release-mobile: no phone site reader in a release (projects/phone-site-reader/plans/01-engine.md)
+        run([sys.executable, ROOT / 'packaging' / 'payload_guard.py', p, '--release-mobile'], ROOT)
     tools = sorted((home / 'build-tools').iterdir())[-1]
     signer = tools / ('apksigner.bat' if os.name == 'nt' else 'apksigner')
     run([signer, 'verify', '--print-certs', apk], ROOT)

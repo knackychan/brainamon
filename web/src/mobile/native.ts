@@ -15,10 +15,14 @@
 // - onBackButton / exitApp: the hardware back button (milestone-2026-10-14/plans/E-phone-fixes.md)
 // - openObsidian: an obsidian:// link, and whether an app took it (See my knowledge graph)
 // - deviceName: the phone's name for the PC's Phones list (D13, mirror/phone-record.ts)
+// - siteState / siteOpen / sitePending / siteClear / siteForget: the phone site reader's window and run files
+//   (projects/phone-site-reader), in the Contributor (debug) build only
 import { App } from '@capacitor/app'
 import { Capacitor, CapacitorHttp, registerPlugin, type PluginListenerHandle } from '@capacitor/core'
 import { withTimeout } from './wait'
+import { languageSecretsSaved, languageWorkChanged } from './language-switch.ts'
 import { SKIP_DIRS } from './vault/merge'       // the folders the native listing skips (.brainamon/ among them, spec 1b)
+import type { SiteId } from './sites'
 
 interface BrainamonPlugin {
   networkStatus(): Promise<NetworkStatus>
@@ -43,6 +47,11 @@ interface BrainamonPlugin {
   openUri(o: { uri: string }): Promise<{ opened: boolean }>
   clipboardText(): Promise<{ text: string }>
   deviceName(): Promise<{ name: string }>
+  siteState(): Promise<SiteReaderState>
+  siteOpen(o: { site: SiteId; known: string[]; full: boolean; complete: boolean }): Promise<SiteRunResult>
+  sitePending(o: { site: SiteId; offset: number; max: number }): Promise<SitePage>
+  siteClear(o: { site: SiteId }): Promise<void>
+  siteForget(o: { site: SiteId }): Promise<{ result: 'deleted' | 'cleared' }>
 }
 type AiStreamEvent = { id: string; kind: 'headers'; status: number; headers: Record<string, string> }
   | { id: string; kind: 'chunk'; seq: number; data: string }
@@ -54,7 +63,7 @@ const B = registerPlugin<BrainamonPlugin>('Brainamon')
 export const appInfo = () => withTimeout(App.getInfo(), 5000, 'Could not read app info.')
 
 export interface NetworkStatus { connected: boolean; type: string }
-export const networkStatus = () => withTimeout(B.networkStatus(), 5000, 'Could not check the network.')
+export const networkStatus = () => withTimeout(B.networkStatus(), 5000, 'Could not check the network.', 'timeout')
 export const onNetworkChange = (fn: (e: NetworkStatus) => void) => B.addListener('networkChange', fn)
 
 // D13 (P5): the name the PC's Phones list shows: Android's device name (Settings > About phone), else maker and model;
@@ -70,6 +79,12 @@ const SECRET_KEYS = ['bp-pair', 'bp-gtoken']
 const cache = new Map<string, string | null>()
 let saved: Promise<unknown> = Promise.resolve()           // writes in order; secretsSaved() waits for them
 let saveFailed = false
+const failedSecretKeys = new Set<string>()
+const secretFailed = (key: string) => { saveFailed = true; failedSecretKeys.add(key) }
+const secretSaved = (key: string) => {
+  if (failedSecretKeys.delete(key) && !failedSecretKeys.size) { saveFailed = false; languageSecretsSaved() }
+}
+export const secretsHaveFailures = (): boolean => failedSecretKeys.size > 0
 
 // In a browser (audit 2026-10-11, H2): IndexedDB, each value sealed with AES-GCM under a key the
 // page generated as non-extractable. WebCrypto never hands that key's bytes to script, so a copy of
@@ -87,6 +102,16 @@ function req<T>(r: IDBRequest<T>): Promise<T> {
   return new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
 }
 function tx(db: IDBDatabase, mode: IDBTransactionMode) { return db.transaction(VAULT_STORE, mode).objectStore(VAULT_STORE) }
+function vaultWrite(db: IDBDatabase, action: (store: IDBObjectStore) => void): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    try {
+      const t = db.transaction(VAULT_STORE, 'readwrite')
+      t.oncomplete = () => resolve()
+      t.onerror = t.onabort = () => reject(t.error || new Error('Phone storage could not save the secret.'))
+      action(t.objectStore(VAULT_STORE))
+    } catch (error) { reject(error) }
+  })
+}
 async function openVault(): Promise<{ db: IDBDatabase; key: CryptoKey }> {
   const open = indexedDB.open(VAULT_DB, 1)
   open.onupgradeneeded = () => open.result.createObjectStore(VAULT_STORE)
@@ -94,7 +119,7 @@ async function openVault(): Promise<{ db: IDBDatabase; key: CryptoKey }> {
   let key = await req(tx(db, 'readonly').get(WRAP)) as CryptoKey | undefined
   if (!key) {
     key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
-    await req(tx(db, 'readwrite').put(key, WRAP))
+    await vaultWrite(db, store => { store.put(key!, WRAP) })
   }
   return { db, key }
 }
@@ -107,14 +132,16 @@ async function vaultGet(k: string): Promise<string | null> {
 }
 async function vaultSet(k: string, value: string | null) {
   const v = vault!
-  if (value === null) { await req(tx(v.db, 'readwrite').delete(k)); return }
-  const iv = crypto.getRandomValues(new Uint8Array(12))
-  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(k) }, v.key, new TextEncoder().encode(value))
-  await req(tx(v.db, 'readwrite').put({ iv, ct } satisfies Sealed, k))
+  const iv = value === null ? null : crypto.getRandomValues(new Uint8Array(12))
+  const ct = value === null ? null : await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv!, additionalData: new TextEncoder().encode(k) }, v.key, new TextEncoder().encode(value))
+  await vaultWrite(v.db, store => {
+    if (value === null) store.delete(k)
+    else store.put({ iv: iv!, ct: ct! } satisfies Sealed, k)
+  })
 }
 const ls = {
   get(k: string) { try { return localStorage.getItem(k) } catch { return null } },
-  set(k: string, v: string | null) { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v) } catch { saveFailed = true } },
+  set(k: string, v: string | null) { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); return true } catch { secretFailed(k); return false } },
 }
 
 export async function initNative() {
@@ -149,17 +176,18 @@ export const secrets = {
     return ls.get(k)
   },
   set(k: string, v: string | null) {
+    languageWorkChanged()
     cache.set(k, v)
-    if (isApp) saved = saved.then(() => withTimeout(B.secretSet({ key: k, value: v }), 10_000, 'Saving sign-in timed out.')).catch(() => { saveFailed = true })
-    else if (vault) saved = saved.then(() => vaultSet(k, v)).catch(() => { saveFailed = true })
-    else ls.set(k, v)
+    if (isApp) saved = saved.then(() => withTimeout(B.secretSet({ key: k, value: v }), 10_000, 'Saving sign-in timed out.')).then(() => secretSaved(k)).catch(() => secretFailed(k))
+    else if (vault) saved = saved.then(() => vaultSet(k, v)).then(() => secretSaved(k)).catch(() => secretFailed(k))
+    else if (ls.set(k, v)) secretSaved(k)
   },
 }
 
 // before the page reloads or leaves: the secrets written so far are on disk
 export async function secretsSaved(): Promise<void> {
   await saved
-  if (saveFailed) { saveFailed = false; throw new Error('Sign-in could not be saved securely. Retry before leaving this page.') }
+  if (saveFailed) { saveFailed = false; throw Object.assign(new Error('Sign-in could not be saved securely. Retry before leaving this page.'), { code: 'write' }) }
 }
 
 // Drive access token with Google's Android sign-in; `silent` never shows anything. `account`: ask
@@ -168,7 +196,7 @@ export async function secretsSaved(): Promise<void> {
 // services stuck) used to leave Connect and Change account working with no end. A late answer is dropped.
 export function googleToken(silent: boolean, o: { account?: string; choose?: boolean } = {}): Promise<{ token: string; expiresIn: number }> {
   return withTimeout(B.googleToken({ silent, account: o.account || '', choose: !!o.choose }), silent ? 20_000 : 120_000,
-    silent ? 'Google did not answer the sign-in renewal in 20 seconds.' : 'Google did not answer in 2 minutes (its sheet may have closed). Try again.')
+    silent ? 'Google did not answer the sign-in renewal in 20 seconds.' : 'Google did not answer in 2 minutes (its sheet may have closed). Try again.', silent ? 'renewal-timeout' : 'timeout')
 }
 
 // the pairing QR's text, or '' when the user backed out
@@ -362,4 +390,27 @@ export function vaultFs(uri: string) {
     },
     async remove(path: string) { await B.vaultDelete({ uri, path }) },
   }
+}
+
+// ── the phone site reader (projects/phone-site-reader): the Contributor (debug) build only. siteState() is
+// null in a browser, in a build without the reader, or when the app does not answer; the other calls are
+// made only after it answered ──
+export interface SiteReaderState {
+  supported: boolean
+  sites: Record<SiteId, { signedIn: boolean; pending: number; forgetting: boolean; reader: boolean }>
+}
+export interface SiteRunResult { reason: string; added: number; known: number; other: number; dropped: number }
+export interface SitePage { items: unknown[]; total: number }
+
+export async function siteState(): Promise<SiteReaderState | null> {
+  if (!isApp) return null
+  try { return await withTimeout(B.siteState(), 5000, 'The site reader did not answer.') } catch { return null }
+}
+// resolves when the site window closes: no time limit, the user signs in, reads or stops
+export const siteOpen = (site: SiteId, known: string[], full: boolean, complete: boolean) => B.siteOpen({ site, known, full, complete })
+export const sitePending = (site: SiteId, offset: number, max: number) =>
+  withTimeout(B.sitePending({ site, offset, max }), 15000, 'The site reader did not answer.')
+export const siteClear = (site: SiteId) => withTimeout(B.siteClear({ site }), 5000, 'The site reader did not answer.')
+export async function siteForget(site: SiteId): Promise<'deleted' | 'cleared'> {
+  return (await withTimeout(B.siteForget({ site }), 15000, 'The site reader did not answer.')).result
 }

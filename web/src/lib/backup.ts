@@ -74,8 +74,10 @@ const GIB = 1073741824
 export const hm = (t: number) => new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 export const day = (t: number) => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 export const gb = (b: number) => (b / GIB).toFixed(1)
-export const amount = (b: number) => b < GIB ? `${Math.max(1, Math.round(b / 1048576))} MB` : `${gb(b)} GB`
-export const num = (x: number) => Math.round(x).toLocaleString('en')
+export const amount = (b: number, words?: (key: string, params?: Record<string, unknown>) => string) => b < GIB
+  ? (words?.('backup.task.sizeMb', { n: Math.max(1, Math.round(b / 1048576)), digits: 0 }) ?? `${Math.max(1, Math.round(b / 1048576))} MB`)
+  : (words?.('backup.task.sizeGb', { n: b / GIB, digits: 1 }) ?? `${gb(b)} GB`)
+export const num = (x: number, locale = 'en') => Math.round(x).toLocaleString(locale)
 export const dur = (ms: number) => ms < MIN ? `${Math.max(0, Math.round(ms / SEC))} s` : ms < HOUR ? `${Math.round(ms / MIN)} min` : `${(ms / HOUR).toFixed(1)} h`
 // how long a pause has lasted: seconds and minutes as `dur`, then whole days ("3 days")
 export const long = (ms: number) => ms < DAY ? dur(ms) : `${Math.floor(ms / DAY)} day${ms < 2 * DAY ? '' : 's'}`

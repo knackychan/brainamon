@@ -257,7 +257,8 @@ def main():
                     assert scraper.get_by_label('Instagram username').count() == 0
                     assert not errors, errors
                     if '--desktop-only' not in sys.argv:
-                        mobile = browser.new_page(viewport={'width': 390, 'height': 844})
+                        mobile = browser.new_page(viewport={'width': 390, 'height': 844}, locale='en-US')
+                        mobile.add_init_script("localStorage.setItem('bp-lang','en')")
                         from library.mirror import MirrorKey
                         solo_key = MirrorKey(bytes(range(32)))
                         solo_pair = {'v':2,'k':solo_key.text(),'f':solo_key.fingerprint,'c':'','e':'','ai':{},'at':0,'solo':True}

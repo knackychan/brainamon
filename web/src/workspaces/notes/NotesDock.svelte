@@ -5,7 +5,8 @@
   import Tr from '../library/dock/Tr.svelte'
   import Wg from '../library/dock/Wg.svelte'
   import Px from '../../lib/Px.svelte'
-  import { addCategory, deleteMyNote, digestShots, newNote, nt, openMyNote, setCat, summarize, summaryLine } from '../../lib/notes.svelte'
+  import { addCategory, deleteMyNote, digestShots, newNote, nt, openMyNote, renameCategory, setCat, summarize, summaryLine } from '../../lib/notes.svelte'
+  import { DEFAULT_CATEGORY, cleanCategory, otherNamed } from '../../lib/note-category'
   import { toast } from '../../lib/ui.svelte'
   import { confirmWin, promptWin } from '../../lib/windows.svelte'
   import Button from '../../components/ui/Button.svelte'
@@ -16,6 +17,19 @@
   async function add() {
     const v = await promptWin({ title: 'New category', code: 'NTE-42', label: 'Category name', ok: 'Add' })
     if (v) { try { await addCategory(v) } catch (e) { toast((e as Error).message, 'w') } }
+  }
+  // Rename the selected category (spec 2026-11-07 section 4); another category with the same name asks first
+  async function rename() {
+    const from = nt.cat
+    if (from === 'All' || from === DEFAULT_CATEGORY) return
+    const check = (v: string) => { try { cleanCategory(v); return null } catch (e) { return (e as Error).message } }
+    const v = await promptWin({ title: `Rename “${from}”`, code: 'NTE-45', label: 'Category name', value: from, ok: 'Rename', check })
+    if (v == null) return
+    const name = cleanCategory(v), other = otherNamed(nt.categories, name, from), n = nt.list.length
+    if (other && !await confirmWin({ title: 'Move notes?', code: 'NTE-46', ok: 'Move notes', msg: `${other} already exists. Move ${n} note${n === 1 ? '' : 's'} into it?` })) return
+    const to = other ?? name
+    if (to === from) return
+    try { await renameCategory(from, to) } catch (e) { toast((e as Error).message, 'w') }
   }
   async function create() {
     const v = await promptWin({ title: 'New note', code: 'NTE-43', label: 'Note title', ok: 'Create' })
@@ -50,7 +64,7 @@
     <Tr label="All notes" checked={nt.cat === 'All'} onpick={() => setCat('All')} />
     {#each nt.categories as c (c)}<Tr label={c} checked={nt.cat === c} onpick={() => setCat(c)} />{/each}
   </div>
-  <div class="tkeys"><Button kind="tool" variant="pri" onclick={add}><Px name="plus" />Add category</Button></div>
+  <div class="tkeys"><Button kind="tool" variant="pri" onclick={add}><Px name="plus" />Add category</Button><Button kind="tool" disabled={nt.cat === 'All' || nt.cat === DEFAULT_CATEGORY} onclick={rename}>Rename</Button></div>
 </Wg>
 <Wg cls="s6" id="nlist" title="Notes" jp="ノート" n={nt.list.length}>
   <div class="tlist" role="list">

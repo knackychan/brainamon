@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { t } from '../../lib/i18n/index.ts'
+  import { stampName } from '../notes-words.ts'
   // The phone's stamp layer + tray (projects/note-organic-ui/plans/07-phone-editor.md): the plan 01
   // stamp shape ({k, at, x, y, s, c, r}) on the dot paper, reusing the 20 drawings and the geometry of
   // the desktop NoteStamps.svelte and note-editor.ts. Phone rules: the sheet is full-bleed with a
@@ -9,6 +11,7 @@
   import { GRID, headingName } from '../../lib/note-editor'
   import { STAMP_DRAWINGS } from '../../lib/stamps'
   import MHint from '../ui/MHint.svelte'
+  import MInfo from '../ui/MInfo.svelte'
 
   let { stamps, sheet, bodyRoot, titleEl, ink = 'indigo', heading = 'top',
     open = $bindable(false), selected = $bindable<number | null>(null), oncommit, onink, onclose }: {
@@ -162,11 +165,11 @@
   <svg viewBox="0 0 48 48" aria-hidden="true">{@html STAMP_DRAWINGS[k] || ''}</svg>
 {/snippet}
 
-<div class="np-layer" aria-label="Stamps on this page">
+<div class="np-layer" aria-label={t('notes.stamps.page')}>
   {#each stamps as st, i}
     {@const d = display(st)}
     <button type="button" class="np-stamp" data-stamp={i} aria-pressed={selected === i}
-      aria-label={`${st.k} stamp at ${st.at}. Arrow keys move; Delete removes.`}
+      aria-label={t('notes.stamps.position', { stamp: stampName(st.k), at: st.at })}
       style={`left:${d.col * G}px;top:${d.row * G}px;--s:${d.ds};--c:var(--ink-${st.c});--r:${st.r}deg`}
       onfocus={() => selected = i} onclick={() => selected = i} onkeydown={e => keys(e, i)}
       onpointerdown={e => start(e, i)} onpointermove={move} onpointerup={finish} onpointercancel={cancel}>
@@ -178,9 +181,9 @@
     {@const d = display(st)}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="np-chip" style={`left:${Math.max(4, Math.min(cols * G - 124, (d.col + d.ds) * G - 120))}px;top:${(d.row > 1 ? d.row * G - 48 : (d.row + d.ds) * G + 8)}px`}>
-      <button type="button" data-chip="rot" aria-label="Tilt stamp" onclick={() => change({ r: st.r >= 8 ? -8 : st.r + 8 })}><svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13 2.5v3h-3"/></svg></button>
-      <button type="button" data-chip="ink" aria-label="Stamp colour" onclick={onink}><i class="np-dot" style={`--c:var(--ink-${st.c})`}></i></button>
-      <button type="button" data-chip="del" aria-label="Remove stamp" onclick={remove}><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button>
+      <button type="button" data-chip="rot" aria-label={t('notes.stamps.tilt')} onclick={() => change({ r: st.r >= 8 ? -8 : st.r + 8 })}><svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13 2.5v3h-3"/></svg></button>
+      <button type="button" data-chip="ink" aria-label={t('notes.stamps.colour')} onclick={onink}><i class="np-dot" style={`--c:var(--ink-${st.c})`}></i></button>
+      <button type="button" data-chip="del" aria-label={t('notes.stamps.remove')} onclick={remove}><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button>
     </div>
   {/if}
   {#if target}
@@ -191,21 +194,21 @@
 
 {#if open}
   <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
-  <section class="m-sheet np-sheet np-tray" class:dragging id="np-tray" role="dialog" aria-label="Stamps">
+  <section class="m-sheet np-sheet np-tray" class:dragging id="np-tray" role="dialog" aria-label={t('notes.stamps.title')}>
     <i class="np-grab" aria-hidden="true"></i>
-    <div class="np-sh-hd"><h3>Stamps</h3>
-      <div class="m-seg sm np-size" role="group" aria-label="Stamp size">
-        {#each [2, 3, 4] as s}<button type="button" aria-pressed={size === s} onclick={() => size = s}>{s === 2 ? 'S' : s === 3 ? 'M' : 'L'}</button>{/each}
+    <div class="np-sh-hd"><h3>{t('notes.stamps.title')}</h3><MInfo title={t('notes.stamps.helpTitle')}><p>{t('notes.stamps.help')}</p></MInfo>
+      <div class="m-seg sm np-size" role="group" aria-label={t('notes.stamps.size')}>
+        {#each [2, 3, 4] as s}<button type="button" aria-pressed={size === s} onclick={() => size = s}>{s === 2 ? t('notes.stamps.small') : s === 3 ? t('notes.stamps.medium') : t('notes.stamps.large')}</button>{/each}
       </div>
-      <button type="button" class="np-x" aria-label="Close stamps" onclick={() => { open = false; onclose() }}><svg viewBox="0 0 14 14"><path d="m3 3 8 8M11 3l-8 8"/></svg></button>
+      <button type="button" class="np-x" aria-label={t('notes.stamps.close')} onclick={() => { open = false; onclose() }}><svg viewBox="0 0 14 14"><path d="m3 3 8 8M11 3l-8 8"/></svg></button>
     </div>
     <div class="np-grid">
       {#each STAMPS as k}
-        <button type="button" class="np-tstamp" style={`--c:var(--ink-${ink})`} aria-label={`Add ${k} stamp`} disabled={limit}
+        <button type="button" class="np-tstamp" style={`--c:var(--ink-${ink})`} aria-label={t('notes.stamps.add', { stamp: stampName(k) })} disabled={limit}
           onpointerdown={e => start(e, -1, k)} onpointermove={move} onpointerup={finish} onpointercancel={cancel}
           onclick={e => { if (e.detail === 0 && !limit) add(k) }}>{@render svg(k)}</button>
       {/each}
     </div>
-    <MHint as="p">{limit ? `Limit of ${MAX_STAMPS} stamps reached. Remove one to add another.` : 'Tap one to put it beside this section, or drag it onto the page. It snaps to the dots and takes the current ink.'}</MHint>
+    {#if limit}<MHint as="p">{t('notes.stamps.limit', { max: MAX_STAMPS })}</MHint>{/if}
   </section>
 {/if}

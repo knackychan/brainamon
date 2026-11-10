@@ -87,6 +87,129 @@ class PhoneStartupTest(unittest.TestCase):
           await secretsSaved()
         """)
 
+    def test_language_switch_keeps_failed_secret_keys_blocked_until_retried(self):
+        node(r"""
+          import assert from 'node:assert/strict'
+          import { register } from 'node:module'
+          register('data:text/javascript,'+encodeURIComponent(`export async function resolve(s,c,n){
+            if(s==='@capacitor/core')return {url:'data:text/javascript,export const Capacitor={isNativePlatform:()=>true};export const registerPlugin=()=>globalThis.__plugin;export const CapacitorHttp={}',shortCircuit:true};
+            if(s==='@capacitor/app')return {url:'data:text/javascript,export const App={}',shortCircuit:true};
+            try{return await n(s,c)}catch(e){if(s.startsWith('.')&&!/\\.\\w+$/.test(s))return n(s+'.ts',c);throw e}}`),import.meta.url)
+          const failures = new Set(['bp-pair', 'bp-gtoken'])
+          globalThis.__plugin = {secretSet: async ({key}) => { if (failures.has(key)) throw Error('synthetic failure') }}
+          const { secrets, secretsSaved, secretsHaveFailures } = await import('./web/src/mobile/native.ts')
+          const { switchLanguage } = await import('./web/src/mobile/language-switch.ts')
+          secrets.set('bp-pair', 'synthetic'); secrets.set('bp-gtoken', 'synthetic')
+          await assert.rejects(secretsSaved())
+          failures.delete('bp-pair'); secrets.set('bp-pair', 'synthetic'); await secretsSaved()
+          assert.equal(secretsHaveFailures(), true)
+          const result = await switchLanguage('fr', 'en', async () => {
+            await secretsSaved(); if (secretsHaveFailures()) throw Error('pending')
+          }, {setItem(){throw Error('must not write')}}, () => {throw Error('must not reload')})
+          assert.equal(result.status, 'blocked')
+          failures.delete('bp-gtoken'); secrets.set('bp-gtoken', 'synthetic'); await secretsSaved()
+          assert.equal(secretsHaveFailures(), false)
+          let reloaded = false
+          assert.equal((await switchLanguage('fr', 'en', secretsSaved, {setItem(){}}, () => {reloaded = true})).status, 'reloaded')
+          assert.equal(reloaded, true)
+        """)
+
+    def test_secret_retry_before_failure_is_observed_does_not_latch_reload(self):
+        node(r"""
+          import assert from 'node:assert/strict'
+          import { register } from 'node:module'
+          register('data:text/javascript,'+encodeURIComponent(`export async function resolve(s,c,n){
+            if(s==='@capacitor/core')return {url:'data:text/javascript,export const Capacitor={isNativePlatform:()=>true};export const registerPlugin=()=>globalThis.__plugin;export const CapacitorHttp={}',shortCircuit:true};
+            if(s==='@capacitor/app')return {url:'data:text/javascript,export const App={}',shortCircuit:true};
+            try{return await n(s,c)}catch(e){if(s.startsWith('.')&&!/\\.\\w+$/.test(s))return n(s+'.ts',c);throw e}}`),import.meta.url)
+          let fail = true
+          globalThis.__plugin = {secretSet: async () => {if(fail) throw Error('synthetic failure')}}
+          const {secrets, secretsSaved, secretsHaveFailures} = await import('./web/src/mobile/native.ts')
+          const {switchLanguage} = await import('./web/src/mobile/language-switch.ts')
+          secrets.set('bp-pair', 'synthetic')
+          while (!secretsHaveFailures()) await new Promise(resolve => setTimeout(resolve, 0))
+          fail = false
+          secrets.set('bp-pair', 'synthetic')
+          await secretsSaved()
+          assert.equal(secretsHaveFailures(), false)
+          assert.equal((await switchLanguage('fr', 'en', secretsSaved, {setItem() {}}, () => {})).status, 'reloaded')
+        """)
+
+    def test_browser_wrap_key_commits_before_legacy_secret_is_removed(self):
+        node(r"""
+          import assert from 'node:assert/strict'
+          import { register } from 'node:module'
+          register('data:text/javascript,'+encodeURIComponent(`export async function resolve(s,c,n){
+            if(s==='@capacitor/core')return {url:'data:text/javascript,export const Capacitor={isNativePlatform:()=>false};export const registerPlugin=()=>({});export const CapacitorHttp={}',shortCircuit:true};
+            if(s==='@capacitor/app')return {url:'data:text/javascript,export const App={}',shortCircuit:true};
+            try{return await n(s,c)}catch(e){if(s.startsWith('.')&&!/\\.\\w+$/.test(s))return n(s+'.ts',c);throw e}}`),import.meta.url)
+          const writes = [], legacy = new Map([['bp-pair', 'synthetic-legacy']])
+          const request = value => { const r = {}; queueMicrotask(() => { r.result = value; r.onsuccess() }); return r }
+          const db = {transaction: () => {
+            const tx = {error:null, objectStore: () => ({
+              get: () => request(undefined), put: () => { writes.push(tx); return {} }, delete: () => { writes.push(tx); return {} },
+            })}
+            return tx
+          }}
+          globalThis.indexedDB = {open: () => request(db)}
+          globalThis.localStorage = {getItem: key => legacy.get(key) ?? null, setItem: (key, value) => legacy.set(key, value), removeItem: key => legacy.delete(key)}
+          const { initNative } = await import('./web/src/mobile/native.ts')
+          let settled = false
+          const first = initNative().then(() => { settled = true })
+          while (!writes.length) await new Promise(resolve => setTimeout(resolve, 0))
+          assert.equal(settled, false)
+          assert.equal(legacy.get('bp-pair'), 'synthetic-legacy')
+          writes.shift().onabort()
+          await first
+          assert.equal(legacy.get('bp-pair'), 'synthetic-legacy')
+          const retry = initNative()
+          while (!writes.length) await new Promise(resolve => setTimeout(resolve, 0))
+          writes.shift().oncomplete()
+          while (!writes.length) await new Promise(resolve => setTimeout(resolve, 0))
+          assert.equal(legacy.get('bp-pair'), 'synthetic-legacy')
+          writes.shift().oncomplete()
+          await retry
+          assert.equal(legacy.has('bp-pair'), false)
+        """)
+
+    def test_browser_secret_write_waits_for_transaction_commit(self):
+        node(r"""
+          import assert from 'node:assert/strict'
+          import { register } from 'node:module'
+          register('data:text/javascript,'+encodeURIComponent(`export async function resolve(s,c,n){
+            if(s==='@capacitor/core')return {url:'data:text/javascript,export const Capacitor={isNativePlatform:()=>false};export const registerPlugin=()=>({});export const CapacitorHttp={}',shortCircuit:true};
+            if(s==='@capacitor/app')return {url:'data:text/javascript,export const App={}',shortCircuit:true};
+            try{return await n(s,c)}catch(e){if(s.startsWith('.')&&!/\\.\\w+$/.test(s))return n(s+'.ts',c);throw e}}`),import.meta.url)
+          const key = await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt'])
+          const writes = []
+          const request = value => { const r = {}; queueMicrotask(() => { r.result = value; r.onsuccess() }); return r }
+          const db = {transaction: (_name, mode) => {
+            const tx = {error:null, objectStore: () => ({
+              get: keyName => request(keyName === 'wrap' ? key : undefined),
+              put: () => { writes.push(tx); return {} }, delete: () => { writes.push(tx); return {} },
+            })}
+            return tx
+          }}
+          globalThis.indexedDB = {open: () => request(db)}
+          globalThis.localStorage = {getItem: () => null, setItem(){}, removeItem(){}}
+          const { initNative, secrets, secretsSaved, secretsHaveFailures } = await import('./web/src/mobile/native.ts')
+          await initNative()
+          secrets.set('bp-pair', 'synthetic')
+          let settled = false
+          const first = secretsSaved().then(() => {settled = true}, () => {settled = true; throw Error('aborted')})
+          while (!writes.length) await new Promise(resolve => setTimeout(resolve, 0))
+          assert.equal(settled, false)
+          writes.shift().onabort()
+          await assert.rejects(first, /aborted/)
+          assert.equal(secretsHaveFailures(), true)
+          secrets.set('bp-pair', 'synthetic')
+          const retry = secretsSaved()
+          while (!writes.length) await new Promise(resolve => setTimeout(resolve, 0))
+          writes.shift().oncomplete()
+          await retry
+          assert.equal(secretsHaveFailures(), false)
+        """)
+
     def test_atomic_bounded_reads_rejection_retry_and_late_callbacks(self):
         result = json.loads(node(r"""
           import assert from 'node:assert/strict'

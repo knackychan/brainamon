@@ -78,6 +78,7 @@ export function installLibrary() {
   on('job_item', (d: { id: number; state: string }) => {
     if (d.state === 'working') lib.cellState.set(d.id, 'worked')
     else if (d.state === 'done') cellFlash(d.id, 'done', 2800)
+    else if (d.state === 'skipped') lib.cellState.delete(d.id)
     else if (d.state === 'error') cellFlash(d.id, 'err', 3200)
   })
   // coalesce bursts of items_changed into one refetch

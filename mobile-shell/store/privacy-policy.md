@@ -195,12 +195,12 @@ backup or deletion walkthrough, see `docs/BACKUP-RESTORE.md` supplied with the p
    This targets files identified by the current mirror manifest, not every Drive object, solo
    journal, vault export, unknown/old file or provider backup. A failed/offline attempt is not
    completed deletion. Review other retained app data through Google's available controls.
-3. On each phone, More > Backup & phones > Unpair this phone (or Remove from this phone in
+3. On each phone, Settings > Backup & phones > Unpair this phone (or Remove from this phone in
    standalone mode) removes that connection. Saved offline files and some pending/local records
    may remain. To remove all app storage after reviewing unsent work, use Android's app-storage
    clearing control or uninstall; in a browser clear the Brainamon site's storage. Remove
    separately exported files yourself.
-   More > Clear the phone's copy only clears a cache: saved offline files and unsent changes stay,
+   Settings > Storage > Clear the phone's copy only clears a cache: saved offline files and unsent changes stay,
    and an immediate refresh can download the library again.
 4. On Windows, note the selected data folder in Settings > App and the actual settings home,
    then Quit fully, including the background/tray process. Interactive uninstall offers to

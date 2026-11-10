@@ -25,7 +25,7 @@ from typing import Any, Callable
 from core import app_console
 from core import entitlements
 
-SNAPSHOT_KEYS = ('id', 'kind', 'label', 'state', 'total', 'done', 'err', 'current', 'auto', 't0', 't1')
+SNAPSHOT_KEYS = ('id', 'kind', 'label', 'state', 'total', 'done', 'skipped', 'err', 'detail', 'current', 'auto', 't0', 't1')
 
 # Jobs asked for from outside the app (the local MCP, projects/mcp-local/plans/01-confirm-in-app.md): they wait
 # for Fred's click in the app. Only the kinds that fill what is missing; never force.
@@ -82,6 +82,10 @@ class Stopped(Exception):
     """Raised by a run_item that quit for Stop: the item goes back to queued, not failed."""
 
 
+class Skipped(Exception):
+    """An item has no work to perform and was not changed."""
+
+
 @dataclass
 class JobKind:
     key: str                                   # 'describe'
@@ -112,7 +116,9 @@ class Job:
     state: str = 'running'                     # running | paused | finished | stopped
     total: int = 0
     done: int = 0
+    skipped: int = 0
     err: int = 0
+    detail: str = ''
     current: int | None = None
     t0: float = 0.0
     t1: float = 0.0
@@ -130,7 +136,12 @@ class Job:
         self.emit('job_item', {'job': self.id, 'id': item_id, 'state': 'working', 'step': text})
 
     def snapshot(self) -> dict:
-        return {k: getattr(self, k) for k in SNAPSHOT_KEYS}
+        out = {k: getattr(self, k) for k in SNAPSHOT_KEYS}
+        if self.kind == 'analyze' and 'opts' in self.ctx:
+            from server.job_kinds import ANALYZE_DEFAULTS
+            # A joining phone keeps the actual options for Retry; never publish provider credentials or arbitrary opts.
+            out['options'] = {k: self.ctx['opts'][k] for k in ANALYZE_DEFAULTS if k in self.ctx['opts']}
+        return out
 
 
 KINDS: dict[str, JobKind] = {}
@@ -210,7 +221,7 @@ class JobManager:
             with self._lock:
                 self.current = None
             raise
-        if kind.ai and not job.ctx.get('key', True):
+        if kind.ai and kind.key != 'describe' and not job.ctx.get('key', True):
             with self._lock:
                 self.current = None
             raise JobError(job.ctx.get('key_msg') or 'API key required: open Settings > API keys.')
@@ -606,12 +617,18 @@ class JobManager:
             self._emit_job(job)
         return self.snapshot()
 
-    def stop(self) -> dict:
-        job = self.current
-        if job:
-            job.stopping = True
-            if job.state == 'paused':
-                job.state = 'running'
+    def stop(self, job_id: int | None = None) -> dict:
+        """Ask the running job to stop. With `job_id` (the phone's Tools panel sends it), only that job: an id that is
+        not the running one is refused under the same lock that reads `current`, so a Stop meant for a job that has
+        ended cannot stop the job that replaced it. Without an id it is what it always was."""
+        with self._lock:
+            job = self.current
+            if job_id is not None and (job is None or job.id != job_id):
+                raise JobError('That job is not running any more; nothing was stopped.')
+            if job:
+                job.stopping = True
+                if job.state == 'paused':
+                    job.state = 'running'
         return self.snapshot()
 
     def shutdown(self) -> None:
@@ -642,6 +659,8 @@ class JobManager:
     def _fail(self, kind: JobKind, job: Job, iid: int, exc: Exception) -> None:
         job.err += 1
         msg = str(exc)[:300]
+        if not job.detail:
+            job.detail = msg
         recovery = {k: getattr(exc, k) for k in ('code', 'action') if hasattr(exc, k)}
         st = job.status[iid]
         st.update(state='error', error=msg, ms=_took(st), **recovery)
@@ -699,6 +718,12 @@ class JobManager:
             try:
                 result = kind.run_item(job, item)
                 self.writer.call(lambda db: kind.persist(db, item, result, job))
+            except Skipped as exc:
+                job.skipped += 1
+                st = job.status[iid]
+                st.update(state='skipped', step=str(exc), ms=_took(st))
+                self.hub.publish('job_item', {'job': job.id, 'id': iid, 'state': 'skipped', 'step': st['step'], 'ms': st['ms']})
+                continue
             except Stopped:
                 job.status[iid]['state'] = 'queued'
                 self.hub.publish('job_item', {'job': job.id, 'id': iid, 'state': 'queued'})
@@ -725,12 +750,14 @@ class JobManager:
             self.last, self.current = job, None
         app_console.emit('error' if job.err else 'log',
                          f'{"Auto " if job.auto else ""}{kind.label} finished: {job.done} done, '
-                         f'{job.err} failed' + (' (stopped)' if stopped else ''),
+                         f'{job.skipped} skipped, {job.err} failed' + (' (stopped)' if stopped else ''),
                          level='error' if job.err else 'info')
         if stopped:
-            text = f'Stopped {kind.label.lower()} after {job.done} of {job.total}'
+            text = f'Stopped {kind.label.lower()} after {job.done + job.skipped + job.err} of {job.total}'
         else:
-            text = f'{kind.verb} {job.done} item(s)' + (f' · {job.err} failed' if job.err else '')
+            text = f'{kind.verb} {job.done} item(s)' + (f' · {job.skipped} skipped' if job.skipped else '') + (f' · {job.err} failed' if job.err else '')
+            if job.skipped and kind.key == 'describe':
+                text += '. Nothing to describe yet: open it online once or add a note.'
         if job.ctx.get('finish_toast') and not stopped:
             text = job.ctx['finish_toast']
         if not job.auto or job.err:

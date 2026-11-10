@@ -1,10 +1,13 @@
 // Reconnect (mirror/phone-reconnect.ts) runs on one thread, but every awaited Drive call is a window for a tap.
 // Ordinary cloud changes call reconnectGate() and refuse while reconnecting/stopping. Confirmed priority
 // actions use stopCloudWork(): cancel reads, invalidate late results and drain atomic writes before continuing.
-// No imports: every caller (pairing.ts included) can use it without a cycle.
+// The reload registry has no runtime dependencies, including pairing or cloud state.
+import { languageWorkChanged, registerLanguageCheck } from '../language-switch.ts'
+
 export const RECONNECT_BUSY = 'Recovery is reconnecting this phone. Wait for it to finish, then retry.'
 let active = false
 let cloudChanges = 0
+registerLanguageCheck(() => active || cloudChanges ? 'settings.language.unsavedWork' : null)
 let revision = 0
 let reads = new AbortController()
 export const cloudReadSignal = () => reads.signal
@@ -24,7 +27,7 @@ export async function stopCloudWork() {
 export function allowCloudWork() { stopping = false }
 export const reconnecting = () => active
 export const cloudChanging = () => cloudChanges > 0
-export function setReconnecting(on: boolean) { active = on; settled() }
+export function setReconnecting(on: boolean) { active = on; languageWorkChanged(); settled() }
 export function reconnectGate() { if (stopping) throw new CloudCancelled(); if (active) throw new Error(RECONNECT_BUSY) }
-export function beginCloudChange() { reconnectGate(); cloudChanges++ }
-export function endCloudChange() { cloudChanges--; settled() }
+export function beginCloudChange() { reconnectGate(); cloudChanges++; languageWorkChanged() }
+export function endCloudChange() { cloudChanges--; languageWorkChanged(); settled() }

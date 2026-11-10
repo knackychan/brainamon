@@ -3,10 +3,14 @@ import { sse } from '../../lib/sse'
 // The phone opens http://localhost:18765/mobile.html through `adb reverse tcp:18765 tcp:18765`, a Host
 // server/guard.py already accepts, and every call here is the same REST API the desktop page uses
 // (src/lib/api.ts adds the X-CM header the guard wants on writes).
-import { api } from '../../lib/api'
+import { api, ApiError } from '../../lib/api'
+import { CHANGED, contextCheck, version } from '../canvas/compose'
+import type { RawCanvasProposal } from '../ai/canvas'
+import type { CanvasDraftContext } from './types'
 import type { Stamp } from '../../lib/note-format'
 import { decodeText, type Picked } from '../files'
 import type { Preview } from '../../lib/capture'
+import { watchPcJobs } from '../pc-jobs.svelte'
 import type { AskEvent, CanvasDoc, CanvasRow, Category, CategoryProposal, PhoneCanvasProposal, Chat, ChatRow, FullItem, MobileSource, MyNote, NoteRow, OpenNote, Row } from './types'
 
 interface Cols { cols: string[]; rows: unknown[][]; total: number }
@@ -82,6 +86,10 @@ export class DesktopSource implements MobileSource {
     return this.myNote(file)
   }
   async deleteMyNote(file: string) { await api.del(`/api/my-notes/${encodeURIComponent(file)}`) }
+  renameBlocked() { return '' }
+  async renameMyNoteCategory(from: string, to: string) {
+    return (await api.post<{ categories: string[] }>('/api/my-notes/categories/rename', { from, to })).categories
+  }
   async readFile(f: Picked, how: 'digest' | 'describe') {
     if (f.kind === 'text') return decodeText(f.data)
     const r = await fetch(`/api/filing/read?name=${encodeURIComponent(f.name)}&how=${how}`, {
@@ -93,7 +101,25 @@ export class DesktopSource implements MobileSource {
   }
 
   canvases() { return api.get<CanvasRow[]>('/api/canvases') }
-  async canvas(id: string) { return (await api.get<{ canvas: CanvasDoc }>(`/api/canvases/${encodeURIComponent(id)}`)).canvas }
+  async canvas(id: string) {
+    const d = await api.get<{ canvas: CanvasDoc; rev: number }>(`/api/canvases/${encodeURIComponent(id)}`)
+    return Object.assign(d.canvas, { _sourceRev: d.rev })
+  }
+  async canvasDraftProblem(id: string) { await this.canvas(id); return null }
+  async applyCanvasDraft(raw: RawCanvasProposal, context: CanvasDraftContext): Promise<string> {
+    contextCheck(raw, context, false)
+    if (!this.draftSent.has(context.opId)) {
+      const rows = new Map((await this.rowsByIds(context.thumbs.map(t => t.id))).map(r => [r.id, r]))
+      if (context.thumbs.some(t => !rows.get(t.id)?.thumb || version(rows.get(t.id)!) !== t.version)) throw new Error(CHANGED)
+    }
+    const sizes = Object.fromEntries(context.thumbs.map(t => [String(t.id), t.size]))
+    this.draftSent.add(context.opId)
+    try {
+      return (await api.post<{ canvas_id: string }>('/api/canvases/draft', { op_id: context.opId, canvas_id: context.canvasId,
+        at: context.at, proposal: raw, base_rev: context.base?._sourceRev ?? null, sizes })).canvas_id
+    } catch (e) { if (e instanceof ApiError && e.status < 500) this.draftSent.delete(context.opId); throw e }
+  }
+  private draftSent = new Set<string>()
   canvasImageUrl(name: string) { return `/files/canvas-uploads/${encodeURIComponent(name)}` }
 
   chats() { return api.get<{ chats: ChatRow[]; active: string }>('/api/chats') }
@@ -109,14 +135,14 @@ export class DesktopSource implements MobileSource {
       method: 'POST', signal, headers: { 'X-CM': '1', 'Content-Type': 'application/json' },
       body: JSON.stringify({ question, chat, mode }),
     })
-    if (!r.ok || !r.body) throw new Error(`Wiskit is not reachable (${r.status})`)
+    if (!r.ok || !r.body) throw Object.assign(new Error(`Wiskit is not reachable (${r.status})`), { displayKey: 'common.error.wiskitUnreachable', displayParams: { status: r.status } })
     let terminal = false
     for await (const [ev, data] of sse(r)) {
       if (terminal) continue
       terminal = ['done', 'error', 'stopped'].includes(ev)
       onEvent({ ev, ...JSON.parse(data) } as AskEvent)
     }
-    if (!terminal) throw new Error('Wiskit was interrupted before completion.')
+    if (!terminal) throw Object.assign(new Error('Wiskit was interrupted before completion.'), { displayKey: 'common.error.wiskitInterrupted' })
   }
 
   async stopAsk(run: string) { await api.post('/api/ask/stop', { run }) }
@@ -134,7 +160,7 @@ export class DesktopSource implements MobileSource {
     return null
   }
   async applyCategoryProposal(p: CategoryProposal): Promise<void> {
-    if (!p.requestId) throw new Error('This request is no longer pending.')
+    if (!p.requestId) throw Object.assign(new Error('This request is no longer pending.'), { displayKey: 'common.error.requestPending' })
     await api.post(`/api/jobs/request/${p.requestId}/approve`, {})
   }
   async declineCategoryProposal(): Promise<void> {
@@ -152,13 +178,13 @@ export class DesktopSource implements MobileSource {
     const current = await this.canvasProposal()
     // the same ID and the same preview: a card left from before a PC restart never approves a newer request
     if (p.mode !== 'pc' || current?.mode !== 'pc' || current.requestId !== p.requestId
-      || JSON.stringify(current.preview) !== JSON.stringify(p.preview)) throw new Error('This canvas request is no longer pending.')
+      || JSON.stringify(current.preview) !== JSON.stringify(p.preview)) throw Object.assign(new Error('This canvas request is no longer pending.'), { displayKey: 'common.error.canvasRequestPending' })
     const done = await api.post<{ canvas?: { canvas_id: string } }>(`/api/jobs/request/${p.requestId}/approve`, {})
     return done.canvas?.canvas_id || p.preview.target.id || ''
   }
   async declineCanvasProposal(p: PhoneCanvasProposal): Promise<void> {
     const current = await this.canvasProposal()
-    if (p.mode !== 'pc' || current?.mode !== 'pc' || current.requestId !== p.requestId) throw new Error('This canvas request is no longer pending.')
+    if (p.mode !== 'pc' || current?.mode !== 'pc' || current.requestId !== p.requestId) throw Object.assign(new Error('This canvas request is no longer pending.'), { displayKey: 'common.error.canvasRequestPending' })
     await api.post(`/api/jobs/request/${p.requestId}/decline`, {})
   }
 
@@ -177,8 +203,15 @@ export class DesktopSource implements MobileSource {
       es.addEventListener('items_changed', e => { try { onItems((JSON.parse((e as MessageEvent).data) as { ids: number[] }).ids || []) } catch { /* ignore */ } })
       es.addEventListener('notes_changed', () => onNotes())
       es.addEventListener('canvas_changed', () => onCanvas?.())
+      this.watchJob(es)
     } catch { /* no SSE: the Refresh button still works */ }
     return () => es?.close()
+  }
+
+  // the PC's jobs on the Library cards (work.svelte.ts, lane `pc`) and in the Tools panel (runs.pc): pc-jobs.svelte.ts
+  // keeps the book of the latest jobs and the ledger of a run started from this phone (projects/phone-processing-flow)
+  private watchJob(es: EventSource) {
+    watchPcJobs(es)
   }
 
   // server/jobs.py publishes `job` with its snapshot on every request and every job step: only a

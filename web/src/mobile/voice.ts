@@ -31,11 +31,21 @@ function open(): Promise<IDBDatabase> {
 function done<T>(r: IDBRequest<T>): Promise<T> {
   return new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
 }
+function write(db: IDBDatabase, action: (store: IDBObjectStore) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction(STORE, 'readwrite')
+      tx.oncomplete = () => resolve()
+      tx.onerror = tx.onabort = () => reject(tx.error || Object.assign(new Error('Phone storage did not save the recording.'), { displayKey: 'common.error.recordingNotSaved' }))
+      action(tx.objectStore(STORE))
+    } catch (error) { reject(error) }
+  })
+}
 
 export async function enqueue(file: string, blob: Blob): Promise<void> {
   const db = await open()
-  await done(db.transaction(STORE, 'readwrite').objectStore(STORE).add({ file, at: Date.now(), type: blob.type, blob } satisfies Queued))
-  db.close()
+  try { await write(db, store => { store.add({ file, at: Date.now(), type: blob.type, blob } satisfies Queued) }) }
+  finally { db.close() }
 }
 export async function queued(): Promise<Queued[]> {
   const db = await open()
@@ -45,8 +55,8 @@ export async function queued(): Promise<Queued[]> {
 }
 async function drop(id: number): Promise<void> {
   const db = await open()
-  await done(db.transaction(STORE, 'readwrite').objectStore(STORE).delete(id))
-  db.close()
+  try { await write(db, store => { store.delete(id) }) }
+  finally { db.close() }
 }
 
 // Transcribe and save every waiting recording, oldest first. `skip(file)` is true for a note the editor

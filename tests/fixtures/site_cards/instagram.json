@@ -1,0 +1,52 @@
+{
+  "_about": "Synthetic Instagram links/cards only; no account data.",
+  "links": [
+    ["https://www.instagram.com/p/Cx1_ab-Z9/", "https://www.instagram.com/p/Cx1_ab-Z9/", "ig:Cx1_ab-Z9"],
+    ["https://www.instagram.com/reel/Cx1_ab-Z9/?igsh=synthetic", "https://www.instagram.com/reel/Cx1_ab-Z9/", "ig:Cx1_ab-Z9"],
+    ["https://instagram.com/reels/Cx1_ab-Z9", "https://www.instagram.com/reel/Cx1_ab-Z9/", "ig:Cx1_ab-Z9"],
+    ["http://m.instagram.com/p/Cx1_ab-Z9", "https://www.instagram.com/p/Cx1_ab-Z9/", "ig:Cx1_ab-Z9"],
+    ["https://www.instagram.com/sam.example/p/Cy2_cd-Y8/", "https://www.instagram.com/p/Cy2_cd-Y8/", "ig:Cy2_cd-Y8"],
+    ["https://www.instagram.com/sam_example/reel/Cy2_cd-Y8/", "https://www.instagram.com/reel/Cy2_cd-Y8/", "ig:Cy2_cd-Y8"],
+    ["https://www.instagram.com/tv/Cz3abcdEF/", "https://www.instagram.com/p/Cz3abcdEF/", "ig:Cz3abcdEF"],
+    ["https://www.instagram.com/sam.example/", "", ""],
+    ["https://www.instagram.com/sam.example/saved/all-posts/", "", ""],
+    ["https://www.instagram.com/stories/sam.example/3300000000000000000/", "", ""],
+    ["https://www.instagram.com/explore/", "", ""],
+    ["https://www.instagram.com/reels/", "", ""],
+    ["https://www.instagram.com.example.net/p/Cx1_ab-Z9/", "", ""],
+    ["https://www.facebook.com/reel/1234567890/", "", ""],
+    ["https://synthetic@www.instagram.com/p/Cx1_ab-Z9/", "", ""],
+    ["https://www.instagram.com:8443/p/Cx1_ab-Z9/", "", ""],
+    ["https://www.instagram.com/p/Cx1_ab-Z9/extra", "", ""],
+    ["https://www.instagram.com/p/abcd/", "", ""],
+    ["https://www.instagram.com/p/Cx1%2Fab-Z9/", "", ""],
+    ["javascript:alert(1)", "", ""]
+  ],
+  "calls": [
+    ["creatorOf", ["Photo by Sam Example on May 01, 2024. May be an image of text."], "Sam Example"],
+    ["creatorOf", ["Photo shared by Sam Example on May 01, 2024 tagging @pat.sample."], "Sam Example"],
+    ["creatorOf", ["Photo by Sam Example in Lisbon, Portugal."], "Sam Example"],
+    ["creatorOf", ["A made-up caption about bread"], ""],
+    ["savedUrl", ["sam.example"], "https://www.instagram.com/sam.example/saved/all-posts/"],
+    ["savedUrl", ["explore"], ""],
+    ["savedUrl", ["../accounts"], ""],
+    ["onSaved", [{"pathname": "/sam.example/saved/all-posts/"}], true],
+    ["onSaved", [{"pathname": "/sam.example/saved/"}], false],
+    ["onSaved", [{"pathname": "/accounts/saved/all-posts/"}], false],
+    ["onSaved", [{"pathname": "/sam.example/"}], false],
+    ["key", ["https://www.instagram.com/p/Cx1_ab-Z9/extra"], ""]
+  ],
+  "items": {
+    "raw": [
+      {"url": "https://www.instagram.com/p/Cx1_ab-Z9/", "kind": "Post", "caption": "Bread", "creator": "", "pic": "https://scontent.cdninstagram.com/synthetic.jpg"},
+      {"url": "https://www.instagram.com/reel/Cy2_cd-Y8/", "kind": "Reel", "caption": "", "creator": "Sam Example", "pic": "https://instagram.xx.fbcdn.net/synthetic.jpg"},
+      {"url": "https://www.instagram.com/p/Cy2_cd-Y8/", "kind": "Post"},
+      {"url": "https://www.instagram.com/sam.example/p/Cz3abcdEF/", "kind": "Post"},
+      {"url": "https://www.instagram.com/p/Cz3abcdEF/", "kind": "Post", "pic": "https://example.com/x.jpg"},
+      {"url": "https://www.instagram.com/p/BadKind1/", "kind": "Other"}
+    ],
+    "posts": ["https://www.instagram.com/p/Cx1_ab-Z9/", "https://www.instagram.com/reel/Cy2_cd-Y8/", "https://www.instagram.com/p/Cz3abcdEF/"],
+    "pics": [["https://www.instagram.com/p/Cx1_ab-Z9/", "https://scontent.cdninstagram.com/synthetic.jpg"], ["https://www.instagram.com/reel/Cy2_cd-Y8/", "https://instagram.xx.fbcdn.net/synthetic.jpg"]],
+    "dropped": 2
+  }
+}

@@ -74,7 +74,7 @@
 
 <div class="setup-ai-form">
   {#if view}
-    <Hint><strong>OpenAI is recommended.</strong> One key covers Wiskit, Whisper transcription and the default search embeddings. Anthropic supports Wiskit, but does not provide transcription or embeddings.</Hint>
+    <Hint><strong>OpenAI is recommended.</strong> One key covers Wiskit, audio transcription and the default search embeddings. Anthropic supports Wiskit, but does not provide transcription or embeddings.</Hint>
     <Hint>Save a key for each provider you use, then choose Wiskit’s provider and model below.</Hint>
     {#each view.models.providers.filter(p => p.id === 'openai' || p.id === 'anthropic' || p.id === provider) as item (item.id)}
       <Field label={`${item.label} API key`} for={`${id}-key-${item.id}`}>

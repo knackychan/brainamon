@@ -193,6 +193,8 @@ def scraper_playwright(request: Request, body: dict = Body(...)):
     key = str(body.get('platform') or 'facebook')
     if key not in scrape_watch.PLAYWRIGHT:
         raise HTTPException(404, 'no such Playwright scraper')
+    if key == 'threads' and body.get('unsave'):
+        raise HTTPException(400, 'Unsave is not available for Threads. Turn it off before starting.')
     if body.get('unsave') and body.get('unsave_confirmed') is not True:
         raise HTTPException(400, 'Confirm that Unsave changes your account before starting.')
     scraper_watch(request, {'on': True})          # the CSV it writes is imported by the watcher

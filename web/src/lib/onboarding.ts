@@ -45,11 +45,11 @@ export function desktopTasks(answer: string, s: { items: number; notes: number; 
 }
 
 // the phone's welcome answers 'pc' (connect my PC), 'phone' (just this phone) or 'skip'
-export function phoneTasks(answer: string, s: { pc: boolean; items: number; ai: boolean }): Task[] {
+export function phoneTasks(answer: string, s: { pc: boolean; items: number; ai: boolean }, words?: (key: string) => string): Task[] {
   return [
-    { id: 'install', label: 'Install Brainamon', done: true },
-    answer === 'pc' ? { id: 'pc', label: 'Connect your PC', done: s.pc } : { id: 'saves', label: 'Save your first link', done: s.items > 0 },
-    { id: 'wiskit', label: 'Turn on Wiskit', done: s.ai },
+    { id: 'install', label: words?.('onboarding.task.install') ?? 'Install Brainamon', done: true },
+    answer === 'pc' ? { id: 'pc', label: words?.('library.empty.connectKey') ?? 'Connect your PC', done: s.pc } : { id: 'saves', label: words?.('onboarding.task.save') ?? 'Save your first link', done: s.items > 0 },
+    { id: 'wiskit', label: words?.('onboarding.task.wiskit') ?? 'Turn on Wiskit', done: s.ai },
   ]
 }
 

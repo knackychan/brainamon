@@ -1,0 +1,170 @@
+{
+  "_about": "Made-up Threads links, helper calls and run items for tests/test_phone_sites.py. No personal data.",
+  "links": [
+    [
+      "https://www.threads.com/@sam.example/post/DAbc_12xyz",
+      "https://www.threads.com/@sam.example/post/DAbc_12xyz",
+      "th:DAbc_12xyz"
+    ],
+    [
+      "https://www.threads.net/@sam.example/post/DAbc_12xyz/?xmt=AQGzMadeUp",
+      "https://www.threads.com/@sam.example/post/DAbc_12xyz",
+      "th:DAbc_12xyz"
+    ],
+    [
+      "http://threads.com/@sam_example/post/DAbc-34xyz",
+      "https://www.threads.com/@sam_example/post/DAbc-34xyz",
+      "th:DAbc-34xyz"
+    ],
+    [
+      "https://www.threads.com/@sam.example",
+      "",
+      ""
+    ],
+    [
+      "https://www.threads.com/saved",
+      "",
+      ""
+    ],
+    [
+      "https://www.threads.com/@sam.example/post/DAbc_12xyz/media",
+      "",
+      ""
+    ],
+    [
+      "https://www.instagram.com/p/DAbc_12xyz/",
+      "",
+      ""
+    ],
+    [
+      "https://www.threads.com.example.net/@sam.example/post/DAbc_12xyz",
+      "",
+      ""
+    ],
+    [
+      "https://synthetic@www.threads.com/@sam.example/post/DAbc_12xyz",
+      "",
+      ""
+    ],
+    [
+      "https://www.threads.com:8443/@sam.example/post/DAbc_12xyz",
+      "",
+      ""
+    ],
+    [
+      "https://www.threads.com/@sam.example/post/abcd",
+      "",
+      ""
+    ]
+  ],
+  "calls": [
+    [
+      "caption",
+      [
+        [
+          "sam.example",
+          "2h",
+          "A made-up thought about bread",
+          "and butter",
+          "12",
+          "Translate"
+        ],
+        "sam.example"
+      ],
+      "A made-up thought about bread\nand butter"
+    ],
+    [
+      "caption",
+      [
+        [
+          "sam.example",
+          "05/01/24",
+          "1.2K",
+          "Like",
+          "Reply"
+        ],
+        "sam.example"
+      ],
+      ""
+    ],
+    [
+      "creatorOf",
+      [
+        "https://www.threads.com/@sam.example/post/DAbc_12xyz"
+      ],
+      "sam.example"
+    ],
+    [
+      "onSaved",
+      [
+        {
+          "pathname": "/saved"
+        }
+      ],
+      true
+    ],
+    [
+      "onSaved",
+      [
+        {
+          "pathname": "/@sam.example"
+        }
+      ],
+      false
+    ],
+    [
+      "open",
+      [
+        null
+      ],
+      "https://www.threads.com/saved"
+    ],
+    [
+      "key",
+      [
+        "https://www.threads.com/@sam.example/post/DAbc_12xyz/extra"
+      ],
+      ""
+    ]
+  ],
+  "items": {
+    "raw": [
+      {
+        "url": "https://www.threads.com/@sam.example/post/DAbc_12xyz",
+        "kind": "Post",
+        "caption": "Bread",
+        "creator": "sam.example",
+        "pic": "https://scontent-xx1-1.cdninstagram.com/v/t51/abc.jpg"
+      },
+      {
+        "url": "https://www.threads.net/@sam.example/post/DAbc_12xyz",
+        "kind": "Post",
+        "caption": "",
+        "creator": "",
+        "pic": ""
+      },
+      {
+        "url": "https://www.threads.com/@sam_example/post/DAbc-34xyz",
+        "kind": "Post",
+        "caption": "",
+        "creator": "",
+        "pic": "javascript:alert(1)"
+      },
+      {
+        "url": "https://www.threads.com/@renamed.user/post/DAbc_12xyz",
+        "kind": "Post"
+      }
+    ],
+    "posts": [
+      "https://www.threads.com/@sam.example/post/DAbc_12xyz",
+      "https://www.threads.com/@sam_example/post/DAbc-34xyz"
+    ],
+    "pics": [
+      [
+        "https://www.threads.com/@sam.example/post/DAbc_12xyz",
+        "https://scontent-xx1-1.cdninstagram.com/v/t51/abc.jpg"
+      ]
+    ],
+    "dropped": 1
+  }
+}

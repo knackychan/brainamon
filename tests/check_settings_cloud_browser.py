@@ -1,6 +1,6 @@
 """Backup & phones Settings page and the Recover a library window against mocked Drive responses; never signs into Google.
 
-Run after building web/: py tests/check_settings_cloud_browser.py
+Run after building web/: py tests/check_settings_cloud_browser.py   (--remove-only: just Remove all phones in flight and its steps)
 Uses the existing screenshot harness and its throwaway library (its own cloud folder). The rules of the approved mockup
 (projects/backup-phones-mockup/check.py) are asserted on every state: one primary key in the window, a reason next to every
 disabled control, no dead end, no link off the page, no horizontal overflow, in light and dark at 1440 and 390 px.
@@ -144,6 +144,12 @@ STATES = [
       'You can close Settings. Quitting Brainamon pauses this; it continues at the next start.', 'Re-encrypting with the new key (progress above)', 'Locked out at 12:00',
       'Phones you keep: add them again now. They load the library when re-encrypting finishes.', 'Lost or stolen? Also sign that phone out of your Google account.',
       'How to sign a phone out', 'Pause backup', 'Add a phone'], ['Done'], ['Remove all phones…', 'Reset backup…']),
+    ('t16a-removing-starting', dict(rotation='pending', rotation_locked_at=NOW, state='publishing', task=dict(REMOVING, step=3, done=0, total=0, bytes_done=0, bytes_total=0)), dict(REC_OK),
+     ['Removing all phones · step 3 of 5.', 'Re-encrypting the backup…', 'Starts after the current upload request (up to a minute).'], ['Done'], ['Re-encrypting: 0 of 0 files']),
+    ('t16a-removing-checking-vault', dict(rotation='pending', rotation_locked_at=NOW, state='publishing', upload_step='Uploading and verifying the vault with the replacement key…',
+                                          task=dict(REMOVING, step=4, done=0, total=0, bytes_done=0, bytes_total=0)), dict(REC_OK),
+     ['Removing all phones · step 4 of 5.', 'Checking the new copy, including your Obsidian vault if you sync one…', 'Re-encrypt the backup.'], ['Done'],
+     ['Re-encrypting: 0 of 0 files', 'Starts after the current upload request']),
     ('t16b-removing-needs-the-new-file', dict(rotation='pending', rotation_locked_at=NOW, state='publishing', task=REMOVING), dict(REC_OK, file_outdated=True, replaced_at=NOW // 1000),
      ['Removing all phones · step 3 of 5.', 'Save new recovery file…'], ['Save new recovery file…'], []),
     ('t16c-passphrase-created-during-rotation', dict(rotation='pending', state='publishing', task=REMOVING), dict(REC_OK, enrolled=False, verified=False, rotation_pending=True),
@@ -219,6 +225,7 @@ class Review(shots.Run):
                              rotation_pending=False, file_outdated=False, replaced_at=0, takeover_ready=False, check=None, activity=None,
                              job={'state': 'idle', 'done': 0, 'total': 0, 'error': '', 'destination': ''}, preview=None)
         failing = {}
+        hold, held = set(), []      # paths whose request waits for the test to answer it: a request in flight
         update_answer = [None]      # what update-preview answers (W4b)
 
         def reset(cloud_changes, recovery_changes):
@@ -244,6 +251,9 @@ class Review(shots.Run):
                 return
             body = route.request.post_data_json if route.request.post_data else {}
             calls.append((path, body))
+            if path in hold:
+                held.append(route)
+                return
             if path in failing:
                 route.fulfill(status=409, json={'detail': failing[path]})
                 return
@@ -438,6 +448,48 @@ class Review(shots.Run):
             assert not errors, errors
             ctx.close()
             print(f'{theme}: live upload/item counts, checklist, cleanup, layouts and reduced motion passed', flush=True)
+            return
+
+        if '--remove-only' in sys.argv:
+            for width in (1440, 390):
+                page.set_viewport_size({'width': width, 'height': 1000 if width == 1440 else 844})
+                # Remove all phones while its request is in flight (Drive can take a while): the key says so, a bar shows, nothing is pressed twice
+                open_view(dict(), dict(REC_OK))
+                button('Remove all phones…').click()
+                panel.locator('#bp-current').fill('a long synthetic recovery phrase')
+                hold.add('/api/cloud/unpair')
+                n = len(calls)
+                button('Remove all phones').click()
+                removing = panel.get_by_role('button', name='Removing all phones…', exact=True)
+                expect(removing).to_be_disabled()
+                expect(removing).to_have_attribute('aria-busy', 'true')
+                expect(panel.get_by_role('progressbar', name='Removing all phones')).to_be_visible()
+                expect(panel.get_by_text('Locking phones out and making a new key.', exact=False)).to_be_visible()
+                expect(button('Cancel')).to_be_disabled()
+                audit(f'remove-in-flight-{width}')
+                removing.scroll_into_view_if_needed()          # the Phones box is below the fold: the shot shows the form itself
+                self.shot(page, f'desktop-{theme}-settings-backup-remove-in-flight-{width}')
+                removing.click(force=True)
+                assert calls_since(n) == ['/api/cloud/unpair'], calls_since(n)      # a second press reaches nothing
+                hold.clear()
+                view.update(rotation='pending', task=dict(REMOVING, stage='requested', step=3, done=0, total=0, bytes_done=0, bytes_total=0))
+                held.pop().fulfill(json=view)
+                expect(panel.get_by_text('Remove all phones?', exact=True)).to_have_count(0)
+                expect(panel.get_by_text('Removing all phones · step 3 of 5.', exact=False)).to_be_visible()
+                expect(panel.get_by_text('Re-encrypting the backup…', exact=False)).to_be_visible()
+                # step 4 while the Obsidian vault is uploaded and read back: no fall back to "Re-encrypting: 0 of 0 files"
+                checking = dict(REMOVING, step=4, done=0, total=0, bytes_done=0, bytes_total=0)
+                open_view(dict(rotation='pending', rotation_locked_at=NOW, state='publishing', task=checking,
+                               upload_step='Uploading and verifying the vault with the replacement key…'), dict(REC_OK))
+                expect(panel.get_by_text('Removing all phones · step 4 of 5.', exact=False)).to_be_visible()
+                expect(panel.get_by_text('Checking the new copy, including your Obsidian vault if you sync one…', exact=False)).to_be_visible()
+                expect(panel.get_by_text('Re-encrypting: 0 of 0 files', exact=False)).to_have_count(0)
+                expect(panel.get_by_text('Starts after the current upload request', exact=False)).to_have_count(0)
+                audit(f'removal-checking-{width}')
+                capture(f'removal-checking-{width}')
+            assert not errors, errors
+            ctx.close()
+            print(f'{theme}: Remove all phones in flight, its steps and the vault check passed', flush=True)
             return
 
         # ── A15: every state keeps the rules; each says its words and offers its one primary (README: T, G, B, R, P) ──

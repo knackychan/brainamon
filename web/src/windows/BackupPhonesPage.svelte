@@ -114,7 +114,9 @@
     if (e) { formError = e; return }
     if (await recCall('enroll', { password: pass, confirmation: pass2 })) { closeForm(); reload() }
   }
+  let removing = $state(false)           // the unpair request is in flight: the key shows it and cannot be pressed twice
   async function confirmRemove() {
+    if (removing) return
     formError = ''
     const body = { recovery_passphrase: '', new_passphrase: '' }
     if (rec?.configured) {
@@ -127,7 +129,10 @@
         body.new_passphrase = pass
       }
     }
-    if (await run('/api/cloud/unpair', body, undefined, 'unpair')) { closeForm(); pairing = null; dismissedDone = ''; reload(); void loadRec() }
+    removing = true
+    try {
+      if (await run('/api/cloud/unpair', body, undefined, 'unpair')) { closeForm(); pairing = null; dismissedDone = ''; reload(); void loadRec() }
+    } finally { removing = false }
   }
   async function takeOver() {
     const ready = !!rec?.takeover_ready
@@ -251,8 +256,8 @@
       if (task.kind === 'remove_phones') {
         const step = task.step
         const stepNames = ['New key ready.', c.rotation_locked_at ? `Phones locked out at ${hm(c.rotation_locked_at)}.` : 'Lock phones out.',
-          step === 3 ? `Re-encrypting: ${num(task.done)} of ${num(task.total)} files (${gb(task.bytes_done)} of ${gb(task.bytes_total)} GB).` : 'Re-encrypt the backup.',
-          step === 4 ? `Checking the new copy: ${num(task.done)} of ${num(task.total)} files.` : 'Check the new copy.',
+          step === 3 ? (task.total ? `Re-encrypting: ${num(task.done)} of ${num(task.total)} files (${gb(task.bytes_done)} of ${gb(task.bytes_total)} GB).` : 'Re-encrypting the backup…') : 'Re-encrypt the backup.',
+          step === 4 ? (task.total ? `Checking the new copy: ${num(task.done)} of ${num(task.total)} files.` : 'Checking the new copy, including your Obsidian vault if you sync one…') : 'Check the new copy.',
           step === 5 ? `Deleting the old copy${task.total ? `: ${num(task.done)} of ${num(task.total)}` : ''}.` : 'Delete the old copy.']
         const why = !online ? ' Waiting for the connection.' : paused ? ` ${pausedLine}` : c.error_code === 'drive_full' ? ' Google Drive is full: it needs room for both copies until the old one is deleted.'
           : step === 3 && !task.done && ['starting', 'publishing'].includes(c.state) ? ' Starts after the current upload request (up to a minute).' : ''
@@ -602,7 +607,7 @@
         <div class="set-pair">
           <div class="set-qr" role="img" aria-label="Phone pairing QR code" tabindex="-1" bind:this={qr}>{@html pairing.svg}</div>
           <div>
-            <Hint>Open Brainamon on the phone, then More &gt; Pair with your PC &gt; Scan (a phone already set up: More &gt; Backup &amp; phones &gt; This phone). Show this code only to your own phone: it carries your library key. Code check: {pairing.fingerprint}.</Hint>
+            <Hint>Open Brainamon on the phone, then Settings &gt; Pair with your PC &gt; Scan (a phone already set up: Settings &gt; Backup &amp; phones &gt; This phone). Show this code only to your own phone: it carries your library key. Code check: {pairing.fingerprint}.</Hint>
             {#if m.removal || m.firstRunning}<Hint>The phone loads the library when the {m.removal ? 're-encrypted copy' : 'first backup'} is ready.</Hint>{/if}
             {#if c.phone_keys.length}
               <Label as="span" id="bp-pair-keys">Also send</Label>
@@ -633,9 +638,13 @@
       <div>
         {@render formErrorLine()}
         {#if err?.where === 'unpair' && !formError}<Hint tone="error" role="alert">{err.msg}</Hint>{/if}
+        {#if removing}
+          <Progress label="Removing all phones" />
+          <Hint id="bp-removing" role="status">Locking phones out and making a new key. This can take a moment; the steps appear here next.</Hint>
+        {/if}
         <div class="frow">
-          <Button variant="danger" size="sm" onclick={confirmRemove}>{W.removeAllGo}</Button>
-          <TextButton onclick={closeForm}>Cancel</TextButton>
+          <Button variant="danger" size="sm" disabled={removing} aria-busy={removing} aria-describedby={removing ? 'bp-removing' : undefined} onclick={confirmRemove}>{removing ? 'Removing all phones…' : W.removeAllGo}</Button>
+          <TextButton disabled={removing} aria-describedby={removing ? 'bp-removing' : undefined} onclick={closeForm}>Cancel</TextButton>
         </div>
       </div>
     {:else}

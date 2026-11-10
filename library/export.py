@@ -83,7 +83,8 @@ TITLE_CAP = 90
 def card_title(r: dict) -> str:
     """Same text the Qt card shows: short_desc, else ai_desc, else description (first line).
     One rule for the desktop's rows (server/library.py) and the Drive mirror's (library/mirror.py)."""
-    text = (r.get('short_desc') or r.get('ai_desc') or r.get('description') or '').strip()
+    text = next((value for key in ('short_desc', 'ai_desc', 'description')
+                 if (value := (r.get(key) or '').strip()) and value.upper() != 'NO_CONTENT'), '')
     first = text.splitlines()[0] if text else ''
     return first[:TITLE_CAP]
 

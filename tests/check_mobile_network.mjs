@@ -3,6 +3,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import ts from '../web/node_modules/typescript/lib/typescript.js'
+import { t } from '../web/src/lib/i18n/index.ts'
+import { fmtDate, fmtTime } from '../web/src/lib/i18n/format.ts'
+import { phoneWords, nativeError } from '../web/src/mobile/settings-words.ts'
 
 function load(path, deps, globals) {
   const exports = {}
@@ -122,12 +125,20 @@ assert.equal(allowed.policy.syncPaused(), false)
 const v = await setup(true)
 let rounds = 0, pcReads = 0
 Object.assign(v.browser, { setInterval, setTimeout })
+const language = load('web/src/mobile/language-switch.ts', {}, {})
+let finishRemove
+const vaultSource = { syncVault: async () => { rounds++; return { state: 'idle', summary: 'Done' } },
+  vaultPc: async () => { pcReads++; return null }, vaultRemoveLegacy: () => new Promise(resolve => { finishRemove = resolve }) }
 const vault = load('web/src/mobile/vault/auto.svelte.ts', {
+  '../../lib/i18n/index.ts': { t }, '../../lib/i18n/format.ts': { fmtDate, fmtTime },
+  '../settings-words': { phoneWords, nativeError },
+  '../language-switch.ts': language,
+  '../obsidian': { setVaultName() {} },
   '../native': { isApp: true }, '../network.svelte': v.policy,
   '../store': { kv: { get: async () => undefined, set: async () => {} } },
   '../../lib/progress': { progress: () => ({ pct: 0, left: '' }) },
   '../state.svelte': { driveStatus: () => ({ ok: true }), phone: { tried: true }, solo: false,
-    source: { syncVault: async () => { rounds++; return { state: 'idle', summary: 'Done' } }, vaultPc: async () => { pcReads++; return null } } },
+    source: vaultSource },
 }, { $state: x => x, window: v.browser, document: new EventTarget() })
 vault.vault.opts = { on: true, uri: 'vault://test', name: 'Test' }
 await vault.runVault(true)
@@ -143,4 +154,169 @@ vault.vault.busy = false
 await new Promise(resolve => setTimeout(resolve, 300))
 assert.equal(rounds, 1)
 stop()
+const remove = vault.removeOldPages()
+const attempt = () => language.switchLanguage('fr', 'en', async () => {}, { setItem() {} }, () => {})
+assert.equal((await attempt()).status, 'blocked')
+finishRemove(1)
+await remove
+assert.equal((await attempt()).status, 'reloaded')
+let finishRound
+vaultSource.syncVault = () => new Promise(resolve => { finishRound = resolve })
+const round = vault.runVault(true)
+assert.equal((await attempt()).status, 'blocked')
+vault.vault.busy = false // the UI can stop waiting while the file is still being written
+assert.equal((await attempt()).status, 'blocked')
+finishRound({ state: 'idle', summary: 'Done' })
+await round
+assert.equal((await attempt()).status, 'reloaded')
+
+// Offline saving and auto-keep can write outside their narrow video progress indicator.
+let finishPersist, finishLoad
+const state = x => x
+state.raw = x => x
+let offlineWrites = 0
+const offlineItems = { putRequired: async () => {}, all: async () => [] }
+const offlineKv = { get: async () => undefined, getRequired: async () => { throw Error('synthetic read failure') },
+  setOfflineRequired: async () => { offlineWrites++ } }
+const offline = load('web/src/mobile/offline.svelte.ts', {
+  '../lib/i18n/index.ts': { t },
+  './language-switch.ts': language,
+  './store': { items: offlineItems, kv: offlineKv },
+  './state.svelte': { mirrorSource: {}, phone: { byId: new Map(), rows: [] }, source: { item: async () => ({ files: {} }) } },
+  './network.svelte': v.policy,
+}, { $state: state, localStorage: { getItem: () => null }, navigator: { onLine: true,
+  storage: { persist: () => new Promise(resolve => { finishPersist = resolve }), persisted: async () => false } },
+  caches: { open: async () => ({}) } })
+const itemSave = offline.saveItem(1, false)
+assert.equal((await attempt()).status, 'blocked')
+finishPersist(true)
+await itemSave
+assert.equal((await attempt()).status, 'reloaded')
+offline.offline.load = () => new Promise(resolve => { finishLoad = resolve })
+const keep = offline.autoKeep()
+assert.equal((await attempt()).status, 'blocked')
+finishLoad()
+await keep
+assert.equal((await attempt()).status, 'reloaded')
+await assert.rejects(offline.removeCanvas('synthetic'), /synthetic read failure/)
+assert.equal(offlineWrites, 0)
+offlineItems.putRequired = async () => { throw Error('synthetic write failure') }
+offline.offline.persisted = true
+await assert.rejects(offline.saveItem(1, false), /synthetic write failure/)
+assert.equal((await attempt()).status, 'reloaded')
+
+// A link without durable storage stays in its capture draft when it cannot be sent.
+let finishOutbox
+const outboxDb = { add: () => new Promise(resolve => { finishOutbox = resolve }) }
+const outbox = load('web/src/mobile/outbox.svelte.ts', {
+  './language-switch.ts': language, './links': { cleanLink: x => x },
+  './store': { outbox: outboxDb },
+}, { $state: state, navigator: { onLine: false } })
+const box = new outbox.Outbox({}, false)
+const linkSave = box.save('https://example.test', '', '')
+assert.equal((await attempt()).status, 'blocked')
+finishOutbox(undefined)
+await assert.rejects(linkSave, /Keep the draft and retry/)
+assert.equal(box.entries.length, 0)
+assert.equal((await attempt()).status, 'reloaded')
+outboxDb.add = async () => 77
+outboxDb.putRequired = async () => { throw Error('synthetic storage failure') }
+const sentBox = new outbox.Outbox({ saveLink: async () => ({ id: 1, new: true }) }, true)
+await sentBox.save('https://example.test/sent', '', '')
+assert.equal((await attempt()).reason, 'settings.language.unsavedOutbox')
+outboxDb.putRequired = async () => 77
+assert.equal((await attempt()).status, 'reloaded')
+
+outboxDb.add = async () => 78
+outboxDb.putRequired = async () => { throw Error('synthetic storage failure') }
+const removeBox = new outbox.Outbox({ saveLink: async () => ({ id: 2, new: true }) }, true)
+await removeBox.save('https://example.test/remove', '', '')
+let finishStatus
+const order = []
+outboxDb.putRequired = () => new Promise(resolve => { finishStatus = () => { order.push('write'); resolve(78) } })
+outboxDb.delRequired = async () => { order.push('delete') }
+const switchingOutbox = attempt()
+while (!finishStatus) await Promise.resolve()
+const removingOutbox = removeBox.remove(78)
+finishStatus()
+await removingOutbox
+assert.equal((await switchingOutbox).status, 'reloaded')
+assert.deepEqual(order, ['write', 'delete'])
+
+const recovery = load('web/src/mobile/recovery.svelte.ts', {
+  '../lib/i18n/index.ts': { t }, './settings-words': { nativeError },
+  './language-switch.ts': language, '../lib/pick': {}, './mirror/recovery-envelope': {},
+  './mirror/phone-recovery': {}, './state.svelte': { phone: {} },
+}, { $state: state })
+let finishRecovery
+const recoveryRun = recovery.recoveryRun(() => new Promise(resolve => { finishRecovery = resolve }))
+assert.equal((await attempt()).status, 'blocked')
+finishRecovery()
+await recoveryRun
+assert.equal((await attempt()).status, 'reloaded')
+
+let finishBackup
+const backup = load('web/src/mobile/backup.svelte.ts', {
+  '../lib/i18n/index.ts': { t }, './settings-words': { phoneWords, nativeError },
+  './language-switch.ts': language, './mirror/pairing': { pairing: () => null },
+  './mirror/phone-backup': { backupTask: () => null, beginBackupTask: async () => {},
+    runBackupTask: () => new Promise(resolve => { finishBackup = resolve }), pauseBackupTask: async () => {} },
+}, { $state: state, location: { pathname: '/', replace() {}, reload() {} } })
+const backupRun = backup.runBackup({}, 'synthetic')
+await Promise.resolve()
+assert.equal((await attempt()).status, 'blocked')
+finishBackup()
+await backupRun
+assert.equal((await attempt()).status, 'reloaded')
+
+let finishJournal, finishChat
+const journalDb = { all: async () => [], add: () => new Promise(resolve => { finishJournal = resolve }),
+  forChat: () => new Promise(resolve => { finishChat = resolve }), saveChat: async () => 2 }
+let journalDurable = true
+const journal = load('web/src/mobile/mirror/changes.ts', {
+  '../language-switch.ts': language,
+  '../store': { changes: journalDb, journal: async () => journalDurable, kv: { get: async () => undefined } },
+  '../ai/canvas.ts': {}, '../ai/describe.ts': {}, './resend': {}, './pairing': {},
+}, { crypto: { getRandomValues: x => x } })
+const changes = new journal.Changes()
+const addChange = changes.add({ op: 'link', url: 'https://example.test' })
+while (!finishJournal) await Promise.resolve()
+assert.equal((await attempt()).status, 'blocked')
+finishJournal(1)
+await addChange
+assert.equal((await attempt()).status, 'reloaded')
+const saveChat = changes.saveChat({ op: 'chat', slug: 'synthetic' })
+while (!finishChat) await Promise.resolve()
+assert.equal((await attempt()).status, 'blocked')
+finishChat([])
+await saveChat
+assert.equal((await attempt()).status, 'reloaded')
+const volatileChanges = new journal.Changes()
+journalDb.add = async () => undefined
+await volatileChanges.add({ op: 'note', file: 'synthetic.md', body: 'kept in memory' })
+assert.equal((await attempt()).reason, 'settings.language.unsavedJournal')
+journalDb.add = async () => 42
+await volatileChanges.add({ op: 'note', file: 'synthetic.md', body: 'retry' })
+assert.equal((await attempt()).status, 'reloaded')
+journalDb.put = async () => undefined
+await volatileChanges.add({ op: 'note', file: 'synthetic.md', body: 'failed update' })
+assert.equal((await attempt()).reason, 'settings.language.unsavedJournal')
+journalDb.put = async () => 42
+await volatileChanges.add({ op: 'note', file: 'synthetic.md', body: 'saved update' })
+assert.equal((await attempt()).status, 'reloaded')
+journalDurable = false
+await volatileChanges.commit(volatileChanges.list, () => {}, [], { delivery: { next: 2 } })
+assert.equal((await attempt()).reason, 'settings.language.unsavedJournal')
+journalDurable = true
+await volatileChanges.commit(volatileChanges.list, () => {}, [], { delivery: { next: 2 } })
+assert.equal((await attempt()).status, 'reloaded')
+const deleted = []
+journalDb.delConfirmed = async id => { deleted.push(id); return false }
+await assert.rejects(volatileChanges.dropQueuedNote('synthetic.md'), /Retry the deletion/)
+assert.equal((await attempt()).reason, 'settings.language.unsavedJournal')
+journalDb.delConfirmed = async id => { deleted.push(id); return true }
+await volatileChanges.dropQueuedNote('synthetic.md')
+assert.equal((await attempt()).status, 'reloaded')
+assert.deepEqual(deleted, [42, 42])
+
 console.log('Mobile network policy passed: defaults, persistence, native/browser changes, retries, active requests/bodies and vault pause/resume.')

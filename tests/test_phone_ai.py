@@ -29,6 +29,17 @@ from tests.test_phone_js import _node_ok, node
 
 MODEL = 'text-embedding-3-small'
 
+# one source with every part (the labels, the per-part caps and the trim: 1200 + 600 + 800 + 400 + 400 is over 3000, so
+# the report is cut to 800), a link saved on the phone (title, caption, note; no report), a bare link (its description
+# is only its url: no block). The same dicts go through both twins.
+RICH = {'id': 7, 'url': 'https://example.com/7', 'short_desc': 'Knee prehab', 'creator': 'Coach', 'category': 'SPORT',
+        'tags': ' knee ,prehab,, ', 'report': 'R' * 1500, 'ai_desc': 'A' * 700, 'transcript': 'T' * 900,
+        'description': 'D' * 500, 'notes': 'N' * 450}
+PHONE_LINK = {'id': -7, 'url': 'https://example.com/p7', 'short_desc': 'Knee wall sits', 'creator': '', 'category': 'Inbox',
+              'tags': '', 'ai_desc': '', 'description': 'Hold 45 s, three rounds.', 'notes': 'Try on Monday'}
+BARE = {'id': -8, 'url': 'https://example.com/p8', 'description': 'https://example.com/p8', 'short_desc': '', 'notes': ''}
+SENTINEL = {'id': -9, 'url': 'https://example.com/p9', 'description': 'NO_CONTENT', 'ai_desc': '  NO_CONTENT\n', 'notes': ''}
+
 
 def _mirror_texts(db, data_dir: Path) -> tuple[list, list]:
     """The search text and card rows exactly as the mirror carries them."""
@@ -64,7 +75,8 @@ class PhoneAiTest(unittest.TestCase):
                'cases': cls.cases, 'hist': hist,
                'ask': json.loads((ask_core.prompt_files.DIR / 'ask_quick.json').read_text(encoding='utf-8')),
                'synth': json.loads((ask_core.prompt_files.DIR / 'synth.json').read_text(encoding='utf-8')),
-               'synth_ids': [it['id'] for it in cls.fx['items']]}
+               'synth_ids': [it['id'] for it in cls.fx['items']],
+               'rich': RICH, 'phone_link': PHONE_LINK, 'bare': BARE, 'sentinel': SENTINEL}
         (cls.tmp / 'in.json').write_text(json.dumps(src), encoding='utf-8')
         cls.out = json.loads(node(f"""
             import fs from 'node:fs'
@@ -100,6 +112,11 @@ class PhoneAiTest(unittest.TestCase):
             const b0 = Y.batches(items)[0]
             out.fold = [Y.batchPrompt('Knee prehab', '', b0), Y.batchPrompt('Knee prehab', '## Note', b0), Y.batchPrompt('Knee prehab', '## Note', b0, 'append')]
             out.clean = clean('```markdown\\n# Hi\\n```')
+            out.rich = Y.sourceBlock(S.rich); out.phoneLink = Y.sourceBlock(S.phone_link); out.bare = Y.sourceBlock(S.bare)
+            out.richParts = Y.parts(S.rich)
+            out.sentinel = [Y.hasText(S.sentinel), Y.sourceBlock(S.sentinel), Y.batches([S.sentinel]).length,
+              Y.sourceBlock({{ ...S.sentinel, notes: 'Read later' }}), Y.hasText({{ ...S.sentinel, ai_desc: ' no_content ' }})]
+            out.bareVariants = ['example.com/p8/', 'HTTPS://WWW.EXAMPLE.COM/p8/', 'example.com/p8 caption'].map(description => Y.hasText({{ ...S.bare, description }}))
             out.cited = citedIds('Try [id 12] and [ids 3, 4] or [id 5, id 6]; see [note: knee.md]. Not [12].')
             console.log(JSON.stringify(out))
         """, timeout=120))
@@ -160,6 +177,39 @@ class PhoneAiTest(unittest.TestCase):
                                             synth.fold_prompt('Knee prehab', 'append', '## Note', text)])
         self.assertEqual(self.out['clean'], synth.clean('```markdown\n# Hi\n```'))
         self.assertEqual(synth.PHONE_MAX_SOURCES, 36)
+
+    def test_synthesize_sends_every_part_of_a_source(self):
+        # projects/phone-solo-synthesize: labelled parts, per-part caps, the report trimmed first, tags and category
+        self.assertEqual(self.out['rich'], synth.source_block(RICH))
+        self.assertEqual(self.out['phoneLink'], synth.source_block(PHONE_LINK))
+        self.assertEqual(self.out['bare'], synth.source_block(BARE))
+        self.assertEqual(self.out['richParts'], [list(p) for p in synth.parts(RICH)])
+        block = synth.source_block(RICH)
+        for line in ('### Source 7 — Knee prehab', 'Creator: Coach', 'URL: https://example.com/7', 'Tags: knee, prehab', 'Category: SPORT',
+                     'Report:\n' + 'R' * 800, 'AI description:\n' + 'A' * 600, 'Transcript:\n' + 'T' * 800, 'Caption:\n' + 'D' * 400, 'My note:\n' + 'N' * 400):
+            self.assertIn(line, block)
+        self.assertEqual({k: len(t) for k, t in synth.parts(RICH)}, {'report': 800, 'ai_desc': 600, 'transcript': 800, 'description': 400, 'notes': 400})
+        self.assertEqual([k for k, _ in synth.parts(RICH)], ['report', 'ai_desc', 'transcript', 'description', 'notes'])
+        phone = synth.source_block(PHONE_LINK)
+        for line in ('### Source -7 — Knee wall sits', 'Category: Inbox', 'Caption:\nHold 45 s, three rounds.', 'My note:\nTry on Monday'):
+            self.assertIn(line, phone)
+        for gone in ('Report:', 'Creator:', 'Tags:', 'Transcript:', 'AI description:'):
+            self.assertNotIn(gone, phone)
+        self.assertEqual(synth.source_block(BARE), '')
+        self.assertFalse(synth.has_text(BARE))
+        variants = [{**BARE, 'description': text} for text in ('example.com/p8/', 'HTTPS://WWW.EXAMPLE.COM/p8/', 'example.com/p8 caption')]
+        self.assertEqual(self.out['bareVariants'], [synth.has_text(s) for s in variants])
+        self.assertEqual(self.out['bareVariants'], [False, False, True])
+        self.assertEqual(synth.batches([RICH, BARE, PHONE_LINK]), [[RICH, PHONE_LINK]])
+        self.assertFalse(synth.has_text(SENTINEL))
+        self.assertEqual(synth.batches([SENTINEL]), [])
+        with_note = {**SENTINEL, 'notes': 'Read later'}
+        self.assertFalse(synth.has_text({**SENTINEL, 'ai_desc': ' no_content '}))
+        self.assertEqual(self.out['sentinel'], [False, '', 0, synth.source_block(with_note), False])
+        self.assertIn('My note:\nRead later', synth.source_block(with_note))
+        self.assertNotIn('NO_CONTENT', synth.source_block(with_note))
+        self.assertEqual((synth.EXCERPT_LIMIT, synth.TITLE_LIMIT, synth.PHONE_MAX_SOURCES), (3000, 200, 36))
+        self.assertIn("'My note' is what the owner wrote", synth.RULES)
 
     def test_stopwords_agree(self):
         self.assertEqual(self.out['stop'], sorted(core_db._FTS_STOPWORDS))

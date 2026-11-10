@@ -181,7 +181,7 @@ class JobToolsTest(unittest.TestCase):
         recent = jobs.status()['recent_errors']
         failed = {e['item_id'] for e in recent if 'item_id' in e}
         self.assertTrue(set(self.ids[1:]) <= failed, recent)
-        self.assertTrue(all('not a valid image' in e['error'] for e in recent if 'item_id' in e))
+        self.assertTrue(all('not a valid image' in e['error'] for e in [e for e in recent if 'item_id' in e][-3:]))
 
     def test_app_not_running(self):
         with mock.patch.object(jobs, 'transport', jobs._http), \

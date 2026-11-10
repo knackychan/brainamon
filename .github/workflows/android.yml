@@ -14,6 +14,7 @@ on:
       - 'LICENSE'
       - 'THIRD_PARTY_NOTICES.md'
       - 'packaging/payload_guard.py'
+      - 'scrapers/sites/**'
       - '.github/workflows/android.yml'
   workflow_dispatch:
 

@@ -1,12 +1,14 @@
 // Open in Obsidian (PLAN.md "Obsidian", Phase 6): one note pushed into the phone's vault with the
 // obsidian://new link, at the path the desktop's Export to Obsidian writes it
 // (library/obsidian_export.py: <vault>/Content Manager/notes/<file>), so the next export replaces it.
-// Obsidian sends nothing back. The vault name defaults to the PC's vault folder (library/meta.json
-// `obsidian_vault`) and can be changed under More (the phone's vault may be named differently).
+// Obsidian sends nothing back. The vault name is the one typed under Settings > Obsidian; without one, the phone's
+// synced vault folder (Obsidian names a vault after its folder; choosing a folder also saves its name, vault/auto),
+// else the PC's vault folder (library/meta.json `obsidian_vault`).
 const KEY = 'bp-vault'
 
-export function vaultName(fromPc = ''): string {
-  try { return localStorage.getItem(KEY) ?? fromPc } catch { return fromPc }
+export function vaultName(fromPc = '', fromFolder = ''): string {
+  const fallback = fromFolder || fromPc
+  try { return localStorage.getItem(KEY) ?? fallback } catch { return fallback }
 }
 export function setVaultName(v: string) {
   try { localStorage.setItem(KEY, v.trim()) } catch { /* private window */ }

@@ -63,6 +63,25 @@ async def add_category(request: Request, body: dict = Body(...)):
     return categories(request)
 
 
+@router.post('/api/my-notes/categories/rename')
+async def rename_category(request: Request, body: dict = Body(...)):
+    """Rename a category on every personal note in it (the phone connected to the PC, the desktop rail)."""
+    old, new, nd = body.get('from'), body.get('to'), _nd(request)
+
+    def run(db):
+        paths = my_notes.rename_category(db, nd, old, new)
+        if paths:
+            db.reindex_notes()
+        return paths
+    try:
+        paths = await request.app.state.writer.run(run)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    for p in paths:
+        _changed(request, p.name)
+    return categories(request)
+
+
 @router.get('/api/my-notes')
 def notes(request: Request, category: str = my_notes.ALL_CATEGORY):
     out = []
@@ -103,7 +122,7 @@ async def create(request: Request, body: dict = Body(...)):
 
 @router.post('/api/my-notes/voice')
 async def voice_note(request: Request, file: str = '', title: str = '', category: str = ''):
-    """Raw audio body -> Whisper -> text added to note `file`, or to a new note when `file` is empty."""
+    """Raw audio body -> transcription -> text added to note `file`, or to a new note when `file` is empty."""
     global _voice_busy
     if not entitlements.feature_enabled('voice_notes'):
         raise HTTPException(403, 'Voice notes are not part of this plan.')

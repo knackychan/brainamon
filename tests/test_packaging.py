@@ -43,6 +43,8 @@ class FrontendBuildTest(unittest.TestCase):
             'LICENSE': 'Synthetic software license\n',
             'THIRD_PARTY_NOTICES.md': 'Synthetic third-party notices\n',
             'mobile-shell/store/privacy-policy.md': 'Synthetic privacy policy\n',
+            'mobile-shell/store/privacy-policy.fr.md': 'Synthetic French privacy policy\n',
+            'mobile-shell/store/privacy-policy.zh-Hant.md': 'Synthetic Taiwan privacy policy\n',
         }.items():
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -64,7 +66,8 @@ class FrontendBuildTest(unittest.TestCase):
                 self.assertTrue((cwd / 'public/icon.svg').is_file())
                 self.assertEqual((cwd.parent / 'knowledge/prompts/ask_quick.json').read_text(),
                                  '{"prompt":"shared"}')
-                for name in ('core/license.py', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'mobile-shell/store/privacy-policy.md'):
+                for name in ('core/license.py', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'mobile-shell/store/privacy-policy.md',
+                             'mobile-shell/store/privacy-policy.fr.md', 'mobile-shell/store/privacy-policy.zh-Hant.md'):
                     self.assertEqual((cwd.parent / name).read_bytes(), (self.root / name).read_bytes())
             else:
                 self.assertEqual(cmd, ['npm', 'run', 'build'])
@@ -121,6 +124,7 @@ class ScrapersBundledTest(unittest.TestCase):
                 self.assertTrue(scrape_watch.script_for(key).strip())
         for _label, worker, _profile in scrape_watch.PLAYWRIGHT.values():
             self.assertIn(worker, SPEC)
+        self.assertIn("'threads.js'), 'scrapers/sites'", SPEC)
         self.assertIn('requirements-scraper.txt', SPEC)
         self.assertIn("'playwright'", SPEC)  # excluded package, only small workers ship
 

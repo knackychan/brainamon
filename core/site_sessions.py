@@ -18,8 +18,8 @@ from core import app_paths
 ROOT = app_paths.LOCAL / 'site-sessions'
 MAX_BYTES = 1024 * 1024
 SITES = {'instagram': ('instagram.com',), 'facebook': ('facebook.com',),
-         'reddit': ('reddit.com',), 'youtube': ('youtube.com', 'youtu.be')}
-SLOTS = ('general', 'instagram', 'browser-facebook', 'browser-instagram', 'browser-reddit')
+         'reddit': ('reddit.com',), 'threads': ('threads.com', 'threads.net'), 'youtube': ('youtube.com', 'youtu.be')}
+SLOTS = ('general', 'instagram', 'browser-facebook', 'browser-instagram', 'browser-reddit', 'browser-threads')
 _lock = threading.RLock()
 _active = set()
 _cancelled = set()
@@ -438,7 +438,7 @@ def validate_state(raw, site):
 
 def reuse_browser(site, commit=False, digest=''):
     """An explicit review/commit exports cookies only; local storage never becomes download headers."""
-    if site not in ('facebook', 'instagram', 'reddit'):
+    if site not in ('facebook', 'instagram', 'reddit', 'threads'):
         raise ValueError('Choose a supported remembered browser login.')
     with _lock:
         slot = 'browser-' + site

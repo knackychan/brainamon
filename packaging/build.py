@@ -188,7 +188,8 @@ def build_web():
         shutil.copytree(ROOT / 'knowledge' / 'prompts', stage / 'knowledge' / 'prompts')
         (stage / 'core').mkdir()
         shutil.copy2(ROOT / 'core' / 'license.py', stage / 'core' / 'license.py')
-        for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md', 'mobile-shell/store/privacy-policy.md'):
+        for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md', 'mobile-shell/store/privacy-policy.md',
+                     'mobile-shell/store/privacy-policy.fr.md', 'mobile-shell/store/privacy-policy.zh-Hant.md'):
             target = stage / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, target)

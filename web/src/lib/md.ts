@@ -6,6 +6,7 @@ import { esc } from './cards/card'
 import { lib } from './library.svelte'
 import { blocksHTML, marksInline } from './note-format'
 import { IC, pxPath } from './px'
+import { t } from './i18n/index'
 import './note-marks.css'
 
 // Where a card chip finds its item: the desktop's Library store by default; the phone
@@ -19,7 +20,7 @@ export function setCardLookup(fn: typeof lookup) { lookup = fn }
 
 export function cardChip(n: number): string {
   const r = lookup(n)
-  if (!r) return `<span class="cite miss" title="No item with this number">No.${n}?</span>`
+  if (!r) return `<span class="cite miss" title="${esc(t('wiskit.citation.missing'))}">No.${n}?</span>`
   const tint = r.tint || TYPE[r.cat] || '#9cc4e2'
   return `<button type="button" class="cite" data-cid="${n}" aria-label="No.${n}, ${esc(r.title)}"><i style="background:${esc(tint)}"></i>No.${n}</button>`
 }
@@ -59,7 +60,7 @@ function answerInline(s: string): string {
   return s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
     .replace(NOTE_RE, (_, f: string) => noteChip(f))
     .replace(CITE_RE, (_, g: string) => (g.match(/\d{1,6}/g) ?? []).map(n => cardChip(+n)).join(''))
-    .replace(/\(general knowledge\)/gi, '<span class="gk">general knowledge</span>')
+    .replace(/\(general knowledge\)/gi, () => `<span class="gk">${esc(t('wiskit.generalKnowledge'))}</span>`)
 }
 
 export function fmtAnswer(t: string): string {

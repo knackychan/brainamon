@@ -65,6 +65,61 @@ def add_category(db, name: str) -> bool:
     return True
 
 
+# The name rules, equal to web/src/lib/note-category.ts (tests/fixtures/note_category.json)
+CATEGORY_MAX = 80
+CATEGORY_ERRORS = {
+    'empty': 'Enter a category name.',
+    'long': 'Category names are at most 80 characters.',
+    'reserved': '"All" is reserved: choose another name.',
+    'general': 'General cannot be renamed.',
+}
+
+
+def clean_category(name) -> str:
+    """A category name as stored (trimmed). Raises ValueError with the rule it breaks."""
+    n = name.strip() if isinstance(name, str) else ''
+    if not n:
+        raise ValueError(CATEGORY_ERRORS['empty'])
+    if len(n) > CATEGORY_MAX:
+        raise ValueError(CATEGORY_ERRORS['long'])
+    if n.lower() == ALL_CATEGORY.lower():
+        raise ValueError(CATEGORY_ERRORS['reserved'])
+    return n
+
+
+def rename_category(db, notes_dir, old, new, before=None) -> list:
+    """Move every personal note filed under `old` to `new` and rename `old` in the stored list (a write: call on
+    the Writer). Only each note's category line changes: `updated` and the text stay, so a phone edit written
+    against the note still matches it (server/intake.py). `before(path)` runs before each file is written (a
+    delivery batch keeps the old bytes). Returns the paths written. Raises ValueError for a refused name."""
+    old = old.strip() if isinstance(old, str) else ''
+    if not old:
+        raise ValueError(CATEGORY_ERRORS['empty'])
+    if old == DEFAULT_CATEGORY:
+        raise ValueError(CATEGORY_ERRORS['general'])
+    new = clean_category(new)
+    if new == old:
+        return []
+    written = []
+    for path, meta, body in personal_notes(notes_dir):
+        if (meta.get('category') or DEFAULT_CATEGORY) != old:
+            continue
+        if before:
+            before(path)
+        meta['category'] = new
+        _write(path, meta, body)
+        written.append(path)
+    cats = stored_categories(db)
+    if old in cats:
+        seen, kept = set(), []
+        for c in (new if c == old else c for c in cats):
+            if c.lower() not in seen:
+                seen.add(c.lower())
+                kept.append(c)
+        db.set_setting(CATEGORIES_SETTING, json.dumps(kept))
+    return written
+
+
 def _write(path: Path, meta: dict, body: str) -> None:
     front = '---\n' + ''.join(f'{k}: {v}\n' for k, v in meta.items()) + '---\n\n'
     path.write_text(front + body, encoding='utf-8')

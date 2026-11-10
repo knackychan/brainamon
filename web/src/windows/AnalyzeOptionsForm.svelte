@@ -19,24 +19,26 @@
 <script lang="ts">
   import Field from '../components/ui/Field.svelte'
   import Hint from '../components/ui/Hint.svelte'
+  import { t } from '../lib/i18n/index.ts'
+  const frameLabels = ['shared.analysis.keepShow', 'shared.analysis.keepDisk', 'shared.analysis.deleteFrames'] as const
   let { o = $bindable(), err = '' }: { o: AO; err?: string } = $props()
   let frames = $state(Math.max(0, FRAME_CHOICES.findIndex(([, k, s]) => k === o.keep_frames && s === o.show_frames_in_canvas)))
   $effect(() => { const [, k, s] = FRAME_CHOICES[frames]; o.keep_frames = k; o.show_frames_in_canvas = s })
 </script>
 
 <div class="fg">
-  <Field label="Frame interval" for="ao-int"><div class="frow"><input class="inp" id="ao-int" type="number" min="0" max="60" step="0.5" bind:value={o.frame_interval} style="max-width:110px" /><Hint as="span">seconds · 0 = off (no frames)</Hint></div></Field>
-  <Field label="Transcription" as="span"><label class="chk"><input type="checkbox" bind:checked={o.transcribe} />Extract audio and transcribe</label></Field>
-  <Field label="Transcription model" for="ao-mod"><select class="inp" id="ao-mod" bind:value={o.transcribe_method} disabled={!o.transcribe}>
-    <option value="whisper-api">whisper-api (OpenAI key)</option>
+  <Field label={t('shared.analysis.interval')} for="ao-int"><div class="frow"><input class="inp" id="ao-int" type="number" min="0" max="60" step="0.5" bind:value={o.frame_interval} style="max-width:110px" /><Hint as="span">{t('shared.analysis.seconds')}</Hint></div></Field>
+  <Field label={t('shared.analysis.transcription')} as="span"><label class="chk"><input type="checkbox" bind:checked={o.transcribe} />{t('shared.analysis.extract')}</label></Field>
+  <Field label={t('shared.analysis.model')} for="ao-mod"><select class="inp" id="ao-mod" bind:value={o.transcribe_method} disabled={!o.transcribe}>
+    <option value="whisper-api">{t('shared.analysis.openai')}</option>
   </select></Field>
-  <Field label="AI provider" for="ao-pr"><select class="inp" id="ao-pr" bind:value={o.analysis_provider}>{#each ['claude', 'openai', 'freellmapi', 'none'] as p (p)}<option>{p}</option>{/each}</select></Field>
-  <Field label="Frames sent to AI" for="ao-send"><select class="inp" id="ao-send" bind:value={o.ai_frame_budget}>{#each BUDGETS as [l, v] (v)}<option value={v}>{l}</option>{/each}</select></Field>
-  <Field label="Extracted frames" for="ao-keep"><select class="inp" id="ao-keep" bind:value={frames}>{#each FRAME_CHOICES as [l], i (i)}<option value={i}>{l}</option>{/each}</select></Field>
-  <Field label="After analysis" as="span"><span>
-    <label class="chk"><input type="checkbox" bind:checked={o.delete_video} />Delete the downloaded video after analysis</label>
-    <label class="chk" style="margin-top:6px"><input type="checkbox" bind:checked={o.delete_audio} />Delete the extracted audio after analysis</label>
+  <Field label={t('shared.analysis.provider')} for="ao-pr"><select class="inp" id="ao-pr" bind:value={o.analysis_provider}>{#each ['claude', 'openai', 'freellmapi', 'none'] as p (p)}<option value={p}>{p === 'none' ? t('shared.analysis.none') : p}</option>{/each}</select></Field>
+  <Field label={t('shared.analysis.budget')} for="ao-send"><select class="inp" id="ao-send" bind:value={o.ai_frame_budget}>{#each BUDGETS as [, v] (v)}<option value={v}>{v === 'auto' ? t('shared.analysis.auto') : v === '0' ? t('shared.analysis.off') : t('shared.analysis.upTo', { n: v })}</option>{/each}</select></Field>
+  <Field label={t('shared.analysis.frames')} for="ao-keep"><select class="inp" id="ao-keep" bind:value={frames}>{#each FRAME_CHOICES as _, i (i)}<option value={i}>{t(frameLabels[i])}</option>{/each}</select></Field>
+  <Field label={t('shared.analysis.after')} as="span"><span>
+    <label class="chk"><input type="checkbox" bind:checked={o.delete_video} />{t('shared.analysis.deleteVideo')}</label>
+    <label class="chk" style="margin-top:6px"><input type="checkbox" bind:checked={o.delete_audio} />{t('shared.analysis.deleteAudio')}</label>
   </span></Field>
   <span></span><Hint tone="error" hidden={!err}>{err}</Hint>
 </div>
-<Hint>With transcription on, extracted audio goes to OpenAI. An AI report sends text and selected frames to Anthropic (claude), OpenAI, or the configured FreeLLMAPI server and its upstream providers. Provider charges apply separately; recipient terms and retention apply. Choosing "none" disables the AI report only.</Hint>
+<Hint>{t('shared.analysis.disclosure')}</Hint>

@@ -108,6 +108,7 @@ INIT = '''(() => {
     localStorage.setItem('cm-os-theme', THEME)
     localStorage.setItem('cm-card-motion', 'off')
     localStorage.setItem('bp-motion', 'off')
+    localStorage.setItem('bp-lang', 'en')
   } catch (e) {}
   let s = 20261025
   Math.random = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646 }
@@ -391,7 +392,7 @@ class Run:
         for key, route in PHONE_ROUTES:
             page.evaluate('h => { location.hash = h }', route)
             page.wait_for_timeout(500)
-            self.shot_pages(page, f'phone-{theme}-{key}', '.m-main')
+            self.shot_pages(page, f'phone-{theme}-{key}', '.m-sheet-body' if route in ('#/cap', '#/jv', '#/notes', '#/import') else '.m-main')
         page.evaluate('h => { location.hash = h }', f'#/item/{self.ids[0]}')
         page.wait_for_timeout(500)
         self.shot_pages(page, f'phone-{theme}-item', '.m-main')

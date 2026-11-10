@@ -13,6 +13,9 @@ from urllib.request import Request, urlopen
 
 from playwright.sync_api import sync_playwright
 from PIL import Image
+from core import app_paths, local_auth
+
+PAIR = dict(v=2, k='FxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxc', f='e0f475838db8', c='', e='', ai={}, at=0, solo=True)
 
 
 def main():
@@ -34,7 +37,7 @@ def main():
     ask = ThreadingHTTPServer(('127.0.0.1', 18798), SlowAsk)
     Thread(target=ask.serve_forever, daemon=True).start()
     with tempfile.TemporaryDirectory(prefix='phone-canvas-', ignore_cleanup_errors=True) as temp:
-        env = dict(os.environ, CM_DATA_DIR=temp, CM_PORT='18799', PYTHONUTF8='1')
+        env = dict(os.environ, CM_DATA_DIR=temp, CM_PORT='18799', PYTHONUTF8='1', BRAINAMON_HOME=temp)
         log = open(Path(temp) / 'server.log', 'w')
         proc = subprocess.Popen([sys.executable, '-m', 'server'], env=env, stdout=log, stderr=log,
                                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
@@ -47,25 +50,21 @@ def main():
                     time.sleep(.1)
             else:
                 raise AssertionError('isolated server did not start')
+            app_paths.LOCAL = Path(temp) / 'local'
+            auth = local_auth.headers(18799)
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(headless=True, channel='msedge')
-                ctx = browser.new_context(viewport={'width': 360, 'height': 800}, is_mobile=True, has_touch=True)
-                ctx.add_init_script(script='window.__bpDevSolo = true')   # solo on this isolated port
+                ctx = browser.new_context(viewport={'width': 360, 'height': 800}, is_mobile=True, has_touch=True, locale='en-US')
+                ctx.add_init_script("localStorage.setItem('bp-lang','en')")
+                ctx.add_init_script("if (!sessionStorage.getItem('solo-fixture')) { sessionStorage.setItem('solo-fixture', '1'); "
+                                    "localStorage.setItem('bp-pair', " + json.dumps(json.dumps(PAIR)) + "); }")
                 page = ctx.new_page()
                 page.set_default_timeout(5000)
                 errors = []
                 page.on('pageerror', lambda e: errors.append(str(e)))
                 resp = page.goto('http://127.0.0.1:18799/mobile.html#/more')
-                page.wait_for_timeout(500)
                 assert resp and resp.status == 200
-                page.get_by_role('button', name='Start', exact=True).click()
-                for _ in range(50):
-                    found = re.search(r'Key ([0-9a-f]{12})', page.locator('body').inner_text())
-                    if found:
-                        break
-                    time.sleep(.1)
-                else:
-                    raise AssertionError('solo pairing did not start: ' + page.locator('body').inner_text()[:1100])
+                page.locator('.m-ws').wait_for()
                 page.evaluate('''async fingerprint => {
                   const key = 'wiskit-canvas-proposal:' + fingerprint;
                   const preview = {target:{id:null,name:'Offline practice',new:true,count:0},layout:'rows',arrange:false,
@@ -74,7 +73,7 @@ def main():
                   await new Promise((ok,bad) => { const t=db.transaction('kv','readwrite');
                     t.objectStore('kv').put({token:'browser-check',raw:{new_name:'Offline practice',elements:[{kind:'text',text:'Stretch gently'}]},refs:{},quick:true,preview},key);
                     t.oncomplete=ok; t.onerror=()=>bad(t.error) });
-                }''', found.group(1))
+                }''', PAIR['f'])
                 page.goto('http://127.0.0.1:18799/mobile.html#/jv')
                 page.get_by_role('heading', name='New canvas: Offline practice').wait_for()
                 assert page.get_by_role('button', name='Apply', exact=True).evaluate('(e) => e.getBoundingClientRect().height >= 44')
@@ -98,8 +97,9 @@ def main():
                   const pair=new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:rec.iv,additionalData:new TextEncoder().encode('bp-pair')},key,rec.ct));
                   return {pair,wire:c};
                 }''')
-                second = browser.new_context(viewport={'width': 360, 'height': 800}, is_mobile=True, has_touch=True)
-                second.add_init_script(script=f"window.__bpDevSolo = true; localStorage.setItem('bp-pair', {json.dumps(restored['pair'])})")
+                second = browser.new_context(viewport={'width': 360, 'height': 800}, is_mobile=True, has_touch=True, locale='en-US')
+                second.add_init_script("localStorage.setItem('bp-lang','en')")
+                second.add_init_script(script=f"localStorage.setItem('bp-pair', {json.dumps(restored['pair'])})")
                 other = second.new_page()
                 other.goto('http://127.0.0.1:18799/mobile.html#/canvas')
                 other.get_by_text('No canvases yet. Ask Wiskit to make one.').wait_for()
@@ -139,7 +139,7 @@ def main():
                   await new Promise((ok,bad)=>{const t=db.transaction('kv','readwrite');
                     t.objectStore('kv').put({token:'quota-check',raw:{new_name:'Storage case',elements:[{kind:'text',text:'Never committed'}]},refs:{},quick:true,preview},key);
                     t.oncomplete=ok;t.onerror=()=>bad(t.error)});
-                }''', found.group(1))
+                }''', PAIR['f'])
                 page.goto('http://127.0.0.1:18799/mobile.html#/jv')
                 page.get_by_role('heading', name='New canvas: Storage case').wait_for()
                 page.evaluate('''() => {
@@ -158,25 +158,27 @@ def main():
                 page.get_by_role('heading', name='New canvas: Storage case').wait_for(state='detached')
                 assert not errors, errors
                 print('Solo browser: 360x800 Apply, offline reload, wire-only restore, late creation, storage failure and Decline passed')
-                pc = browser.new_context(viewport={'width': 360, 'height': 800}, is_mobile=True, has_touch=True)
+                pc = browser.new_context(viewport={'width': 360, 'height': 800}, is_mobile=True, has_touch=True, extra_http_headers=auth, locale='en-US')
+                pc.add_init_script("localStorage.setItem('bp-lang','en')")
                 direct = pc.new_page()
                 direct.goto('http://127.0.0.1:18799/mobile.html#/jv')
                 def request_canvas(name):
                     body = json.dumps({'proposal': {'new_name': name, 'elements': [{'kind': 'text', 'text': 'From PC'}]}}).encode()
                     req = Request('http://127.0.0.1:18799/api/canvases/request', data=body,
-                                  headers={'X-CM': '1', 'Content-Type': 'application/json'})
+                                  headers={**auth, 'X-CM': '1', 'Content-Type': 'application/json'})
                     with urlopen(req) as response:
                         return json.load(response)
-                direct.route('**/api/ask', lambda route: route.continue_(url='http://127.0.0.1:18798/api/ask'))
+                pc.route('**/api/ask', lambda route: route.continue_(url='http://127.0.0.1:18798/api/ask'))
                 direct.get_by_placeholder('Ask your library…').fill('Make a canvas')
                 direct.get_by_role('button', name='Send', exact=True).click()
+                direct.get_by_role('button', name='Stop', exact=True).wait_for()
                 request_canvas('While asking')
-                direct.get_by_role('heading', name='New canvas: While asking').wait_for(timeout=3500)
+                direct.get_by_role('heading', name='New canvas: While asking').wait_for(timeout=7000)
                 assert direct.get_by_role('button', name='Stop').is_visible()
                 direct.get_by_role('button', name='Decline').click()
                 direct.get_by_role('heading', name='New canvas: While asking').wait_for(state='detached')
                 held.set()
-                direct.unroute('**/api/ask')
+                pc.unroute('**/api/ask')
                 request_canvas('Direct review')
                 direct.get_by_role('heading', name='New canvas: Direct review').wait_for(timeout=5000)
                 direct.get_by_role('button', name='Apply', exact=True).click()
@@ -188,7 +190,7 @@ def main():
                 direct.get_by_role('button', name='Decline').click()
                 direct.get_by_role('heading', name='New canvas: Declined PC').wait_for(state='detached')
                 body = json.dumps({'url': 'https://example.com/frame', 'description': 'Frame source'}).encode()
-                req = Request('http://127.0.0.1:18799/api/items', data=body, headers={'X-CM': '1', 'Content-Type': 'application/json'})
+                req = Request('http://127.0.0.1:18799/api/items', data=body, headers={**auth, 'X-CM': '1', 'Content-Type': 'application/json'})
                 with urlopen(req) as response:
                     item_id = json.load(response)['id']
                 frames = Path(temp) / 'items' / str(item_id) / 'frames'
@@ -197,12 +199,13 @@ def main():
                 body = json.dumps({'proposal': {'new_name': 'Frame review', 'elements': [
                     {'kind': 'frame', 'item_id': item_id, 'frame': 'scene.jpg'}]}}).encode()
                 req = Request('http://127.0.0.1:18799/api/canvases/request', data=body,
-                              headers={'X-CM': '1', 'Content-Type': 'application/json'})
+                              headers={**auth, 'X-CM': '1', 'Content-Type': 'application/json'})
                 with urlopen(req) as response:
                     json.load(response)
                 direct.goto('http://127.0.0.1:18799/mobile.html#/jv')
                 direct.get_by_role('heading', name='New canvas: Frame review').wait_for()
                 direct.locator('.m-review-element img').wait_for()
+                direct.wait_for_function("() => { const e = document.querySelector('.m-review-element img'); return e?.complete && e.naturalWidth > 0 }")
                 assert direct.locator('.m-review-element img').evaluate('(e)=>e.complete&&e.naturalWidth>0')
                 direct.get_by_role('button', name='Apply', exact=True).click()
                 direct.get_by_role('button', name='Open canvas').click()

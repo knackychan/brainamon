@@ -1,4 +1,4 @@
-"""Admin-only permanent license issuer. See docs/LICENSING.md; never bundle private keys."""
+"""Admin-only permanent license issuer. See docs/development/LICENSING.md; never bundle private keys."""
 import argparse
 import base64
 import datetime
@@ -60,7 +60,7 @@ def issue(path: Path, password: bytes, licensee: str, email: str = '') -> str:
 
 
 SERVICE_CONFIG = """<?php
-// Brainamon activation service settings (docs/LICENSING.md, "Gumroad activation").
+// Brainamon activation service settings (docs/development/LICENSING.md, "Gumroad activation").
 // Upload next to the website's root folder (www/), never inside it. Holds a signing key.
 return ['product_id' => '{product_id}', 'seed_hex' => '{seed}'];
 """
@@ -110,7 +110,7 @@ def configure_public_key(public: str) -> None:
     text = source.read_text(encoding='utf-8')
     marker = 'PUBLIC_KEYS: tuple[str, ...] = ()'
     if text.count(marker) != 1:
-        raise ValueError('Public-key configuration changed. Follow docs/LICENSING.md; no source was modified.')
+        raise ValueError('Public-key configuration changed. Follow docs/development/LICENSING.md; no source was modified.')
     temp = None
     try:
         with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=source.parent,

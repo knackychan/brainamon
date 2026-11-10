@@ -1,15 +1,18 @@
 <script lang="ts">
+  import { phoneWords, phoneLocale, nativeError } from '../settings-words'
+  import { t } from '../../lib/i18n/index.ts'
   // Recover a library… (#/recover, docs/superpowers/plans/2026-10-31-phone-backup-phones.md sub-plan 05): a phone backup
   // in Google Drive, unlocked with a recovery passphrase (the setups found in Drive, newest first), a recovery file or
   // the original code. Then Keep this phone's content (Reconnect, when this phone's latest backup is in Drive under
   // that key) or Restore on an empty phone. Nothing here writes Drive; what was typed or unlocked is forgotten when the
-  // screen closes. A phone paired with a PC recovers its library on the PC.
+  // screen closes. A phone paired with a PC recovers its library on the PC. The page (projects/phone-settings, spec
+  // section 4): the top keys with How recovery works, the kicker and title, the word tabs, the method, Forgot passphrase?
   import ForgotPassphrase from '../../components/ForgotPassphrase.svelte'
   import { onMount, tick } from 'svelte'
   import MBox from '../ui/MBox.svelte'
   import MButton from '../ui/MButton.svelte'
-  import MDisclosure from '../ui/MDisclosure.svelte'
   import MHint from '../ui/MHint.svelte'
+  import PageKeys from '../PageKeys.svelte'
   import MRow from '../ui/MRow.svelte'
   import MSeg from '../ui/MSeg.svelte'
   import MTextButton from '../ui/MTextButton.svelte'
@@ -18,10 +21,11 @@
   import { clock } from '../mirror/phone-state'
   import { readPhoneKit, type PhoneKit } from '../mirror/recovery-envelope'
   import { discoverPhoneRecovery, recoveryAccount, restorePhoneKit, restorePhonePassphrase } from '../mirror/phone-recovery'
-  import { keyFromMaterial, KIT_IN_CODE, reconnectCheck, reconnectPhone, REFUSALS, type Eligibility } from '../mirror/phone-reconnect'
+  import { eligibilityText, keyFromMaterial, KIT_IN_CODE, reconnectCheck, reconnectPhone, REFUSALS, type Eligibility } from '../mirror/phone-reconnect'
   import { recoveryFileText } from '../recovery.svelte'
   import { mirrorSource, phone, useWithoutPc } from '../state.svelte'
   import { cloudCheckpoint, cloudRevision } from '../mirror/gate'
+  import { beginLanguageWork, languageWorkChanged, registerLanguageCheck } from '../language-switch.ts'
   import PhoneBackupChoices from '../PhoneBackupChoices.svelte'
 
   let { scroller }: { scroller?: HTMLElement } = $props()
@@ -30,7 +34,7 @@
   const signedIn = $derived((phone.tokenAt, phone.signIn, m ? !!token(m.pair) : false))
   const working = $derived((!!phone.sync && !phone.sync.end) || phone.refreshing || phone.connecting)
   type Method = 'password' | 'kit' | 'code'
-  let busy = $state(false), error = $state(''), message = $state('')
+  let busy = $state(false), error = $state(''), errorDisplay = $state(''), message = $state('')
   let password = $state(''), code = $state('')
   let method = $state<Method>(location.hash.endsWith('/file') ? 'kit' : m ? 'password' : 'code')
   let setups = $state<Awaited<ReturnType<typeof discoverPhoneRecovery>>>([]), selected = $state('')
@@ -53,22 +57,24 @@
   }
   // the screen opens at its top; leaving it forgets what was typed, unlocked or found
   onMount(() => {
+    const release = registerLanguageCheck(() => password || code || found ? 'settings.language.unsavedRecovery' : null)
     scroller?.scrollTo(0, 0)
-    return () => { alive = false; clearSecrets(); forget(); setups = [] }
+    return () => { alive = false; clearSecrets(); forget(); setups = []; release() }
   })
   async function run(action: () => Promise<void>) {
     if (busy) return
+    const done = beginLanguageWork()
     revision = cloudRevision(); busy = true; error = ''; message = ''
     try { await action() }
-    catch (e) { if (alive) error = (e as Error).message }
-    finally { busy = false }
+    catch (e) { if (alive) { error = (e as Error).message; errorDisplay = nativeError('recovery', e) } }
+    finally { busy = false; done() }
   }
   async function discover() {
     await recoveryAccount(m!.pair, m!.drive)
     const found = await discoverPhoneRecovery(m!.drive)
     current(); setups = found
     selected = setups[0]?.id ?? ''
-    if (!selected) message = 'No phone passphrase setup was found. Use your recovery file or original recovery code. Desktop libraries are restored on a PC.'
+    if (!selected) message = t('recovery.state.noSetups')
   }
   // the method unlocks the key; nothing is restored yet. Then the read-only check says whether this phone can keep its content.
   async function find() {
@@ -99,7 +105,7 @@
     await reconnectPhone(m.pair, m.drive, m.changes, f.key, f.account, f.kit)
     forget()
     // a recovery file keeps recovery set up; otherwise Backup & phones offers Set up recovery right away (its Status key)
-    try { sessionStorage.setItem('bp-note', f.kit ? 'This phone kept its content and reconnected to its Drive backup. Its queued changes go up at the next sync.' : 'This phone kept its content and reconnected to its Drive backup. Its queued changes go up at the next sync. Set up recovery to protect the key with a passphrase and a recovery file.') } catch { /* the note is only a courtesy */ }
+    try { sessionStorage.setItem('bp-note', f.kit ? t('recovery.state.reconnected') : t('recovery.state.reconnectedSetup')) } catch { /* the note is only a courtesy */ }
     location.replace(location.pathname + '#/backup'); location.reload()
   }
   async function restoreEmpty() {
@@ -110,62 +116,69 @@
   }
 </script>
 
-<div class="m-pad m-calm">
+<PageKeys infoTitle={t('recovery.help.title')}>
+  {#snippet info()}
+    <p>{t('recovery.help.find')}</p>
+    <p>{t('recovery.help.material')}</p>
+    <p>{t('recovery.help.readOnly')}</p>
+    <p>{t('recovery.help.originalCode')}</p>
+    <p>{t('recovery.help.methods')}</p>
+    {#if !m}<p>{t('recovery.help.noPhone')}</p>
+    {:else if !signedIn}<p>{t('recovery.help.noDrive')}</p>{/if}
+  {/snippet}
+</PageKeys>
+<div class="m-pad m-calm m-page">
   <MBox id="m-recover">
-    <h3>Phone backup in Google Drive</h3>
-    <ForgotPassphrase mobile workingLabel="Open passphrase settings…"
-      workingReason={busy ? 'Wait for the recovery check to finish.' : working ? 'Wait for the current sync or connection to finish.' : !m ? 'Open Backup & phones on the phone that still holds the library key.' : ''}
-      methodReason={busy ? 'Wait for the recovery check to finish.' : ''}
+    <span class="m-recover-k">{t('recovery.method.backupTitle')}</span>
+    <h2 class="m-recover-t">{t('recovery.action.recover')}</h2>
+    <div id="phone-unlock-method" tabindex="-1" class="m-recover-tabs"><MSeg look="tabs" label={t('recovery.method.unlock')} options={[['password', t('recovery.method.passphrase')], ['kit', t('recovery.method.file')], ['code', t('recovery.method.code')]]} value={method} disabled={busy} onchange={choose} /></div>
+    {#if !m}
+      <MHint>{t('recovery.warning.start')}</MHint>
+    {:else if !signedIn}
+      <MHint>{t('recovery.warning.connect')}</MHint>
+    {/if}
+    {#if working}<MHint>{t('recovery.warning.waitRestore')}</MHint>{/if}
+    {#if !found}
+      {#if method === 'password'}
+        <MButton size="sm" disabled={!available} onclick={() => run(discover)}>{t('recovery.action.findSetups')}</MButton>
+        {#if setups.length > 1}
+          <label class="m-fld"><span>{t('recovery.method.setup')}</span><select bind:value={selected} disabled={!available}>{#each setups as setup (setup.id)}<option value={setup.id}>{t('recovery.state.setupAt', { when: clock(setup.record.header.created * 1000, Date.now(), phoneLocale()) })}</option>{/each}</select></label>
+        {:else if setups.length === 1}
+          <MRow title={t('recovery.method.setup')} desc={t('recovery.state.setupAt', { when: clock(setups[0].record.header.created * 1000, Date.now(), phoneLocale()) })} />
+        {/if}
+        {#if setups.length}
+          <label class="m-fld"><span>{t('recovery.method.passphraseLabel')}</span><input type="password" bind:value={password} oninput={languageWorkChanged} maxlength="1024" autocomplete="off" disabled={!available} /></label>
+          <div class="m-hero-key"><MButton shape="pill" variant="pri" disabled={!available || !selected || !password} onclick={() => run(find)}>{t('recovery.action.findBackup')}</MButton></div>
+        {/if}
+      {:else if method === 'kit'}
+        <div class="m-hero-key"><MButton shape="pill" variant="pri" disabled={!available} onclick={() => run(find)}>{t('recovery.action.openFile')}</MButton></div>
+      {:else}
+        <label class="m-fld"><span>{t('recovery.method.original')}</span><input type="password" bind:value={code} oninput={languageWorkChanged} maxlength="32768" autocomplete="off" spellcheck="false" disabled={busy || working} /></label>
+        <div class="m-hero-key"><MButton shape="pill" variant="pri" disabled={busy || working || !code.trim()} onclick={() => run(find)}>{t('recovery.action.findBackup')}</MButton></div>
+      {/if}
+    {:else}
+      <MRow id="phone-recovery-keep" title={t('recovery.action.keep')} desc={eligibilityText(found.check, phoneWords)} />
+      {#if found.check.ok}
+        <MHint>{sure ? t('recovery.warning.confirmReconnect') : t('recovery.warning.keep')}</MHint>
+      {/if}
+      <div class="m-hero-key">
+        {#if found.check.ok}<MButton shape="pill" variant="pri" disabled={!available} onclick={() => run(reconnect)}>{sure ? t('recovery.action.confirmReconnect') : t('recovery.action.reconnect')}</MButton>{/if}
+        <MButton shape="pill" variant={found.check.ok ? 'default' : 'pri'} disabled={busy || working} onclick={() => run(restoreEmpty)}>{t('recovery.action.empty')}</MButton>
+        <MTextButton disabled={busy} onclick={() => { forget(); error = ''; message = '' }}>{t('common.cancel')}</MTextButton>
+      </div>
+    {/if}
+    {#if error === KIT_IN_CODE}<MButton size="sm" onclick={() => choose('kit')}>{t('recovery.action.useFile')}</MButton>{/if}
+    {#if busy}<MHint role="status">{t('recovery.state.checking')}</MHint>{/if}
+    {#if message}<MHint role="status">{message}</MHint>{/if}
+    {#if error}<MHint tone="error" role="alert">{errorDisplay || error}</MHint>{/if}
+    <!-- Forgot passphrase? under the form, the quiet disclosure it is (spec section 4.4) -->
+    <ForgotPassphrase mobile words={phoneWords} workingLabel={t('recovery.action.settings')}
+      workingReason={busy ? t('recovery.warning.waitCheck') : working ? t('recovery.warning.waitSync') : !m ? t('recovery.warning.workingDevice') : ''}
+      methodReason={busy ? t('recovery.warning.waitCheck') : ''}
       onworking={() => { location.hash = '#/backup' }}
       onfile={() => guideMethod('kit')} oncode={() => guideMethod('code')}
       onnone={() => { forget(); clearSecrets(); choices = true }} />
-    <MHint>Find the backup first. If this phone matches it, you can keep everything here and reconnect; otherwise restore on an empty phone. Desktop libraries are restored on a PC.</MHint>
-    {#if !m}
-      <MHint>The original recovery code works right away. A passphrase or recovery file needs Google Drive: start Brainamon without a PC first (No PC? on More), then Back up to Google Drive with the account that holds the backup.</MHint>
-    {:else if !signedIn}
-      <MHint>A passphrase or recovery file needs Google Drive: Back up to Google Drive on Backup &amp; phones first, with the account that holds the backup. The original code works without it.</MHint>
-    {/if}
-    {#if working}<MHint>Wait for the current sync or connection to finish before restoring.</MHint>{/if}
-    <MRow id="phone-unlock-method" tabindex={-1} title="Unlock with" desc={method === 'password' ? 'A recovery setup in Google Drive, unlocked with its passphrase' : method === 'kit' ? 'The recovery file you saved' : 'The original code, a pairing link or an exported phone file'}><MSeg label="Unlock with" size="sm" options={[['password', 'Passphrase'], ['kit', 'File'], ['code', 'Code']]} value={method} disabled={busy} onchange={choose} /></MRow>
-    {#if !found}
-      {#if method === 'password'}
-        <MButton size="sm" disabled={!available} onclick={() => run(discover)}>Find recovery setups</MButton>
-        {#if setups.length > 1}
-          <label class="m-fld"><span>Recovery setup</span><select bind:value={selected} disabled={!available}>{#each setups as setup (setup.id)}<option value={setup.id}>Set up {clock(setup.record.header.created * 1000)}</option>{/each}</select></label>
-        {:else if setups.length === 1}
-          <MRow title="Recovery setup" desc="Set up {clock(setups[0].record.header.created * 1000)}" />
-        {/if}
-        {#if setups.length}
-          <label class="m-fld"><span>Recovery passphrase</span><input type="password" bind:value={password} maxlength="1024" autocomplete="off" disabled={!available} /></label>
-          <MButton variant="pri" size="sm" disabled={!available || !selected || !password} onclick={() => run(find)}>Find backup</MButton>
-        {/if}
-      {:else if method === 'kit'}
-        <MButton variant="pri" size="sm" disabled={!available} onclick={() => run(find)}>Open recovery file…</MButton>
-      {:else}
-        <label class="m-fld"><span>Original recovery code</span><input type="password" bind:value={code} maxlength="32768" autocomplete="off" spellcheck="false" disabled={busy || working} /></label>
-        <MButton variant="pri" size="sm" disabled={busy || working || !code.trim()} onclick={() => run(find)}>Find backup</MButton>
-      {/if}
-    {:else}
-      <MRow id="phone-recovery-keep" title="Keep this phone's content" desc={found.check.message} />
-      {#if found.check.ok}
-        <MHint>{sure ? "Your phone's content will be kept. Confirm to put the backup's key back; nothing is written to Drive." : "Your phone's content will be kept: everything on this phone and its queued changes stay, the backup's key comes back, nothing is written to Drive. Changes sent under the wrong key go up again at the next sync."}</MHint>
-      {/if}
-      <div class="m-row" style="flex-wrap:wrap">
-        {#if found.check.ok}<MButton variant="pri" size="sm" disabled={!available} onclick={() => run(reconnect)}>{sure ? 'Confirm reconnect' : 'Reconnect this phone'}</MButton>{/if}
-        <MButton variant={found.check.ok ? 'default' : 'pri'} size="sm" disabled={busy || working} onclick={() => run(restoreEmpty)}>Restore on an empty phone</MButton>
-        <MTextButton disabled={busy} onclick={() => { forget(); error = ''; message = '' }}>Cancel</MTextButton>
-      </div>
-    {/if}
-    {#if error === KIT_IN_CODE}<MButton size="sm" onclick={() => choose('kit')}>Use recovery file</MButton>{/if}
-    {#if busy}<MHint role="status">Checking recovery… This may take a few seconds.</MHint>{/if}
-    {#if message}<MHint role="status">{message}</MHint>{/if}
-    {#if error}<MHint tone="error" role="alert">{error}</MHint>{/if}
-    <MDisclosure summary="How recovery works">
-      <MHint>Recovery uses the same Google account as the backup. Your recovery file unlocks the backup; it does not contain the backup. Keep it outside this phone, separately from your passphrase.</MHint>
-      <MHint>Restore reads Drive without deleting or replacing its files. Reconnect keeps this phone's content when its latest backup is in Drive under the recovered key; Restore on an empty phone needs a phone with nothing on it.</MHint>
-      <MHint>The original 43-character code is the library key, not a passphrase. The code field also takes a pairing link or the text of an exported phone recovery file.</MHint>
-    </MDisclosure>
   </MBox>
   {#if choices && m}<PhoneBackupChoices onclose={() => choices = false} />
-  {:else if choices}<MBox><MHint>Start Brainamon without a PC on More, then connect the Google account that holds the backup.</MHint><MButton as="a" href="#/more">Open More</MButton></MBox>{/if}
+  {:else if choices}<MBox><MHint>{t('recovery.warning.startConnect')}</MHint><MButton as="a" href="#/more">{t('recovery.action.openSettings')}</MButton></MBox>{/if}
 </div>

@@ -43,7 +43,7 @@ export function initWS() {
   } catch { /* private window */ }
 }
 
-// Day / Night: same localStorage key and data-theme attribute as design/web-look/os.js themeToggle.
+// Day / Night: same localStorage key and data-theme attribute as archive/2026-11-09/design/web-look/os.js themeToggle.
 const THEME_KEY = 'cm-os-theme'
 export function isDark(): boolean {
   const t = document.documentElement.dataset.theme

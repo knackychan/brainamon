@@ -4,6 +4,7 @@ Run: py -m tests.check_mobile_network_browser
 """
 import json
 import os
+import sys
 from pathlib import Path
 import socket
 import subprocess
@@ -12,9 +13,11 @@ import time
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tests.phone_groups import open_group  # noqa: E402  (Wi-Fi only sits in Settings > Sync, projects/phone-settings)
 ART = ROOT / 'local/ui-blocks/shots/mobile-wifi'
 
 PROXIED = ('/api', '/thumb', '/cards', '/files', '/wiskit')
@@ -56,7 +59,8 @@ def main():
                 with sync_playwright() as pw:
                     browser = pw.chromium.launch(headless=True, channel='msedge')
                     context = browser.new_context(viewport={'width': 360, 'height': 800}, is_mobile=True, has_touch=True,
-                                                  service_workers='block')
+                                                  service_workers='block', locale='en-US')
+                    context.add_init_script("localStorage.setItem('bp-lang','en')")
                     context.add_init_script(INIT)
                     calls, errors, unexpected = [], [], []
 
@@ -90,7 +94,7 @@ def main():
                     page.on('pageerror', lambda error: errors.append(str(error)))
                     page.goto(base + '/mobile.html#/more')
                     toggle = page.get_by_role('button', name='Wi-Fi only', exact=True)
-                    toggle.wait_for()
+                    open_group(page, 'Sync')
                     assert toggle.get_attribute('aria-pressed') == 'true'
                     assert toggle.bounding_box()['height'] >= 44
                     assert calls == [], calls
@@ -106,14 +110,19 @@ def main():
                       m.flushSoon(0);
                     }""")
                     page.reload()
-                    toggle.wait_for()
+                    open_group(page, 'Sync')
                     page.evaluate("location.hash = '#/lib'")
-                    strip = page.locator('.m-strip')
-                    strip.wait_for()
-                    assert 'waiting for Wi-Fi' in strip.inner_text()
-                    assert strip.bounding_box()['y'] + strip.bounding_box()['height'] <= page.locator('.m-main').bounding_box()['y'] + 1
+                    key = page.locator('.m-sync-key')                            # the sync key's name is the lamp
+                    page.get_by_role('button', name='Skip', exact=True).click()
+                    expect(page.locator('.m-ob')).to_have_count(0)
+                    expect(key).to_have_attribute('aria-label', 'Sync paused')
+                    key.click()                                                  # the panel names the reason
+                    panel = page.locator('#m-sync-panel')
+                    expect(panel).to_contain_text('waiting for Wi-Fi')
                     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-                    page.screenshot(path=ART / '360-strip-light.png')
+                    page.screenshot(path=ART / '360-sync-panel-light.png')
+                    key.click()
+                    expect(panel).to_have_count(0)
                     assert calls == [], calls
                     page.wait_for_function("""async () => {
                       const {mirrorSource:m}=await import('/src/mobile/state.svelte.ts');
@@ -125,15 +134,16 @@ def main():
                       return !phone.refreshing && m.changes.unsent === 0;
                     }""")
                     assert 'POST' in calls, calls
-                    assert strip.count() == 0
+                    expect(key).not_to_have_attribute('aria-label', 'Sync paused')
 
                     page.evaluate("__network('cellular')")
-                    strip.wait_for()
+                    expect(key).to_have_attribute('aria-label', 'Sync paused')
                     page.evaluate("location.hash = '#/more'")
+                    open_group(page, 'Sync')
                     toggle.click()
                     assert toggle.get_attribute('aria-pressed') == 'false'
                     page.reload()
-                    toggle.wait_for()
+                    open_group(page, 'Sync')
                     assert toggle.get_attribute('aria-pressed') == 'false'
                     page.wait_for_function("""async () => !(await import('/src/mobile/state.svelte.ts')).phone.refreshing""")
                     assert page.get_by_role('button', name='Sync now', exact=True).is_enabled()
@@ -142,10 +152,11 @@ def main():
                     toggle.click()
                     page.get_by_text('Wi-Fi could not be confirmed.', exact=False).wait_for()
                     page.evaluate("location.hash = '#/lib'")
-                    strip.wait_for()
-                    assert 'cannot confirm Wi-Fi' in strip.inner_text()
+                    expect(key).to_have_attribute('aria-label', 'Sync paused')
+                    key.click()
+                    expect(panel).to_contain_text('cannot confirm Wi-Fi')
                     page.set_viewport_size({'width': 800, 'height': 900})
-                    page.screenshot(path=ART / '800-strip-light.png')
+                    page.screenshot(path=ART / '800-sync-panel-light.png')
                     assert not unexpected, unexpected
                     assert not errors, errors
                     browser.close()

@@ -33,7 +33,11 @@ class PhoneRecoveryStatusTest(unittest.TestCase):
             import { stripTypeScriptTypes } from 'node:module'
             const source = fs.readFileSync('web/src/mobile/recovery.svelte.ts', 'utf8')
             const region = source.slice(source.indexOf('export const rec'), source.indexOf('// a recovery file'))
-            const setup = 'const $state = x => x; const phone = { recoveryAt: 0 };'
+            const {t} = await import('./web/src/lib/i18n/index.ts')
+            const {nativeError} = await import('./web/src/mobile/settings-words.ts')
+            const {beginLanguageWork} = await import('./web/src/mobile/language-switch.ts')
+            globalThis.__recoveryDeps = {t, nativeError, beginLanguageWork}
+            const setup = 'const $state = x => x; const phone = { recoveryAt: 0 }; const {t,nativeError,beginLanguageWork}=globalThis.__recoveryDeps;'
             const mod = await import('data:text/javascript,' + encodeURIComponent(stripTypeScriptTypes(setup + region)))
             let finish, second = false
             const pending = mod.recoveryRun(() => new Promise(resolve => { finish = resolve }), 'Saving passphrase')

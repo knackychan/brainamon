@@ -2,13 +2,14 @@
   // The phone's Get started (spec P2), top of the Library while the welcome has an answer and Hide was not
   // tapped: three tasks, the first always ticked; a todo row opens Add or the More box that does it.
   import { phoneTasks, progressOf, type Task } from '../lib/onboarding'
+  import { t, type Key } from '../lib/i18n/index.ts'
   import { onb, openMoreBox, openPairing, saveOnb } from './onboard.svelte'
   import { mirrorSource, phone, solo } from './state.svelte'
   import MButton from './ui/MButton.svelte'
 
   const tasks = $derived.by(() => {
     void phone.synced; void phone.tokenAt; void phone.route     // keys saved in More, a pairing, a sync: read again
-    return phoneTasks(onb.answer, { pc: mirrorSource ? !solo : phone.reachable, items: phone.rows.length, ai: !!mirrorSource?.ai() })
+    return phoneTasks(onb.answer, { pc: mirrorSource ? !solo : phone.reachable, items: phone.rows.length, ai: !!mirrorSource?.ai() }, key => t(key as Key))
   })
   const p = $derived(progressOf(tasks))
   function start(t: Task) {
@@ -20,18 +21,18 @@
 
 {#if onb.loaded && onb.answer && !onb.hidden}
   <div class="m-box m-gs" role="region" aria-labelledby="m-gs-h">
-    <h3 id="m-gs-h">Get started<span class="m-sp"></span><span class="m-lbl" role="status">{p.all ? 'done' : `${p.done} of ${p.total}`}</span><MButton size="sm" onclick={() => saveOnb({ hidden: true }).catch(() => {})}>Hide</MButton></h3>
+    <h3 id="m-gs-h">{t('onboarding.task.title')}<span class="m-sp"></span><span class="m-lbl" role="status">{p.all ? t('onboarding.task.done') : t('onboarding.task.count', { done: p.done, total: p.total })}</span><MButton size="sm" onclick={() => saveOnb({ hidden: true }).catch(() => {})}>{t('onboarding.task.hide')}</MButton></h3>
     <div class="m-gs-bar" aria-hidden="true">{#each tasks as t (t.id)}<i class:on={t.done}></i>{/each}</div>
     <div class="m-gs-list">
-      {#each tasks as t (t.id)}
-        {#if t.done}
-          <div class="m-gs-row done"><i class="m-gs-dot on" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M2.5 6.5 5 9l4.5-5.5" /></svg></i><span>{t.label}</span><span class="sr">, done</span></div>
+      {#each tasks as task (task.id)}
+        {#if task.done}
+          <div class="m-gs-row done"><i class="m-gs-dot on" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M2.5 6.5 5 9l4.5-5.5" /></svg></i><span>{task.label}</span><span class="sr">{t('onboarding.task.doneSuffix')}</span></div>
         {:else}
-          <button type="button" class="m-gs-row" onclick={() => start(t)}><i class="m-gs-dot" aria-hidden="true"></i><span>{t.label}</span><b aria-hidden="true">›</b></button>
+          <button type="button" class="m-gs-row" onclick={() => start(task)}><i class="m-gs-dot" aria-hidden="true"></i><span>{task.label}</span><b aria-hidden="true">›</b></button>
         {/if}
       {/each}
     </div>
-    {#if p.all}<span class="m-hint">Brainamon is ready.</span>{/if}
+    {#if p.all}<span class="m-hint">{t('onboarding.task.ready')}</span>{/if}
   </div>
 {/if}
 

@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from tests import test_phone_js
+from tests.phone_catalog import english
 
 ROOT = Path(__file__).resolve().parents[1]
 MOBILE = ROOT / 'web' / 'src' / 'mobile'
@@ -124,8 +125,9 @@ WATCH = r"""
     let nextId = 1
     db.all = async () => structuredClone([...rows.values()].sort((a, b) => a.id - b.id))
     db.add = async e => { const id = nextId++; rows.set(id, structuredClone({ ...e, id })); return id }
-    db.put = async e => { rows.set(e.id, structuredClone(e)) }
+    db.put = async e => { rows.set(e.id, structuredClone(e)); return e.id }
     db.del = async id => { rows.delete(id) }
+    db.delConfirmed = async id => { rows.delete(id); return true }
     db.forChat = async () => structuredClone([...rows.values()])
     db.saveChat = async e => { const id = e.id ?? nextId++; rows.set(id, structuredClone({ ...e, id })); return id }
     kv.get = async k => structuredClone(store.get(k))
@@ -177,7 +179,7 @@ OPEN = r"""
     console.log(JSON.stringify({
       moreFromLibrary: await from({ tab: 'lib' }, () => openMoreBox('m-ai')),
       moreFromMore: await from({ tab: 'more' }, () => openMoreBox('m-ai')),
-      moreFromImport: await from({ tab: 'more', imp: true }, () => openMoreBox('m-ai')),
+      moreFromImport: await from({ tab: 'cap', imp: true }, () => openMoreBox('m-ai')),
       moreFromBackup: await from({ tab: 'more', backup: true }, () => openMoreBox('m-ai')),
       backupFromMore: await from({ tab: 'more' }, () => openBackupBox('m-conn')),
       backupFromBackup: await from({ tab: 'more', backup: true }, () => openBackupBox('m-phone')),
@@ -234,10 +236,10 @@ class PhoneScreensTest(unittest.TestCase):
     def test_back_and_the_box_openers_know_backup_and_phones(self):
         back = json.loads(test_phone_js.node(test_phone_js.TS_RESOLVE + """
             import { parentHash } from './web/src/mobile/back.ts'
-            console.log(JSON.stringify([parentHash({ tab: 'more', backup: true }), parentHash({ tab: 'more', imp: true }), parentHash({ tab: 'more' }),
+            console.log(JSON.stringify([parentHash({ tab: 'more', backup: true }), parentHash({ tab: 'cap', imp: true }), parentHash({ tab: 'more' }),
               parentHash({ tab: 'more', recover: true })]))
         """))
-        self.assertEqual(back, ['#/more', '#/more', '#/lib', '#/backup'])      # Recover a library goes back to Backup & phones
+        self.assertEqual(back, ['#/more', '#/cap', '#/lib', '#/backup'])      # Import goes back to Add; recovery to Backup & phones
         out = json.loads(test_phone_js.node(test_phone_js.TS_RESOLVE + OPEN))
         self.assertEqual(out, {'moreFromLibrary': ['#/more'], 'moreFromMore': [], 'moreFromImport': ['#/more'],
                                'moreFromBackup': ['#/more'], 'backupFromMore': ['#/backup'], 'backupFromBackup': [],
@@ -245,26 +247,32 @@ class PhoneScreensTest(unittest.TestCase):
                                'pairingNotSolo': ['#/more'], 'pairingSolo': ['#/backup']})
 
     def test_the_screens_show_the_one_status(self):
-        state, shell, strip, more = source('state.svelte.ts'), source('Mobile.svelte'), source('SyncStrip.svelte'), source('screens/More.svelte')
+        state, shell, strip, more = source('state.svelte.ts'), source('Mobile.svelte'), source('OwnerLine.svelte'), source('screens/More.svelte')
         backup, card = source('screens/Backup.svelte'), source('StatusCard.svelte')
         self.assertIn("case 'backup': return backupHere ? { tab: 'more', backup: true } : { tab: 'more' }", state)
         self.assertIn('export const backupHere = !!mirrorSource\n', state)
         self.assertIn('mirrorSource.changes.watch(() => { void measurePend() })', state)
         self.assertEqual(state.count("location.replace(location.pathname + '#/backup')"), 2)    # pairFrom and useWithoutPc
         self.assertIn("location.pathname + '#/backup'", source('mirror/pairing.ts'))
-        self.assertIn("r.backup ? 'Backup & phones'", shell)
+        self.assertIn("const tag = $derived(r.backup ? t('shell.pageTag.backup') : r.recover ? t('shell.pageTag.recover') : t('shell.settings'))", source('PageKeys.svelte'))
+        self.assertEqual([english('shell.pageTag.backup'), english('shell.pageTag.recover'), english('shell.settings')], ['Backup', 'Recover', 'Settings'])
         self.assertIn('{:else if r.backup}\n      <Backup scroller={main} />', shell)
-        self.assertIn('if (st?.lamp) return `${L} · ${st.lamp}`', shell)
-        self.assertIn('if (st && ACCESS_STATES.includes(st.id)) return { lamp: st.lamp as DriveLamp, ok: false, why: st.text }', state)
+        self.assertIn("if (st?.lamp) return t('shell.lamp.joined', { where: L, text: st.lamp })", shell)
+        self.assertEqual(english('shell.lamp.joined'), '{where} · {text}')
+        self.assertIn('if (st && ACCESS_STATES.includes(st.id)) return { lamp: phoneState(phoneFacts()!).lamp as DriveLamp, ok: false, why: st.text }', state)
+        self.assertIn('return f && phoneState(f, phoneWords)', state)
         self.assertIn('const owner = $derived(!here && st?.strip ? st : null)', strip)
         self.assertIn('href="#/backup"', strip)
-        self.assertTrue(re.search(r'<StatusCard />\n  <SetupList />', more))
+        self.assertIn('{#if m}\n    <StatusCard />', more)
+        self.assertFalse((ROOT / 'web/src/mobile/SetupList.svelte').exists())     # its rows are the group rows now
         for gone in ('id="m-pair-setup"', '<h3>Google Drive<', 'id="m-recovery"', 'Retry access and library', 'let pend',
                      '<h3>Without a PC', '<PhoneRecovery', 'changesDb'):
             self.assertNotIn(gone, more)
-        for kept in ('id="m-conn"', 'Pair with your PC', '<h3>Your PC', 'Wi-Fi only', 'id="m-ai"', 'id="m-desktop"', 'href="#/recover"'):
+        for kept in ('id="m-conn"', "kicker={t('settings.pair.pc')}", "title={t('settings.group.pc')}", "title={t('settings.sync.wifi')}", 'id="m-ai"', 'id="m-desktop"', 'href="#/recover"'):
             self.assertIn(kept, more)
+        self.assertEqual([english('settings.pair.pc'), english('settings.group.pc'), english('settings.sync.wifi')], ['Pair with your PC', 'Your PC', 'Wi-Fi only'])
         self.assertIn('href="#/backup"', card)
+        self.assertIn('look="hero"', card)
         self.assertNotIn('detail=', card)                                  # the card never shows the detail
         order = [backup.index(f'id="{i}"') for i in ('m-backup-status', 'm-pair-setup', 'm-conn', 'm-phone', 'm-pair', 'm-recovery')]
         self.assertEqual(order, sorted(order))
@@ -284,7 +292,6 @@ class PhoneScreensTest(unittest.TestCase):
         self.assertIn("case 'recover': return recoverHere ? { tab: 'more', recover: true } : { tab: 'more' }", state)
         self.assertIn('export const recoverHere = solo || (!mirrorSource && (isApp || devSolo))', state)
         self.assertIn('if (mirrorSource?.solo) phone.round = mirrorSource.round', state)
-        self.assertIn("r.recover ? 'Recover a library'", shell)
         self.assertIn('{:else if r.recover}\n      <Recover scroller={main} />', shell)
         solo = backup[backup.index('{:else if m}'):]
         order = [solo.index(f'id="{i}"') for i in ('m-backup-status', 'm-conn', 'm-phone', 'm-pair')]
@@ -294,7 +301,9 @@ class PhoneScreensTest(unittest.TestCase):
         self.assertIn('recoveryFact(', recovery)
         self.assertNotIn('discoverPhoneRecovery', recovery)              # finding a backup is Recover's
         self.assertIn('discoverPhoneRecovery(', recover)
-        self.assertIn('clock(setup.record.header.created * 1000)', recover)   # setups by when they were made, no key shown
+        self.assertIn('clock(setup.record.header.created * 1000, Date.now(), phoneLocale())', recover)   # setups by when they were made, no key shown
+        self.assertIn("t('recovery.state.setupAt', { when: clock(", recover)
+        self.assertEqual(english('recovery.state.setupAt'), 'Set up {when}')
         self.assertNotIn('.sort(', recover)                              # newest first, as discoverPhoneRecovery returns them
         self.assertIn("location.replace(location.pathname + '#/backup')", recover)
 

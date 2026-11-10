@@ -6,6 +6,7 @@
 // is out of reach.
 import { setCardLookup } from '../lib/md'
 import { idFirst, inSearch, wholeId } from '../lib/whole-id'
+import { acceptHash } from './canvas/navigation'
 import { DesktopSource } from './source/desktop'
 import { MirrorSource, NeedsSignIn, NoMirror, PhoneTooOld, tooOld } from './source/mirror'
 import type { Category, MobileSource, Row } from './source/types'
@@ -19,9 +20,13 @@ import { network, SyncPaused, syncPaused, syncPauseReason } from './network.svel
 import { lastAccess, LICENSE_REQUIRED, LicenseRequired } from './mirror/license'
 import { allowCloudWork, CloudCancelled, cloudCheckpoint, cloudRevision, cloudStopped, reconnecting, RECONNECT_BUSY, stopCloudWork } from './mirror/gate'
 import { backup } from './backup.svelte'
-import { ACCESS_STATES, phoneState, type PhoneFacts, type PhoneState } from './mirror/phone-state'
+import { ACCESS_STATES, clock, phoneState, type PhoneFacts, type PhoneState, type PhoneWords } from './mirror/phone-state'
+import { phoneWords, phoneLocale, nativeError } from './settings-words'
 import { pairedFacts, soloFacts } from './mirror/phone-facts'
 import { recoveryFact } from './mirror/recovery-fact'
+import { beginLanguageWork } from './language-switch.ts'
+import { t, type Key } from '../lib/i18n/index.ts'
+import { fmtAgo as agoText, fmtNum, fmtSize } from '../lib/i18n/format.ts'
 
 // A paired phone reads the Google Drive mirror (Phase 4); otherwise the desktop over USB
 // (development). A pairing link or Google's sign-in answer in the URL is taken first, before the
@@ -29,12 +34,12 @@ import { recoveryFact } from './mirror/recovery-fact'
 export const pairNote = sessionStorage.getItem('bp-url-note') || popNote()
 sessionStorage.removeItem('bp-url-note')
 const paired = pairing()
-export const source: MobileSource = paired ? new MirrorSource(paired) : new DesktopSource()
+export const source: MobileSource = paired ? new MirrorSource(paired, phoneWords) : new DesktopSource()
 export const mirrorSource = source instanceof MirrorSource ? source : null
 tooOld.fn = () => { phone.tooOld = true }      // also from the background look, which keeps quiet otherwise
 // no PC (plans/08-phone-solo.md): the phone's own library, backed up in Google Drive
 export const solo = !!mirrorSource?.solo
-// More > Backup & phones (#/backup): a phone paired with a PC has it, and so does the phone without one (its own backup)
+// Settings > Backup & phones (#/backup): a phone paired with a PC has it, and so does the phone without one (its own backup)
 export const backupHere = !!mirrorSource
 // Google Drive is an add-on: true while this phone holds a working Drive sign-in (read at call time)
 export const driveLinked = () => !!mirrorSource && !!token(mirrorSource.pair)
@@ -47,21 +52,25 @@ export const devSolo = import.meta.env.DEV && !isApp && ['127.0.0.1', 'localhost
 export const recoverHere = solo || (!mirrorSource && (isApp || devSolo))
 
 export type Tab = 'lib' | 'cv' | 'cap' | 'jv' | 'notes' | 'more'
-export interface Route { tab: Tab; item?: number; canvas?: string | null; note?: string; mynote?: string; chats?: boolean; synth?: string; imp?: boolean; backup?: boolean; recover?: boolean }
-export const TAB_NAME: Record<Tab, string> = { lib: 'Library', cv: 'Canvas', cap: 'Add', jv: 'Wiskit', notes: 'Notes', more: 'More' }
+export interface Route { tab: Tab; item?: number; canvas?: string | null; note?: string; mynote?: string; chats?: boolean; synth?: string; imp?: boolean; save?: boolean; backup?: boolean; recover?: boolean; add?: boolean; find?: boolean; search?: boolean }
+// the route names are catalog keys; the words are looked up when a screen shows them (never at import time)
+const TAB_NAME: Record<Tab, Key> = { lib: 'shell.route.library', cv: 'shell.route.canvas', cap: 'shell.route.add', jv: 'shell.route.wiskit', notes: 'shell.route.notes', more: 'shell.route.more' }
+export const tabName = (tab: Tab): string => t(TAB_NAME[tab])
 
 export function parseRoute(hash: string): Route {
   const p = hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent)
   switch (p[0]) {
     case 'item': return { tab: 'lib', item: +p[1] || undefined }
-    case 'canvas': return { tab: 'cv', canvas: p[1] || null }
-    case 'cap': return { tab: 'cap' }
+    case 'search': return { tab: 'lib', search: true }
+    case 'canvas': return { tab: 'cv', canvas: p[1] || null, ...(p[1] && p[1] !== 'new' && p[2] === 'add' ? { add: true } : {}) }
+    case 'cap': return p[1] === 'save' ? { tab: 'cap', save: true } : { tab: 'cap' }
     case 'jv': return { tab: 'jv', chats: p[1] === 'chats' }
     case 'notes': return { tab: 'notes', note: p[1] || undefined }
     case 'mynotes': return { tab: 'notes', mynote: p[1] || undefined }
     case 'synth': return { tab: 'notes', synth: p[1] ?? '' }
+    case 'notes-search': return { tab: 'notes', find: true }
     case 'more': return { tab: 'more' }
-    case 'import': return { tab: 'more', imp: true }
+    case 'import': return { tab: 'cap', imp: true }
     case 'backup': return backupHere ? { tab: 'more', backup: true } : { tab: 'more' }
     case 'recover': return recoverHere ? { tab: 'more', recover: true } : { tab: 'more' }
     default: return { tab: 'lib' }
@@ -81,9 +90,11 @@ const ls = {
 export type Sort = 'new' | 'old' | 'az' | 'za'
 // the card look: Auto (Cover, Full holo for favourites, as the desktop does), Cover for all, Holo for all
 export type CardStyle = 'auto' | 'full' | 'fa2'
-export const CARD_STYLES: [CardStyle, string][] = [['auto', 'Auto'], ['full', 'Cover'], ['fa2', 'Holo']]
+const CARD_STYLE_KEYS: [CardStyle, Key][] = [['auto', 'item.cardStyle.auto'], ['full', 'item.cardStyle.full'], ['fa2', 'item.cardStyle.fa2']]
+export const cardStyles = (): [CardStyle, string][] => CARD_STYLE_KEYS.map(([id, key]) => [id, t(key)])
 const asCardStyle = (v: string | null): CardStyle => v === 'full' || v === 'fa2' ? v : 'auto'
-export const SORTS: [Sort, string][] = [['new', 'Newest'], ['old', 'Oldest'], ['az', 'A to Z'], ['za', 'Z to A']]
+const SORT_KEYS: [Sort, Key][] = [['new', 'library.sort.new'], ['old', 'library.sort.old'], ['az', 'library.sort.az'], ['za', 'library.sort.za']]
+export const sorts = (): [Sort, string][] => SORT_KEYS.map(([id, key]) => [id, t(key)])
 const COLLATE = new Intl.Collator('en', { sensitivity: 'base', numeric: true })
 const hasText = (r: Row, q: string) => [r.title, r.creator, r.tags, r.desc, r.cat].some(s => (s || '').toLowerCase().includes(q))
 
@@ -93,7 +104,7 @@ class Phone {
   tints: Record<string, string> = $state.raw({})
   loaded = $state(false)                    // something is on screen (from the copy or the source)
   load = $state.raw({ text: '', frac: 0 })  // until then: the Library's loading line and bar (refresh)
-  read = $state.raw<{ text: string; frac: number } | null>(null)   // the refresh running now, any time: More's Sync box and the strip (lanes.ts)
+  read = $state.raw<{ text: string; frac: number } | null>(null)   // the refresh running now, any time: More's Sync box, the sync key's ring and its panel (lanes.ts)
   synced = $state(0)                        // when the copy was last refreshed from the source (ms)
   reachable = $state(false)                 // the last source call worked
   answered = $state(false)                  // the source replied to the last call (even with a refusal): Drive is not offline
@@ -112,12 +123,13 @@ class Phone {
   round = $state.raw<{ at: number; ok: boolean; error: string } | null>(null)   // without a PC: the last backup round (MirrorSource.round), null none yet
   account = $state.raw<{ got: string; check: 'mismatch' } | null>(null)   // signed in to another account than the PC's: More offers Change account
   note = $state(pairNote)                   // a line for the More screen (paired, sign-in refused)
-  sync = $state.raw<SyncRun | null>(null)   // the pull widget's steps (syncNow), until it closes
+  sync = $state.raw<SyncRun | null>(null)   // the sync steps (syncNow) the sync key and its panel show, until it closes
   route = $state.raw<Route>(parseRoute(location.hash))
   canvasRevision = $state(0)
   pend = $state.raw({ unsent: 0, waiting: 0, held: 0, resending: 0 })   // the change journal now (measurePend): the status and This phone
   now = $state(Date.now())                  // every 30 s (boot): an expired Google token and "checked 2 min ago" are read again
   scroll: Record<string, number> = {}       // the Library's scroll position per tab, restored on return
+  lastItem: number | null = null           // consumed by Grid on return from the item screen/strip
 
   // filters
   q = $state('')
@@ -132,6 +144,7 @@ class Phone {
   sort = $state<Sort>('new')
   motionOff = $state(ls.get('bp-motion') === 'off')
   cardStyle = $state<CardStyle>(asCardStyle(ls.get('bp-cards')))
+  gallery = $state('3')                     // Library layout, retained when returning from an item
   capMB = $state(+(ls.get('bp-cap') || 150))
 
   byId = $derived(new Map(this.rows.map(r => [r.id, r])))
@@ -191,7 +204,7 @@ export async function boot() {
   window.addEventListener('brainamon-canvas-change', () => { phone.canvasRevision++ })
   window.addEventListener('hashchange', () => {
     if (location.hash.startsWith('#pair=')) { location.reload(); return }
-    phone.route = parseRoute(location.hash)
+    if (acceptHash(location.hash)) phone.route = parseRoute(location.hash)
   })
   window.addEventListener('online', () => { phone.online = true; refresh() })
   window.addEventListener('offline', () => { phone.online = false })
@@ -234,7 +247,7 @@ export async function boot() {
   // for the account confirmed on this phone only: after a reset there is none, so nothing is reused
   if (!(await renewSignIn())) return
   // back from Google's page (browser), or a token from before `g` existed: read its account
-  if (paired && unconfirmedToken(paired) && navigator.onLine && !syncPaused()) await checkAccount().catch(e => { phone.note = `Could not read which Google account signed in (${(e as Error).message}).` })
+  if (paired && unconfirmedToken(paired) && navigator.onLine && !syncPaused()) await checkAccount().catch(e => { phone.note = t('shell.sync.accountFailed', { detail: nativeError('google', e) }) })
   await refresh()
   // the Notes screen reloads when opened; Wiskit re-reads its chat list when `synced` moves
   source.watch(ids => patchRows(ids), () => { phone.synced = Date.now() }, () => { phone.canvasRevision++ })
@@ -266,21 +279,21 @@ export function driveStatus(): { lamp: DriveLamp; ok: boolean; why: string } {
   if (m && !m.solo && signedIn && phone.online && !phone.refreshing && (!m.pair.l || network.licenseLocked)) {
     // a refused access check: the status model's sentence and lamp, as on the status card (mirror/phone-state.ts)
     const st = phoneStatus()
-    if (st && ACCESS_STATES.includes(st.id)) return { lamp: st.lamp as DriveLamp, ok: false, why: st.text }
+    if (st && ACCESS_STATES.includes(st.id)) return { lamp: phoneState(phoneFacts()!).lamp as DriveLamp, ok: false, why: st.text }
     return { lamp: 'access pending', ok: false, why: network.licenseProblem || LICENSE_REQUIRED }
   }
   let why = ''
   if (lamp === 'sign in') {
     why = phone.account?.check === 'mismatch' && m
-      ? `Signed in as ${phone.account.got}, but your PC backs up to ${m.pair.e}. Use Change account on Backup & phones.`
-      : 'Google Drive is not connected. Connect it on Backup & phones.'
-  } else if (lamp === 'offline') why = 'The phone is offline.'
-  else if (lamp === 'no library yet') why = phone.noLibraryWhy?.message || 'No library in Google Drive for this pairing.'
-  else if (lamp === 'not reachable') why = 'Google Drive could not be reached. Retry library loading. Saved content and queued edits stay here.'
+      ? t('backup.account.mismatch', { account: phone.account.got, pcAccount: m.pair.e })
+      : t('backup.drive.notConnected')
+  } else if (lamp === 'offline') why = t('backup.drive.offline')
+  else if (lamp === 'no library yet') why = phone.noLibraryWhy?.message || t('backup.drive.noLibrary')
+  else if (lamp === 'not reachable') why = t('backup.drive.unreachable')
   return { lamp, ok: !why, why }
 }
 
-// the journal now, for the status card, Backup & phones and the strip (Changes.watch calls it after every change)
+// the journal now, for the status card, Backup & phones and the owner line (Changes.watch calls it after every change)
 export async function measurePend() {
   const m = mirrorSource
   if (!m) return
@@ -293,18 +306,18 @@ export async function measurePend() {
 // What the status model (mirror/phone-state.ts) reads, for a phone paired with a PC or used without one; null for a
 // phone with neither (the PC over USB). Read phoneStatus() in $derived: the facts follow phone, network, the token
 // (phone.tokenAt), the recovery setup (phone.recoveryAt) and the clock (phone.now).
-export function phoneFacts(): PhoneFacts | null {
+export function phoneFacts(words?: PhoneWords): PhoneFacts | null {
   const m = mirrorSource
   if (!m) return null
   void phone.tokenAt
   if (m.solo) {
     void phone.recoveryAt; void phone.now
     return soloFacts({
-      pause: network.manualPause ? 'Sync paused by you.' : undefined,
+      pause: network.manualPause ? (words?.('backup.state.manualPause') ?? 'Sync paused by you.') : undefined,
       backupTask: backup.task || backup.busy ? {
         busy: backup.busy,
-        text: backup.busy ? backup.task?.paused ? 'Pausing backup task…' : backup.step : backup.task?.paused ? 'Backup task paused.' : 'Backup task waiting to continue.',
-        detail: backup.error || 'Local content and queued edits stay here. Open the saved task to continue.',
+        text: backup.busy ? backup.task?.paused ? (words?.('backup.task.pausing') ?? 'Pausing backup task…') : backup.step : backup.task?.paused ? (words?.('backup.task.paused') ?? 'Backup task paused.') : (words?.('backup.task.waiting') ?? 'Backup task waiting to continue.'),
+        detail: backup.error || (words?.('backup.task.localDetail') ?? 'Local content and queued edits stay here. Open the saved task to continue.'),
       } : undefined,
       app: isApp, online: network.online, paused: syncPaused(), refreshing: phone.refreshing, started: phone.tried,
       token: !!token(m.pair), account: m.pair.g || '', round: phone.round && { ok: phone.round.ok, ago: fmtAgo(phone.round.at) },
@@ -312,18 +325,18 @@ export function phoneFacts(): PhoneFacts | null {
     })
   }
   return pairedFacts({
-    pause: network.manualPause ? 'Sync paused by you.' : undefined,
+    pause: network.manualPause ? (words?.('backup.state.manualPause') ?? 'Sync paused by you.') : undefined,
     app: isApp, online: network.online, paused: syncPaused(), refreshing: phone.refreshing, tried: phone.tried,
     token: !!token(m.pair), refused: phone.signIn, account: m.pair.g || '', pcAccount: m.pair.e || '',
     mismatch: phone.account?.check === 'mismatch' ? phone.account.got : '', access: network.licenseKind,
     accessAt: network.licenseAt, last: lastAccess(m.pair.f)?.at ?? 0, noLibrary: phone.noLibrary ? phone.noLibraryWhy : null,
     reachable: phone.reachable, tooOld: phone.tooOld, checked: phone.synced ? fmtAgo(phone.synced) : '', pend: phone.pend,
     now: phone.now,
-  })
+  }, words ? (ms, now) => clock(ms, now, phoneLocale()) : undefined)
 }
 export function phoneStatus(): PhoneState | null {
-  const f = phoneFacts()
-  return f && phoneState(f)
+  const f = phoneFacts(phoneWords)
+  return f && phoneState(f, phoneWords)
 }
 
 // Connect (Backup & phones, the card): Google's sheet (app) or page (browser), then the account check. Every outcome
@@ -331,8 +344,9 @@ export function phoneStatus(): PhoneState | null {
 // Drive.call 20 s for the account), and the button says which one it is in (phone.connectStep).
 export async function connectDrive(choose = false) {
   if (phone.connecting) return
-  if (backup.busy) { phone.note = 'Pause the backup task before changing Google sign-in.'; return }
-  if (!paired) { phone.note = 'Pair with your PC first (Scan), or use Brainamon without a PC.'; return }
+  if (backup.busy) { phone.note = t('backup.warning.pauseBeforeSignIn'); return }
+  if (!paired) { phone.note = t('backup.warning.pairFirst'); return }
+  const finishLanguageWork = beginLanguageWork()
   phone.connecting = true
   phone.connectStep = 'Waiting for Google'
   phone.note = ''
@@ -347,17 +361,18 @@ export async function connectDrive(choose = false) {
     // the library read that follows shows itself (the Now row and the lamp): the button is free again
     phone.connecting = false; phone.connectStep = ''
     // the refusal an earlier read met is answered: More drops Connect now, not when the read after it lands
-    if (!ok) { phone.note = `Choose ${paired.e}, the account your PC uses.`; sessionStorage.setItem('bp-note', phone.note); location.reload(); return }
+    if (!ok) { phone.note = t('backup.account.choose', { account: paired.e }); sessionStorage.setItem('bp-note', phone.note); location.reload(); return }
     await secretsSaved()
     phone.signIn = false
-    phone.note = `Google Drive connected: ${paired.g || 'signed in'}.`
+    phone.note = t('backup.account.connected', { account: paired.g || t('settings.account.signedIn') })
   } catch (e) {
-    phone.note = `Google Drive was not connected: ${(e as Error).message}`
+    phone.note = t('backup.error.connect', { detail: nativeError('google', e) })
     sessionStorage.setItem('bp-note', phone.note)
     location.reload()
     return
   } finally {
     phone.connecting = false; phone.connectStep = ''
+    finishLanguageWork()
   }
   sessionStorage.setItem('bp-note', phone.note)
   location.reload()
@@ -374,38 +389,41 @@ export async function changeAccount() {
 
 // the app: scan the pairing QR (or take a pasted link) and start again on the mirror
 export async function pairFrom(text?: string) {
-  if (backup.task || backup.busy) { phone.note = 'Finish the saved backup task, or disconnect backup before pairing with a PC.'; return }
+  if (backup.task || backup.busy) { phone.note = t('backup.warning.finishBeforePair'); return }
   if (reconnecting()) { phone.note = RECONNECT_BUSY; return }
+  const done = beginLanguageWork()
   try {
     const got = text ?? (await scanQr())
     if (!got) return
-    const note = await acceptLink(got)
-    phone.note = note || 'That is not a Brainamon pairing code. On the PC open Settings > Backup & phones > Add a phone.'
+    let display = ''
+    const note = await acceptLink(got, phoneWords, value => { display = value })
+    phone.note = display || note || t('settings.pair.invalid')
     if (note.startsWith('Paired') && pairing()) {
-      try { sessionStorage.setItem('bp-note', note) } catch { /* the note is only a courtesy */ }
+      try { sessionStorage.setItem('bp-note', phone.note) } catch { /* the note is only a courtesy */ }
       await secretsSaved()
       location.replace(location.pathname + '#/backup'); location.reload()     // the guide there finishes the pairing
     }
-  } catch (e) { phone.note = (e as Error).message }
+  } catch (e) { phone.note = nativeError('scanner', e) } finally { done() }
 }
 
 // use the phone without a PC: a new library (no code), or the one a recovery code opens in Drive
 export async function useWithoutPc(code = '', recoveryAccount = '') {
-  if (backup.task || backup.busy) { phone.note = 'Finish the saved backup task, or disconnect backup before restoring.'; return false }
+  if (backup.task || backup.busy) { phone.note = t('recovery.warning.finishBeforeRestore'); return false }
   if (reconnecting()) { phone.note = RECONNECT_BUSY; return false }
   if (code.trim() && (phone.refreshing || phone.connecting || (paired && token(paired) && !recoveryAccount))) {
-    phone.note = 'Disconnect backup on Backup & phones and wait for current work to finish before restoring a phone backup.'
+    phone.note = t('recovery.warning.disconnectBeforeRestore')
     return false
   }
+  const done = beginLanguageWork()
   try {
     if (code.trim() && ((paired && !paired.solo) || phone.rows.length || (await changesDb.forChat()).length || (await storedItems.all()).length || (await outbox.all()).length || (await drafts.all()).length)) {
-      phone.note = "Restore on an empty phone. To keep this phone's content, use Reconnect this phone when the backup matches; otherwise back up existing content and save its recovery code before removing it from this phone."
+      phone.note = t('recovery.warning.emptyPhone')
       return false
     }
     const dev = devSolo ? { d: 'http://127.0.0.1:18766', x: { anthropic: 'http://127.0.0.1:18766/ai/anthropic', openai: 'http://127.0.0.1:18766/ai/openai' }, ai: {} } : undefined
     await startSolo(code.trim() || newKeyText(), dev, recoveryAccount)
     await Promise.all([wipe(), changesDb.clear()])         // nothing left over from an earlier pairing
-    const note = code.trim() ? (recoveryAccount ? 'Recovery key accepted. Reading your phone backup from Google Drive.' : 'Recovery code accepted. Back up to Google Drive below with the same Google account to read your phone backup.') : 'Brainamon now runs on this phone without a PC. Back up to Google Drive below, then set up recovery.'
+    const note = code.trim() ? (recoveryAccount ? t('recovery.state.keyAccepted') : t('recovery.state.codeAccepted')) : t('backup.state.soloStarted')
     try { sessionStorage.setItem('bp-note', note) } catch { /* the note is only a courtesy */ }
     await secretsSaved()
     location.replace(location.pathname + '#/backup'); location.reload()
@@ -413,14 +431,14 @@ export async function useWithoutPc(code = '', recoveryAccount = '') {
   } catch (e) {
     phone.note = (e as Error).message
     return false
-  }
+  } finally { done() }
 }
 
 // the AI keys a new pairing left in Drive (mirror.py pair_drop). They need only Drive, not the library,
 // so they are taken during the PC's first upload too: they expire 30 minutes after the code was made
 async function collectKeys() {
   if (!mirrorSource?.pair.t) return
-  const note = await mirrorSource.takeKeys().catch(e => `The AI keys from the pairing could not be collected yet (${(e as Error).message}).`)
+  const note = await mirrorSource.takeKeys().catch(e => t('shell.sync.keysFailed', { detail: (e as Error).message }))
   if (note) phone.note = note
 }
 
@@ -433,26 +451,27 @@ function syncProblem(e: unknown): string {
     const st = phoneStatus()
     if (st && ACCESS_STATES.includes(st.id)) return [st.text, st.detail].filter(Boolean).join(' ')
   }
-  return (e as Error).message
+  return nativeError('network', e)
 }
 
-// '' when the copy is fresh, else why not (the pull widget shows it)
+// '' when the copy is fresh, else why not (the sync panel shows it)
 export async function refresh(step?: (key: SyncKey, note?: string) => void): Promise<string> {
   if (phone.refreshing) return ''
   if (reconnecting()) return RECONNECT_BUSY
-  if (mirrorSource && syncPaused()) { phone.loaded = true; phone.tried = true; return syncPauseReason() }
+  if (mirrorSource && syncPaused()) { phone.loaded = true; phone.tried = true; return syncPauseReason(phoneWords) }
+  const finishLanguageWork = beginLanguageWork()
   phone.refreshing = true
   const revision = cloudRevision()
   phone.error = ''
   // where it is: the steps, then the library parts (the first load, with nothing on screen yet, shows it too)
-  const where = source.kind === 'mirror' ? 'Google Drive' : 'the PC'
+  const where = source.kind === 'mirror' ? t('shell.sync.whereDrive') : t('shell.sync.wherePc')
   const at = (text: string, frac: number) => { phone.read = { text, frac }; if (!phone.loaded) phone.load = { text, frac } }
-  at(`Connecting to ${where}`, 0.05)
+  at(t('shell.sync.connectingTo', { where }), 0.05)
   try {
     const { rows, cats } = await source.rows((key, note) => {
-      at(key === 'read' ? `Reading ${where}` : 'Fetching the library', key === 'read' ? 0.15 : PARTS_AT)
+      at(key === 'read' ? t('shell.sync.reading', { where }) : t('shell.sync.fetching'), key === 'read' ? 0.15 : PARTS_AT)
       step?.(key, note)
-    }, (done, total) => at(`Fetching the library · part ${done} of ${total}`, PARTS_AT + PARTS_SPAN * done / Math.max(1, total)))
+    }, (done, total) => at(t('shell.sync.fetchingPart', { done, total }), PARTS_AT + PARTS_SPAN * done / Math.max(1, total)))
     await collectKeys()
     cloudCheckpoint(revision)
     applyCats(cats)
@@ -466,13 +485,15 @@ export async function refresh(step?: (key: SyncKey, note?: string) => void): Pro
     phone.error = ''
     phone.synced = Date.now()
     await Promise.all([kv.set('rows', rows), kv.set('cats', cats), kv.set('synced', phone.synced)])
-    trimItems(phone.favIds)
-    source.tints().then(t => { phone.tints = t; kv.set('tints', t) }).catch(() => { /* the map colours are optional */ })
+    const finishTrim = beginLanguageWork()
+    void trimItems(phone.favIds).catch(() => {}).finally(finishTrim)
+    const finishTints = beginLanguageWork()
+    void source.tints().then(async t => { phone.tints = t; await kv.set('tints', t) }).catch(() => { /* the map colours are optional */ }).finally(finishTints)
     fillLinks(); runPictures()
     return ''
   } catch (e) {
     if (e instanceof CloudCancelled) return e.message
-    if (e instanceof SyncPaused || (mirrorSource && syncPaused())) { phone.loaded = true; return syncPauseReason() }
+    if (e instanceof SyncPaused || (mirrorSource && syncPaused())) { phone.loaded = true; return syncPauseReason(phoneWords) }
     const msg = syncProblem(e)
     if (e instanceof PhoneTooOld) { phone.answered = phone.loaded = true; if (!phone.rows.length) phone.error = msg; return msg }
     phone.reachable = false
@@ -484,20 +505,21 @@ export async function refresh(step?: (key: SyncKey, note?: string) => void): Pro
     if (e instanceof NoMirror) await collectKeys()            // Drive answered: no library yet (the PC's first upload)
     if (e instanceof NoMirror || e instanceof NeedsSignIn) return (phone.error = msg)
     if (!phone.loaded) phone.error = source.kind === 'mirror'
-      ? `Google Drive is not reachable (${msg}). The phone's copy shows once it has one.`
-      : `The PC is not reachable (${msg}). Plug the phone in and run adb reverse tcp:18765 tcp:18765.`
-    return `${e instanceof DriveError ? msg : `${source.kind === 'mirror' ? 'Google Drive' : 'The PC'} is not reachable (${msg})`}. The phone keeps its copy.`
+      ? t('shell.sync.driveUnreachable', { detail: msg })
+      : t('shell.sync.pcUnreachable', { detail: msg })
+    return t('shell.sync.keepsCopyError', { problem: e instanceof DriveError ? msg : t('shell.sync.unreachableDetail', { where: t(source.kind === 'mirror' ? 'shell.sync.whereDrive' : 'shell.sync.wherePcCap'), detail: msg }) })
   } finally {
     phone.refreshing = false
     phone.read = null
     if (mirrorSource?.solo) phone.round = mirrorSource.round     // without a PC: what this round sent and read back (the status)
     phone.tried = true
     void measurePend()                      // a read can change the counts: the PC's receipts, canvas support, the resend
+    finishLanguageWork()
   }
 }
 
 // ── pull to refresh ──────────────────────────────────────────────────────────
-// The phone's own sync steps, shown by the pull widget (PullSync.svelte): send the queued changes as
+// The phone's own sync steps, shown by the sync panel (SyncPanel.svelte): send the queued changes as
 // a change file, read the mirror's manifest, update the library parts that changed. The PC uploads
 // the mirror on its own schedule (server/sync.py) and the phone cannot ask it to, so the last line
 // says when it last did.
@@ -516,7 +538,7 @@ function stepAt(key: SyncKey, note = '') {
 }
 export function closeSync() { clearTimeout(syncT); if (phone.sync?.end) phone.sync = null }
 // how far a sync run is, 0..1: steps finished out of all; the running one counts half, or the library
-// parts fetched so far while that step runs (the pull widget's bar and More's Sync box)
+// parts fetched so far while that step runs (the sync key's ring and More's Sync box)
 export function syncFill(run: SyncRun): number {
   if (run.end) return 1
   const done = run.steps.filter(s => s.state === 'ok' || s.state === 'err').length
@@ -528,11 +550,11 @@ export function syncFill(run: SyncRun): number {
 // what the read of Google Drive (or of the PC, over USB) is doing now, null when nothing runs: Sync now
 // (its steps, with the changes sent first) or a refresh on its own (app start, Connect, back online)
 export function driveWork(): { text: string; pct: number | null } | null {
-  if (backup.busy) return { text: backup.task?.paused ? 'Pausing backup task after the current request…' : backup.step, pct: null }
+  if (backup.busy) return { text: backup.task?.paused ? t('shell.sync.pausingTask') : backup.step, pct: null }
   const run = phone.sync && !phone.sync.end ? phone.sync : null
   if (!run && !phone.refreshing) return null
   const s = run?.steps.find(x => x.state === 'run')
-  const text = phone.read?.text || (s ? `${s.label}${s.note ? ` · ${s.note}` : ''}` : 'Starting')
+  const text = phone.read?.text || (s ? `${s.label}${s.note ? ` · ${s.note}` : ''}` : t('shell.sync.starting'))
   return { text, pct: Math.round((run ? syncFill(run) : phone.read?.frac ?? 0) * 100) }
 }
 
@@ -540,39 +562,42 @@ export async function syncNow() {
   if (phone.refreshing || (phone.sync && !phone.sync.end)) return
   if (reconnecting() || cloudStopped()) return
   if (mirrorSource && syncPaused()) return
-  clearTimeout(syncT)
-  const m = mirrorSource
-  const plan: [SyncKey, string][] = m ? [['send', "Send this phone's changes"], ['read', 'Read the Drive mirror'], ['lib', 'Update the library']] : [['read', 'Read the PC'], ['lib', 'Update the library']]
-  phone.sync = { steps: plan.map(([key, label]) => ({ key, label, state: 'wait', note: '' })), end: '', msg: '' }
-  let why = '', unsent = ''
-  // no Drive or PC call when there is nothing to call or no signal
-  if (isApp && !paired) why = 'Set up Brainamon in More first: pair with your PC, or use it without a PC.'
-  else if (!navigator.onLine) why = 'Offline: the phone keeps its copy until it has signal.'
-  else {
-    if (!(await renewSignIn())) return
-    if (m) {
-      stepAt('send')
-      await m.changes.load()
-      const queued = m.changes.counts(m.canvasSync).unsent
-      try {
-        const n = await m.flush()
-        if (queued && !n && !token(m.pair)) unsent = 'Connect Google Drive on Backup & phones to send the queued changes.'
-        stepAt('send', n ? (solo ? `${n} backed up in Google Drive` : `${n} sent, the PC applies them when it runs`) : queued ? 'waiting for Google sign-in' : 'nothing to send')
-      } catch (e) {
-        unsent = syncProblem(e)
-        syncEdit(s => ({ ...s, steps: s.steps.map(x => (x.key === 'send' ? { ...x, state: 'err', note: `kept for later: ${unsent}` } : x)) }))
+  const finishLanguageWork = beginLanguageWork()
+  try {
+    clearTimeout(syncT)
+    const m = mirrorSource
+    const plan: [SyncKey, string][] = m ? [['send', t('shell.sync.sendStep')], ['read', t('shell.sync.readDriveStep')], ['lib', t('shell.sync.libraryStep')]] : [['read', t('shell.sync.readPcStep')], ['lib', t('shell.sync.libraryStep')]]
+    phone.sync = { steps: plan.map(([key, label]) => ({ key, label, state: 'wait', note: '' })), end: '', msg: '' }
+    let why = '', unsent = ''
+    // no Drive or PC call when there is nothing to call or no signal
+    if (isApp && !paired) why = t('shell.sync.setupFirst')
+    else if (!navigator.onLine) why = t('shell.sync.offlineCopy')
+    else {
+      if (!(await renewSignIn())) return
+      if (m) {
+        stepAt('send')
+        await m.changes.load()
+        const queued = m.changes.counts(m.canvasSync).unsent
+        try {
+          const n = await m.flush()
+          if (queued && !n && !token(m.pair)) unsent = t('shell.sync.connectQueue')
+          stepAt('send', n ? (solo ? t('shell.sync.backedUpCount', { n }) : t('shell.sync.sentCount', { n })) : queued ? t('shell.sync.waitingSignIn') : t('shell.sync.nothingToSend'))
+        } catch (e) {
+          unsent = syncProblem(e)
+          syncEdit(s => ({ ...s, steps: s.steps.map(x => (x.key === 'send' ? { ...x, state: 'err', note: t('shell.sync.keptForLater', { detail: unsent }) } : x)) }))
+        }
       }
+      why = cloudStopped() ? t('shell.sync.cloudStopped') : await refresh(stepAt)
     }
-    why = cloudStopped() ? 'Previous cloud work stopped. Local changes stay on this phone.' : await refresh(stepAt)
-  }
-  const n = phone.rows.length.toLocaleString('en')
-  const done = `Up to date · ${n} items${m?.manifest?.published ? ` · the PC uploaded ${fmtAgo(m.manifest.published)}` : solo ? ' · on this phone' : ''}`
-  syncEdit(s => ({
-    steps: s.steps.map(x => (x.state === 'run' ? { ...x, state: why ? 'err' : 'ok' } : x.state === 'wait' && !why ? { ...x, state: 'ok' } : x)),
-    end: why || unsent ? 'error' : 'done',
-    msg: phone.noLibraryWhy ? `${phone.noLibraryWhy.title}. More > Backup & phones says what to do.` : why || (unsent ? `Library read, but this phone's changes were not sent (${unsent}). They stay queued.` : done),
-  }))
-  syncT = window.setTimeout(() => { phone.sync = null }, why || unsent ? 8000 : 2200)
+    const n = fmtNum(phone.rows.length, 'en')
+    const done = t('shell.sync.upToDate', { items: n, where: m?.manifest?.published ? t('shell.sync.pcUploaded', { ago: fmtAgo(m.manifest.published) }) : solo ? t('shell.sync.onPhone') : '' })
+    syncEdit(s => ({
+      steps: s.steps.map(x => (x.state === 'run' ? { ...x, state: why ? 'err' : 'ok' } : x.state === 'wait' && !why ? { ...x, state: 'ok' } : x)),
+      end: why || unsent ? 'error' : 'done',
+      msg: phone.noLibraryWhy ? t('shell.sync.noLibraryHelp', { title: phone.noLibraryWhy.title }) : why || (unsent ? t('shell.sync.readNotSent', { detail: unsent }) : done),
+    }))
+    syncT = window.setTimeout(() => { phone.sync = null }, why || unsent ? 8000 : 2200)
+  } finally { finishLanguageWork() }
 }
 
 // after an items_changed event or a write: replace those rows, add new ones, drop the gone
@@ -593,11 +618,14 @@ export async function patchRows(ids: number[]) {
 // links saved on the phone: read their pages for a picture and caption (plans/09-link-details.md),
 // then redraw them; the ids given, or every one not tried since the app started
 export async function fillLinks(ids?: number[]) {
-  const got = (await mirrorSource?.linkDetails(ids).catch(() => [] as number[])) ?? []
-  if (got.length) await patchRows(got)
+  const done = beginLanguageWork()
+  try {
+    const got = (await mirrorSource?.linkDetails(ids).catch(() => [] as number[])) ?? []
+    if (got.length) await patchRows(got)
+  } finally { done() }
 }
 
-// The slow picture queue's state for the top strip (SyncStrip.svelte, lanes.ts) and its runner. One run at a time;
+// The slow picture queue's state for the sync panel (SyncPanel.svelte, lanes.ts) and its runner. One run at a time;
 // when the site asks to slow down it waits PIC_WAIT_MS and goes on, as long as the app is open.
 const PIC_WAIT_MS = 15 * 60_000
 export const pics = $state({ state: 'idle' as 'idle' | 'run' | 'wait', done: 0, total: 0 })
@@ -612,8 +640,12 @@ export async function runPictures() {
     for (;;) {
       pics.state = 'run'
       picAgain = false
-      const r = await mirrorSource.fillPictures(p => { pics.done = p.done; pics.total = p.total }, () => !picRunning)
-      if (r.got.length) await patchRows(r.got)
+      const done = beginLanguageWork()
+      let r: Awaited<ReturnType<MirrorSource['fillPictures']>>
+      try {
+        r = await mirrorSource.fillPictures(p => { pics.done = p.done; pics.total = p.total }, () => !picRunning)
+        if (r.got.length) await patchRows(r.got)
+      } finally { done() }
       if (!r.blocked && !picAgain) break
       if (!r.blocked) continue
       pics.state = 'wait'
@@ -632,6 +664,15 @@ export function replaceRow(r: Row) {
 
 // ── search ───────────────────────────────────────────────────────────────────
 let qT = 0, qSeq = 0
+export function openLibrarySearch(text: string) {
+  clearTimeout(qT)
+  phone.q = text
+  phone.searchIds = null
+  phone.rank = null
+  phone.smartNote = ''
+  void runSearch(text)
+  location.hash = '#/search'
+}
 export function setQuery(text: string) {
   clearTimeout(qT)
   qT = window.setTimeout(() => {
@@ -713,9 +754,6 @@ export function initTheme() {
   if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t
 }
 
-export const fmtAgo = (ms: number) => {
-  if (!ms) return 'never'
-  const m = Math.round((Date.now() - ms) / 60000)
-  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`
-}
-export const fmtMB = (b: number) => (b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b >= 1e6 ? (b / 1e6).toFixed(b < 1e7 ? 1 : 0) + ' MB' : Math.max(1, Math.round(b / 1e3)) + ' KB')
+// both formats are pinned in English by tests.test_phone_i18n (lib/i18n/format.ts); other languages change words and units only
+export const fmtAgo = (ms: number) => agoText(ms)
+export const fmtMB = (b: number) => fmtSize(b)

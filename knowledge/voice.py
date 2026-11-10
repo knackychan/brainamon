@@ -1,4 +1,4 @@
-"""Voice notes: an audio upload -> compressed MP3 -> Whisper text (projects/voice-notes/plans/01-pc.md).
+"""Voice notes: an audio upload -> compressed MP3 -> transcribed text (projects/voice-notes/plans/01-pc.md).
 
 Qt-free and DB-free: runs on a worker thread (asyncio.to_thread in server/routes/my_notes.py). The
 caller owns `work_dir` and deletes it."""

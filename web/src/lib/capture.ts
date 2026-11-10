@@ -98,31 +98,33 @@ export const destOf = (d: Draft): Dest => d.dest || defaultDest(d)
 // Library item that already has this link
 export interface Caps { thumb: boolean; known?: number }
 export interface Verdict { ok: boolean; help: string }
+export type CaptureWords = (key: string, params?: Record<string, unknown>) => string
+const say = (words: CaptureWords | undefined, key: string, params: Record<string, unknown>, english: string): string => words ? words(key, params) : english
 const no = (help: string): Verdict => ({ ok: false, help })
 const yes = (help: string): Verdict => ({ ok: true, help })
 
-export function verdict(d: Draft, c: Caps): Verdict {
+export function verdict(d: Draft, c: Caps, words?: CaptureWords): Verdict {
   const text = d.text.trim()
-  if (!text && !d.pic) return no('Add a link, some text or a picture to save.')
+  if (!text && !d.pic) return no(say(words, 'capture.draft.emptyHelp', {}, 'Add a link, some text or a picture to save.'))
   if (destOf(d) === 'library') {
-    if (!linkOf(d.text)) return no('Library items need a web link. Choose Note to keep this text.')
-    if (c.known) return no(`Already in your library as No. ${c.known}.`)
+    if (!linkOf(d.text)) return no(say(words, 'capture.recap.chooseNote', {}, 'Library items need a web link. Choose Note to keep this text.'))
+    if (c.known) return no(say(words, 'capture.recap.known', { id: c.known }, `Already in your library as No. ${c.known}.`))
     if (picKind(d.pic) === 'image') {
-      if (!c.thumb) return no('A picture can only go into a Library item from the PC app. Choose Note, or remove the picture.')
-      return yes('Creates a Library card. The picture becomes its thumbnail and the text its description.')
+      if (!c.thumb) return no(say(words, 'capture.recap.picturePc', {}, 'A picture can only go into a Library item from the PC app. Choose Note, or remove the picture.'))
+      return yes(say(words, 'capture.recap.createsPictureCard', {}, 'Creates a Library card. The picture becomes its thumbnail and the text its description.'))
     }
-    return yes(lone(d.text) ? 'Creates a Library card.' : 'Creates a Library card from the link. The text around it goes into the card\'s note.')
+    return yes(lone(d.text) ? say(words, 'capture.recap.createsCard', {}, 'Creates a Library card.') : say(words, 'capture.recap.createsTextCard', {}, 'Creates a Library card from the link. The text around it goes into the card\'s note.'))
   }
-  if (!text) return no(picKind(d.pic) === 'image' ? 'Read the picture\'s text, or type it. Brainamon keeps the text, not the picture.' : 'Add some text to save.')
-  return yes(d.target ? 'Adds a section at the end of the note. Nothing already there changes.' : `Creates a note in ${d.category || INBOX}.`)
+  if (!text) return no(picKind(d.pic) === 'image' ? say(words, 'capture.recap.readOrType', {}, 'Read the picture\'s text, or type it. Brainamon keeps the text, not the picture.') : say(words, 'capture.recap.addText', {}, 'Add some text to save.'))
+  return yes(d.target ? say(words, 'capture.recap.appends', {}, 'Adds a section at the end of the note. Nothing already there changes.') : say(words, 'capture.recap.createsNote', { category: d.category || INBOX }, `Creates a note in ${d.category || INBOX}.`))
 }
 
 // what the help line under the content says about it
-export function sourceHelp(d: Draft, p?: Preview | null): string {
-  if (picKind(d.pic) === 'image') return 'Reading a picture copies its text into the box. Review it before saving.'
-  if (destOf(d) === 'library') return 'The Library card gets the link\'s thumbnail and caption after saving.'
-  if (pageOf(d, p)) return 'The page\'s title and caption go under the link.'
-  return linkOf(d.text) ? 'The link is kept as text.' : 'The content is kept as written.'
+export function sourceHelp(d: Draft, p?: Preview | null, words?: CaptureWords): string {
+  if (picKind(d.pic) === 'image') return say(words, 'capture.attachment.readHelp', {}, 'Reading a picture copies its text into the box. Review it before saving.')
+  if (destOf(d) === 'library') return say(words, 'capture.recap.cardAfterSave', {}, 'The Library card gets the link\'s thumbnail and caption after saving.')
+  if (pageOf(d, p)) return say(words, 'capture.recap.pageUnderLink', {}, 'The page\'s title and caption go under the link.')
+  return linkOf(d.text) ? say(words, 'capture.recap.linkAsText', {}, 'The link is kept as text.') : say(words, 'capture.draft.contentAsWritten', {}, 'The content is kept as written.')
 }
 
 // ── what a note gets ──────────────────────────────────────────────────────────
@@ -154,11 +156,11 @@ export function titleFor(d: Draft, p?: Preview | null): string {
 
 // ── one picture or file at a time ─────────────────────────────────────────────
 export type FileCheck = { ok: true; kind: FileKind } | { ok: false; msg: string }
-export function checkFiles(files: { name: string; type: string; size: number }[]): FileCheck {
-  if (files.length !== 1) return { ok: false, msg: 'Add one picture or file at a time.' + KEPT }
+export function checkFiles(files: { name: string; type: string; size: number }[], words?: CaptureWords): FileCheck {
+  if (files.length !== 1) return { ok: false, msg: say(words, 'capture.attachment.oneFile', {}, 'Add one picture or file at a time.' + KEPT) }
   const f = files[0], kind = kindOf(f.name, f.type)
-  if (!kind) return { ok: false, msg: UNREADABLE + KEPT }
-  if (f.size > MAX_BYTES[kind]) return { ok: false, msg: `That file is over ${MAX_BYTES[kind] / 1024 / 1024} MB.` + KEPT }
+  if (!kind) return { ok: false, msg: say(words, 'capture.attachment.unreadableKept', {}, UNREADABLE + KEPT) }
+  if (f.size > MAX_BYTES[kind]) return { ok: false, msg: say(words, 'capture.attachment.tooBigKept', { mb: MAX_BYTES[kind] / 1024 / 1024 }, `That file is over ${MAX_BYTES[kind] / 1024 / 1024} MB.` + KEPT) }
   return { ok: true, kind }
 }
 

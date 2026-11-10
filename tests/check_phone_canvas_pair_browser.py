@@ -95,7 +95,8 @@ def main():
             pair = api('/api/cloud/pair', {})
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(headless=True, channel='msedge')
-                context = browser.new_context(viewport={'width': 360, 'height': 800}, is_mobile=True, has_touch=True)
+                context = browser.new_context(viewport={'width': 360, 'height': 800}, is_mobile=True, has_touch=True, locale='en-US')
+                context.add_init_script("localStorage.setItem('bp-lang','en')")
                 context.add_init_script("Object.defineProperty(navigator, 'connection', {value: {type: 'wifi', addEventListener() {}}})")
                 page = context.new_page()
                 page.set_default_timeout(7000)
@@ -106,7 +107,7 @@ def main():
                 page.reload()
                 page.wait_for_function('navigator.serviceWorker.controller !== null')
                 page.goto(BASE + '/mobile.html#/jv')
-                page.get_by_placeholder('Ask your library…').wait_for()
+                page.get_by_role('textbox', name='Question', exact=True).wait_for()
                 api('/api/cloud/stop', {})
                 cid = pending(page, pair['fingerprint'], 'Paired offline', 'paired-1')
                 page.reload()

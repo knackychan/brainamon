@@ -27,6 +27,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from tests.phone_groups import open_group  # noqa: E402  (the group rows, projects/phone-settings)
 
 ART = ROOT / 'local/ui-blocks/phone-states'
 VIEW = {'width': 360, 'height': 780}
@@ -361,6 +362,7 @@ def fixture(root):
                     drives.append(d)
                     ctx = browser.new_context(viewport=VIEW, is_mobile=True, has_touch=True, accept_downloads=True,
                                               service_workers='block', timezone_id='UTC', locale='en-GB')
+                    ctx.add_init_script("localStorage.setItem('bp-lang','en')")
 
                     def other(route):
                         u = route.request.url
@@ -415,8 +417,7 @@ def fixture(root):
 
                 def sync_now(p):
                     p.evaluate("location.hash = '#/more'")
-                    box = p.locator('.m-box').filter(has=p.get_by_role('heading', name=re.compile('^Sync')))
-                    box.get_by_role('button', name='Sync now', exact=True).first.click()
+                    open_group(p, 'Sync').get_by_role('button', name='Sync now', exact=True).first.click()
                     settle(p)
 
                 def key_on(p, label, screen='backup'):
@@ -453,8 +454,9 @@ def fixture(root):
                     return p.evaluate('() => document.documentElement.scrollWidth <= innerWidth')
 
                 def shoot(p, name):
-                    """The screen as it is, light and dark, its whole height (the page scrolls inside .m-main)."""
-                    more = p.evaluate("() => { const m = document.querySelector('.m-main'); return m ? m.scrollHeight - m.clientHeight : 0 }")
+                    """The screen as it is, light and dark, its whole height (the page scrolls inside .m-main, a sheet
+                    inside .m-sheet-body)."""
+                    more = p.evaluate("() => { const m = document.querySelector('.m-sheet-body') || document.querySelector('.m-main'); return m ? m.scrollHeight - m.clientHeight : 0 }")
                     p.set_viewport_size({'width': VIEW['width'], 'height': VIEW['height'] + max(0, more)})
                     for theme in ('light', 'dark'):
                         p.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
@@ -497,10 +499,10 @@ def fixture(root):
                             check.assertEqual('pri' in keys.get_attribute('class').split(), want['action']['primary'], case)
                         else:
                             expect(keys).to_have_count(0)
-                        if want['lamp']:
-                            expect(p.locator('.m-abar .m-lamp')).to_have_text('Drive · ' + want['lamp'])
                         files.append(shoot(p, f'{name}-{screen}'))
                     p.evaluate("location.hash = '#/lib'")
+                    if want['lamp']:                                     # the lamp is the sync key's name (section pages)
+                        expect(p.locator('.m-sync-key')).to_have_attribute('aria-label', 'Drive · ' + want['lamp'])
                     strip = p.locator('.m-strip-owner')
                     if want['strip']:
                         expect(strip).to_have_text(words('Backup & phones · ' + want['text']))
@@ -796,6 +798,7 @@ def fixture(root):
                     expect(recovery.locator('.m-status b')).to_have_text(re.compile('^Passphrase set '), timeout=60000)
                     shows(p, 'solo: passphrase set, no recovery file')
                     p.evaluate("location.hash = '#/backup'")
+                    open_group(p, 'Recovery')                      # shows() left the page: the group is closed again
                     with p.expect_download() as download:
                         recovery.get_by_role('button', name='Save recovery file…', exact=True).click()
                     kit = root / 'solo-recovery-file.json'
@@ -827,7 +830,7 @@ def fixture(root):
                     ctx, p, d = phone(direct=True)
                     p.goto(page_url + '#/backup')
                     settle(p)
-                    expect(p.get_by_role('button', name='Night', exact=True)).to_be_visible()          # More (its Look box)
+                    expect(open_group(p, 'Look').get_by_role('button', name='Night', exact=True)).to_be_visible()   # Settings (its Look group)
                     expect(p.locator('#m-backup-status')).to_have_count(0)
                     expect(p.locator('#m-status')).to_have_count(0)
                     extra(p, '#/more', 'unpaired-more', 'More in a phone browser with no pairing (no status card)')

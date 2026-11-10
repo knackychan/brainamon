@@ -8,12 +8,12 @@ const savedPause = () => { try { return localStorage.getItem('bp-sync-paused') =
 export const network = $state({ manualPause: savedPause(), background: false, wifiOnly: savedWifiOnly(), type: 'unknown', online: navigator.onLine, ready: false, licenseLocked: false, licenseProblem: '', licenseKind: '' as '' | AccessKind, licenseAt: 0 })
 
 export const syncPaused = () => network.manualPause || network.background || !network.online || (network.wifiOnly && network.type !== 'wifi' && network.type !== 'ethernet')
-export function syncPauseReason(): string {
-  if (network.manualPause) return 'Sync paused · resume when ready'
-  if (network.background) return 'Sync paused · app in background'
-  if (!network.online) return 'Sync paused · offline'
-  if (!network.ready) return 'Sync paused · checking Wi-Fi'
-  return network.type === 'unknown' ? 'Sync paused · cannot confirm Wi-Fi' : 'Sync paused · waiting for Wi-Fi'
+export function syncPauseReason(words?: (key: string, params?: Record<string, unknown>) => string, detailOnly = false): string {
+  if (network.manualPause) return (words?.(detailOnly ? 'shell.sync.paused.manual.detail' : 'shell.sync.paused.manual') ?? (detailOnly ? 'resume when ready' : 'Sync paused · resume when ready'))
+  if (network.background) return (words?.(detailOnly ? 'shell.sync.paused.background.detail' : 'shell.sync.paused.background') ?? (detailOnly ? 'app in background' : 'Sync paused · app in background'))
+  if (!network.online) return (words?.(detailOnly ? 'shell.sync.paused.offline.detail' : 'shell.sync.paused.offline') ?? (detailOnly ? 'offline' : 'Sync paused · offline'))
+  if (!network.ready) return (words?.(detailOnly ? 'shell.sync.paused.checking.detail' : 'shell.sync.paused.checking') ?? (detailOnly ? 'checking Wi-Fi' : 'Sync paused · checking Wi-Fi'))
+  return network.type === 'unknown' ? (words?.(detailOnly ? 'shell.sync.paused.unknown.detail' : 'shell.sync.paused.unknown') ?? (detailOnly ? 'cannot confirm Wi-Fi' : 'Sync paused · cannot confirm Wi-Fi')) : (words?.(detailOnly ? 'shell.sync.paused.wifi.detail' : 'shell.sync.paused.wifi') ?? (detailOnly ? 'waiting for Wi-Fi' : 'Sync paused · waiting for Wi-Fi'))
 }
 export class SyncPaused extends Error { constructor() { super(syncPauseReason()) } }
 

@@ -254,7 +254,7 @@
             <Hint>A saved {W.file}, or one exported from a paired phone. It unlocks the backup; use the same Google account to retrieve it.</Hint>
           {:else}
             <input class="inp" aria-label="Phone code" type="password" bind:value={code} autocomplete="off" spellcheck="false" onkeydown={e => { if (e.key === 'Enter' && code && !pausing) void find({ material: code }) }} />
-            <Hint>On a paired phone: More &gt; Backup &amp; phones &gt; Recovery code &gt; Show.</Hint>
+            <Hint>On a paired phone: Settings &gt; Backup &amp; phones &gt; Recovery code &gt; Show.</Hint>
           {/if}
         </div>
         <span></span>

@@ -12,7 +12,7 @@ export async function recoveryKey(password: Uint8Array<ArrayBuffer>, salt: Uint8
   try {
     const active = worker = new Worker(new URL('./recovery-kdf.worker.ts', import.meta.url), { type: 'module' })
     return await new Promise((resolve, reject) => {
-      const failed = () => reject(new Error('Passphrase processing failed. Close other apps and retry.'))
+      const failed = () => reject(Object.assign(new Error('Passphrase processing failed. Close other apps and retry.'), { displayKey: 'common.error.passphraseProcessing' }))
       active.onerror = failed
       active.onmessageerror = failed
       active.onmessage = ({ data }) => {

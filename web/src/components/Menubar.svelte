@@ -56,7 +56,7 @@
   $effect(() => { const t = setInterval(() => (clock = localTime()), 15000); return () => clearInterval(t) })
 
   const job = $derived(live.jobs.current)
-  const jobText = $derived(job ? `${job.state === 'paused' ? 'PAUSED ' : ''}${JOB_SHORT[job.kind] ?? job.kind.toUpperCase()} ${job.done + job.err}/${job.total}` : 'idle')
+  const jobText = $derived(job ? `${job.state === 'paused' ? 'PAUSED ' : ''}${JOB_SHORT[job.kind] ?? job.kind.toUpperCase()} ${job.done + (job.skipped ?? 0) + job.err}/${job.total}` : 'idle')
   const fmt = (n: number) => n.toLocaleString('en-US')
 </script>
 

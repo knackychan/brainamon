@@ -1,0 +1,30 @@
+{
+  "max": 80,
+  "errors": {
+    "empty": "Enter a category name.",
+    "long": "Category names are at most 80 characters.",
+    "reserved": "\"All\" is reserved: choose another name.",
+    "general": "General cannot be renamed."
+  },
+  "names": [
+    {"in": "  Health  ", "out": "Health"},
+    {"in": "", "error": "empty"},
+    {"in": "   ", "error": "empty"},
+    {"in": "all", "error": "reserved"},
+    {"in": "All", "error": "reserved"},
+    {"in": "Allotment", "out": "Allotment"}
+  ],
+  "renames": [
+    {"name": "plain", "notes": {"a.md": "Health", "b.md": "Work", "c.md": "Health"}, "steps": [["Health", "Fitness"]],
+     "after": {"a.md": "Fitness", "b.md": "Work", "c.md": "Fitness"}},
+    {"name": "case only", "notes": {"a.md": "health"}, "steps": [["health", "Health"]], "after": {"a.md": "Health"}},
+    {"name": "merge", "notes": {"a.md": "Gym", "b.md": "Health"}, "steps": [["Gym", "Health"]], "after": {"a.md": "Health", "b.md": "Health"}},
+    {"name": "into General", "notes": {"a.md": "Misc", "b.md": ""}, "steps": [["Misc", "General"]], "after": {"a.md": "General", "b.md": "General"}},
+    {"name": "trimmed", "notes": {"a.md": "Health"}, "steps": [[" Health ", "  Fitness "]], "after": {"a.md": "Fitness"}},
+    {"name": "same name", "notes": {"a.md": "Health"}, "steps": [["Health", "Health"]], "after": {"a.md": "Health"}},
+    {"name": "two in order", "notes": {"a.md": "A", "b.md": "B"}, "steps": [["A", "B"], ["B", "C"]], "after": {"a.md": "C", "b.md": "C"}},
+    {"name": "General refused", "notes": {"a.md": ""}, "steps": [["General", "Other"]], "error": "general"},
+    {"name": "All refused", "notes": {"a.md": "Health"}, "steps": [["Health", "ALL"]], "error": "reserved"},
+    {"name": "empty refused", "notes": {"a.md": "Health"}, "steps": [["Health", " "]], "error": "empty"}
+  ]
+}

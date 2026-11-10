@@ -16,6 +16,7 @@ from PIL import Image
 from playwright.sync_api import sync_playwright
 
 from core.db import Database
+from core import app_paths, local_auth
 
 
 def check_geometry(page, layout):
@@ -120,21 +121,22 @@ def main():
             sock.bind(('127.0.0.1', 0))
             port = sock.getsockname()[1]
         base = f'http://127.0.0.1:{port}'
+        auth = {}
 
         def api(path, body=None, method=None):
             req = Request(base + path, data=json.dumps(body).encode() if body is not None else None,
-                          headers={'X-CM': '1', 'Content-Type': 'application/json'}, method=method)
+                          headers={**auth, 'X-CM': '1', 'Content-Type': 'application/json'}, method=method)
             with urlopen(req, timeout=10) as response:
                 return json.load(response)
 
-        env = dict(os.environ, CM_DATA_DIR=temp, CM_PORT=str(port))
+        env = dict(os.environ, CM_DATA_DIR=temp, CM_PORT=str(port), BRAINAMON_HOME=temp)
         with (data / 'server.log').open('w') as log:
             process = subprocess.Popen([sys.executable, '-m', 'server'], env=env, stdout=log, stderr=log,
                                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
             try:
                 for _ in range(100):
                     try:
-                        api('/api/canvases')
+                        api('/api/health')
                         break
                     except OSError:
                         if process.poll() is not None:
@@ -142,9 +144,12 @@ def main():
                         time.sleep(.1)
                 else:
                     raise AssertionError('isolated server did not start')
+                app_paths.LOCAL = data / 'local'
+                auth.update(local_auth.headers(port))
+                assert api('/api/canvases') == []
                 with sync_playwright() as pw:
                     browser = pw.chromium.launch(headless=True, channel='msedge')
-                    context = browser.new_context(viewport={'width': 1440, 'height': 1000}, has_touch=True)
+                    context = browser.new_context(viewport={'width': 1440, 'height': 1000}, has_touch=True, extra_http_headers=auth)
                     page = context.new_page()
                     errors = []
                     page.on('pageerror', lambda error: errors.append(str(error)))

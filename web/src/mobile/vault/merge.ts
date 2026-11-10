@@ -93,7 +93,7 @@ export function conflictName(rel: string, when: Date): string {
 const over = (n: number, total: number) => n > BRAKE_FILES || (n >= BRAKE_MIN && n * 100 > BRAKE_PERCENT * total)
 
 // The rules are library/vault_sync.py merge()'s, in the same order; keep the two in step (the fixture checks).
-export function mergeVault(base: Map_, mine: Map_, theirs: Map_, role: 'pc' | 'phone', when: Date, opts: MergeOpts = {}): VPlan {
+export function mergeVault(base: Map_, mine: Map_, theirs: Map_, role: 'pc' | 'phone', when: Date, opts: MergeOpts = {}, words?: (key: string, params?: Record<string, unknown>) => string): VPlan {
   const plan: VPlan = { pull: {}, trash: [], conflicts: {}, lost: [], legacy: [], new_base: {}, brake: false, reason: '' }
   const nb = plan.new_base
   const generated = opts.generated ?? null, removed = opts.removed ?? {}, mineHash = opts.mineHash ?? {}, fresh = !!opts.fresh, kept = opts.kept ?? {}
@@ -144,10 +144,10 @@ export function mergeVault(base: Map_, mine: Map_, theirs: Map_, role: 'pc' | 'p
   }
   const counted = plan.trash.filter(r => !free.has(r))
   const total = Object.keys(base).length
-  for (const [what, n] of [['removed here', counted.length], ['removed there', plan.lost.length]] as const) {
+  for (const [what, n, message] of [['removed here', counted.length, 'backup.vault.brakeHere'], ['removed there', plan.lost.length, 'backup.vault.brakeThere']] as const) {
     if (over(n, total)) {
       plan.brake = true
-      plan.reason = `${n} files would be ${what} (the limit is ${BRAKE_FILES} files or ${BRAKE_PERCENT}% of the vault).`
+      plan.reason = (words?.(message, { n, files: BRAKE_FILES, percent: BRAKE_PERCENT }) ?? `${n} files would be ${what} (the limit is ${BRAKE_FILES} files or ${BRAKE_PERCENT}% of the vault).`)
       break
     }
   }

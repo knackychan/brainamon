@@ -28,7 +28,7 @@ from knowledge import tasks
 from library import linkinfo
 from library import video_analyzer
 from library import ytdlp
-from server.jobs import JobError, JobKind, Stopped, register
+from server.jobs import JobError, JobKind, Skipped, Stopped, register
 
 PROVIDER_NAMES = {'anthropic': 'Anthropic', 'openai': 'OpenAI', 'freellmapi': 'FreeLLMAPI',
                   'local_openai': 'local model', 'claude': 'Anthropic'}
@@ -55,16 +55,29 @@ def _describe_prepare(db, job):
     job.ctx['empty_msg'] = ('All of these items already have a description. '
                             'Open Process items and include completed items to describe them again.')
     rows = db.get_items_by_ids(job.ids)          # full rows: Describe uses the transcript
-    return [r for r in rows if job.force or not r.get('ai_desc')]
+    return [r for r in rows if job.force or (r.get('ai_desc') or '').strip().upper() in ('', tasks.NO_CONTENT)]
 
 
 def _describe_run(job, item):
+    item = dict(item)
+    folder = Path(job.ctx['data_dir']) / 'items' / str(item['id'])
+    for field, name in (('report', 'report.md'), ('transcript', 'transcript.txt')):
+        if not item.get(field):
+            try:
+                with (folder / name).open(encoding='utf-8', errors='replace') as f:
+                    item[field] = f.read(3000)
+            except OSError:
+                pass
     # an ordinary website with no transcript: its visible text is the context (projects/link-preview)
     url = item.get('url') or ''
     page = ''
-    if not (item.get('analysis_done') and item.get('transcript')) and not linkinfo.ytdlp_first(url):
+    if not item.get('transcript') and not linkinfo.ytdlp_first(url):
         page = linkinfo.page_text(url)
-    return tasks.describe_item(item, job.ctx['provider'], job.ctx['model'], job.ctx['data_dir'], page=page)
+    result = tasks.describe_item(item, job.ctx['provider'], job.ctx['model'], job.ctx['data_dir'], page=page,
+                                 missing_key='' if job.ctx.get('key', True) else job.ctx.get('key_msg', 'API key required.'))
+    if result is None:
+        raise Skipped('Nothing to describe yet: open it online once or add a note.')
+    return result
 
 
 def _describe_persist(db, item, result, job):
@@ -335,9 +348,13 @@ def _note_prepare(db, job):
         raise JobError('Give the note a topic first.')
     job.ctx.update(topic=topic, note='', notes_dir=str(db.notes_dir), augment=False,
                    fold_mode='append' if o.get('merge') == 'append' else 'reorganize',
-                   empty_msg=('None of the selected sources have any text to synthesize '
-                              '(no description, transcript, or AI analysis yet).'))
-    rows = [r for r in db.get_items_by_ids(job.ids) if synth.excerpt(r)]
+                   empty_msg=('None of the selected sources have any text to synthesize yet '
+                              '(no report, AI description, transcript, caption or note).'))
+    rows = db.get_items_by_ids(job.ids)
+    for r in rows:                         # the report is a file beside the item: the prompt's Report part
+        p = db.items_dir / str(r['id']) / 'report.md'
+        r['report'] = p.read_text(encoding='utf-8', errors='replace') if p.is_file() else ''
+    rows = [r for r in rows if synth.has_text(r)]
     if o.get('mode') == 'augment':
         path = knowledge.safe_note_path(db.notes_dir, str(o.get('note') or ''))
         if path is not None:
@@ -864,6 +881,8 @@ def _scrape_prepare(db, job):
     key = str(o.get('platform') or 'facebook')
     if key not in scrape_watch.PLAYWRIGHT:
         raise JobError(f'No Playwright scraper for {key}.')
+    if key == 'threads' and o.get('unsave'):
+        raise JobError('Unsave is not available for Threads. Turn it off before starting.')
     script = scrape_watch.playwright_script(key)
     if not script.exists():
         raise JobError(f'Playwright scraper not found: {script}')

@@ -83,9 +83,30 @@ class LinkInfoTest(unittest.TestCase):
             const rows = c.overlay([pcRow])
             console.log(JSON.stringify({ rows: rows.map(r => [r.id, r.title, r.creator, r.thumb, r.desc]), tv: rows[0].tv === d.at, pcTv: rows[1].tv }))
         """))
-        self.assertEqual(out['rows'], [[-5, 'First line', 'Kushank', True, 'mine'], [7, 'PC title', 'PC', False, '']])
+        # the card's description is the caption, as the PC's row (description), not the link's note
+        self.assertEqual(out['rows'], [[-5, 'First line', 'Kushank', True, 'First line\nsecond'], [7, 'PC title', 'PC', False, '']])
         self.assertTrue(out['tv'])
         self.assertEqual(out['pcTv'], 3)
+
+    def test_overlay_card_text_follows_the_pc_row(self):
+        out = json.loads(test_phone_js.node(test_phone_js.TS_RESOLVE + """
+            const { Changes } = await import('./web/src/mobile/mirror/changes.ts')
+            const c = new Changes(), a = 'ab'.repeat(16), b = 'ef'.repeat(16), d = '12'.repeat(16), pc = 'cd'.repeat(16)
+            for (const [i, uid, url] of [[1, a, 'https://x.test/a'], [2, b, 'https://x.test/b'], [3, d, 'https://x.test/d']]) {
+              const l = await c.add({ op: 'link', uid, url, note: 'my note', category: '' }); l.id = i
+            }
+            await c.add({ op: 'details', uid: a, title: '', creator: '', desc: 'first caption', thumb: '' })
+            await c.add({ op: 'details', uid: d, title: '', creator: '', desc: 'x'.repeat(300), thumb: '' })      // cut to the snippet
+            await c.add({ op: 'details', uid: b, title: '', creator: '', desc: '', thumb: '' })       // no caption: the note stays
+            await c.add({ op: 'edit', uid: a, fields: { ai_desc: 'AI summary' }, was: { ai_desc: '' } })
+            await c.add({ op: 'details', uid: a, title: '', creator: '', desc: 'late caption', thumb: '' })   // never beats the AI text
+            await c.add({ op: 'edit', uid: pc, fields: { ai_desc: 'Phone made this' }, was: { ai_desc: '' } })
+            const pcRow = { id: 7, uid: pc, title: 'PC', creator: 'PC', type: 'Reel', cat: 'X', tags: '', desc: 'old',
+              url: 'https://x.test/7', src: 'web', thumb: true, ai: false, an: false, nd: 0, fav: false, created: 1, tv: 3 }
+            const rows = c.overlay([pcRow])
+            console.log(JSON.stringify(rows.map(r => [r.id, r.desc.length > 100 ? r.desc.length : r.desc, r.ai])))
+        """))
+        self.assertEqual(out, [[-3, 200, False], [-2, 'my note', False], [-1, 'AI summary', True], [7, 'Phone made this', True]])
 
 
 class DetailsIntakeTest(ChangeIntakeTest):

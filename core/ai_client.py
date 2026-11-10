@@ -12,7 +12,7 @@ the app that talks to Anthropic or OpenAI goes through the factories here instea
    at your proxy endpoint + a session token — both SDKs accept `base_url`:
        anthropic.Anthropic(base_url=PROXY_URL, api_key=session_token)
        openai.OpenAI(base_url=PROXY_URL, api_key=session_token)
-   No call site elsewhere needs to change. See docs/legacy/SPEC.md "Productization (deferred)".
+   No call site elsewhere needs to change. See archive/2026-11-09/docs/legacy/SPEC.md "Productization (deferred)".
 
 The SDK imports stay inside the factories so the AI dependencies remain optional at import time
 (the app still launches without `anthropic`/`openai` installed; the error only surfaces when an
@@ -31,7 +31,7 @@ from core import app_console
 # ── Model IDs (single source of truth) ───────────────────────────────────────
 CLAUDE_MODEL = 'claude-sonnet-4-6'      # AI describe, auto-categorize, video analysis (Claude)
 CLAUDE_HAIKU_MODEL = 'claude-haiku-4-5'  # cheap mode for the Ask-my-library chat
-WHISPER_MODEL = 'whisper-1'             # OpenAI Whisper API transcription
+TRANSCRIPTION_MODEL = 'gpt-transcribe'  # OpenAI completed-file transcription
 # Ask chat only (confirmed in each provider's models.list on 2026-10-06):
 ASK_CLAUDE_SONNET_55_MODEL = 'claude-sonnet-5-5'  # current Sonnet
 ASK_OPENAI_GPT54_MINI_MODEL = 'gpt-5.4-mini'       # recommended for Ask Deep mode
@@ -211,15 +211,16 @@ def openai_client(api_key: str = None, base_url: str = None):
 
 
 def transcribe_file(path, client=None) -> str:
-    """Whisper transcription of one audio file (under the API's 25 MB). The only call site of
-    WHISPER_MODEL; video analysis and voice notes both come through here."""
+    """Transcribe one audio file (under the API's 25 MB) to plain text.
+    Video analysis and voice notes share this call; timestamps are not supported."""
     from pathlib import Path
     p = Path(path)
     client = client or openai_client()
-    payload = {'model': WHISPER_MODEL, 'file': str(p), 'bytes': p.stat().st_size if p.exists() else None}
+    payload = {'model': TRANSCRIPTION_MODEL, 'file': str(p), 'bytes': p.stat().st_size if p.exists() else None}
     with app_console.api_call('OpenAI audio.transcriptions.create', payload):
         with open(p, 'rb') as audio:
-            response = client.audio.transcriptions.create(model=WHISPER_MODEL, file=audio)
+            response = client.audio.transcriptions.create(model=TRANSCRIPTION_MODEL, file=audio,
+                                                         response_format='json')
     if isinstance(response, str):
         return response.strip()
     text = response.get('text', '') if isinstance(response, dict) else getattr(response, 'text', '')
@@ -534,12 +535,12 @@ def phone_settings(synth_provider, synth_model, found=None):
                 'models': {p: ask_models(p, (found or {}).get(p)) for p in ASK_AGENT_PROVIDERS}},
         'synth': {'provider': synth_provider, 'model': current_model(synth_model)},
         'embedding_model': EMBEDDING_MODEL,
-        'transcription_model': WHISPER_MODEL,
+        'transcription_model': TRANSCRIPTION_MODEL,
         'ask_max_tokens': _ASK_MAX_TOKENS,
         'cloud_min_tokens': _ASK_CLOUD_MIN_TOKENS,
         'agent_max_tokens': _AGENT_MAX_TOKENS,
         'agent_max_rounds': _AGENT_MAX_ROUNDS,
-        'retired': sorted(RETIRED_MODELS),     # dropped from the lists the phone fetches itself (More > Refresh)
+        'retired': sorted(RETIRED_MODELS),     # dropped from the lists the phone fetches itself (Settings > Refresh)
     }
 
 

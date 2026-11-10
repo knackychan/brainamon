@@ -78,9 +78,9 @@ def import_file(db, path, counts=None) -> tuple:
         value = json.loads(path.read_text(encoding='utf-8-sig'))
         if (isinstance(value, dict) and any(k in value for k in ('saved_saved_media', 'saved_posts', 'saved_collections'))) or \
                 (isinstance(value, list) and any(isinstance(r, dict) and ('label_values' in r or 'string_map_data' in r) for r in value)):
-            raise ValueError("This looks like a Meta export. Import Instagram Saved ZIP/JSON on the phone through More > Import, or use File > Scrapers on this PC. Desktop JSON import accepts a Brainamon export.")
+            raise ValueError("This looks like a Meta export. Import Instagram Saved ZIP/JSON on the phone through Add > Import saved posts, or use File > Scrapers on this PC. Desktop JSON import accepts a Brainamon export.")
         if isinstance(value, dict) and not any(k in value for k in ('items', 'cats')):
-            raise ValueError('Desktop JSON import accepts a Brainamon export. For Instagram Saved ZIP/JSON, use More > Import on the phone or File > Scrapers on PC.')
+            raise ValueError('Desktop JSON import accepts a Brainamon export. For Instagram Saved ZIP/JSON, use Add > Import saved posts on the phone or File > Scrapers on PC.')
         before = db.conn.execute('SELECT COALESCE(MAX(id), 0) FROM items').fetchone()[0]
         added, skipped = db.import_from_json(path, counts=counts)
         ids = [r[0] for r in db.conn.execute('SELECT id FROM items WHERE id > ?', (before,)).fetchall()]

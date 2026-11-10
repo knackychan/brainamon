@@ -8,11 +8,11 @@ is none.
 ## Use the phone on its own
 
 No PC or license is needed for standalone use and encrypted Drive backup. In
-**More > No PC?**, tap **Start**. Then in **More > Backup & phones**, tap
+**Settings > Use without a PC**, tap **Start**. Then in **Settings > Backup & phones**, tap
 **Back up to Google Drive**, then **Set up recovery**: **Save passphrase**, then
 **Save recovery file…** and keep the file outside the phone (the **Original recovery
 code** works too). **Send now** uploads pending changes; wait for **All backed up**.
-On a replacement phone, use **More > No PC? > Recover a library…** and the same
+On a replacement phone, use **Settings > Recover a library…** and the same
 Google account. The backup includes the library journal, not AI keys or cached media.
 
 A standalone phone has its own encryption key and backup files. It can use the same
@@ -52,7 +52,7 @@ The code holds the key to your encrypted library. Show it only to your own phone
 afterwards. The AI keys you ticked are not in the code: the PC leaves them in your Google Drive,
 sealed with a one-time key the code carries, and the phone collects and deletes them once it is
 connected (within 30 minutes; after that, pair again). The phone keeps the keys in its encrypted
-storage; More > Wiskit on this phone > Forget removes them without unpairing.
+storage; Settings > Wiskit on this phone > Forget removes them without unpairing.
 
 Use the Brainamon app on the phone. The phone page in a browser works too, but a browser keeps
 its storage less tightly than the app: treat it as a second choice for a phone that cannot
@@ -77,4 +77,4 @@ install the app.
   downloaded stays on it until the app is removed.)
 - To remove the copy from Google Drive: Settings > Backup & phones > **Disconnect Google Drive…**, with
   "Also delete the backup from Google Drive" ticked.
-- On the phone, More > Backup & phones > **Unpair this phone** forgets the key (a phone used without a PC: **Remove from this phone**); uninstalling removes everything the app kept.
+- On the phone, Settings > Backup & phones > **Unpair this phone** forgets the key (a phone used without a PC: **Remove from this phone**); uninstalling removes everything the app kept.

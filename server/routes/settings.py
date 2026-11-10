@@ -288,7 +288,7 @@ async def forget_site_session(request: Request, body: dict = Body(...)):
     # Disabling comes first, so queued/new operations cannot resurrect legacy access.
     slots = [slot]
     if slot in ('general', 'instagram'):
-        sites = ['instagram'] if slot == 'instagram' else ['facebook', 'reddit']
+        sites = ['instagram'] if slot == 'instagram' else ['facebook', 'reddit', 'threads']
         slots += ['browser-' + s for s in sites]
     try:
         await run_in_threadpool(site_sessions.forget, slots)

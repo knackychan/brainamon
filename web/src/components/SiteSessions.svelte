@@ -32,9 +32,9 @@
   const id = $props.id()
   const SLOT_NAME: Record<string, string> = {
     general: 'Downloads', instagram: 'Instagram downloads',
-    'browser-facebook': 'Facebook browser login', 'browser-instagram': 'Instagram browser login', 'browser-reddit': 'Reddit browser login',
+    'browser-facebook': 'Facebook browser login', 'browser-instagram': 'Instagram browser login', 'browser-reddit': 'Reddit browser login', 'browser-threads': 'Threads browser login',
   }
-  const SITE_NAME: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', reddit: 'Reddit', youtube: 'YouTube' }
+  const SITE_NAME: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', reddit: 'Reddit', threads: 'Threads', youtube: 'YouTube' }
   const STATUS: Record<string, string> = {
     'Saved; not tested': 'Saved, not tested yet',
     'Sign-in may need refreshing': 'Saved, but the sign-in may need refreshing',
@@ -88,7 +88,7 @@
   function cancelAdd() { reset(); adding = false; error = '' }
   async function forget(slot: string) {
     const name = SLOT_NAME[slot] ?? slot
-    const also = slot === 'general' ? 'This also forgets the Facebook and Reddit browser logins. ' : slot === 'instagram' ? 'This also forgets the Instagram browser login. ' : ''
+    const also = slot === 'general' ? 'This also forgets the Facebook, Reddit and Threads browser logins. ' : slot === 'instagram' ? 'This also forgets the Instagram browser login. ' : ''
     const ok = await confirmWin({
       title: 'Forget saved access', msg: `Forget ${name}?`, ok: 'Forget', danger: true,
       detail: `${also}Brainamon stops using it, and stops using cookie files from an earlier version. A running download, link info, analysis or scrape job stops. Your own browser and your account on the site stay signed in.`,
@@ -124,7 +124,7 @@
 </script>
 
 <GroupBox active={adding || testing} aria-label="Site logins">
-  <Label as="span" id={titleId || undefined} tabindex={titleId ? -1 : undefined}>Site logins<InfoTip label="Which features use logins, and how they are protected"><span><b>Download videos:</b> yt-dlp can use your saved login to retrieve the video or its thumbnail. <b>Fetch link info:</b> the yt-dlp part can use it for thumbnails, titles, creators and captions. <b>Analyze videos:</b> only if yt-dlp must download a missing video first. <b>Automatic scrapers:</b> Facebook, Instagram and Reddit can sign in to their browser with a matching imported login. <b>Test link access:</b> checks link details with yt-dlp and the saved cookies, without downloading.</span><span>Once saved, cookies are supplied to yt-dlp for download and link-info requests, including public links; yt-dlp uses the ones that match the requested site. The public preview in Add, CSV/JSON imports, AI work on existing content and Google Drive sync never use them. Cookies do not grant access beyond your account or guarantee that a site allows a download; expired ones may need replacing.</span><span>On Windows, saved logins are encrypted for your Windows account and kept out of library and Drive copies, so a new PC needs them saved again. This does not protect against programs running as you; old exports and browser profiles stay separate and unencrypted. Saved does not mean signed in: only a test shows whether the site accepts a login. Browser scrapers remember a login only when you tick Remember; Use this login for downloads copies only that site's cookies into downloads.</span></InfoTip></Label>
+  <Label as="span" id={titleId || undefined} tabindex={titleId ? -1 : undefined}>Site logins<InfoTip label="Which features use logins, and how they are protected"><span><b>Download videos:</b> yt-dlp can use your saved login to retrieve the video or its thumbnail. <b>Fetch link info:</b> the yt-dlp part can use it for thumbnails, titles, creators and captions. <b>Analyze videos:</b> only if yt-dlp must download a missing video first. <b>Automatic scrapers:</b> Facebook, Instagram, Reddit and Threads can sign in to their browser with a matching imported login. <b>Test link access:</b> checks link details with yt-dlp and the saved cookies, without downloading.</span><span>Once saved, cookies are supplied to yt-dlp for download and link-info requests, including public links; yt-dlp uses the ones that match the requested site. The public preview in Add, CSV/JSON imports, AI work on existing content and Google Drive sync never use them. Cookies do not grant access beyond your account or guarantee that a site allows a download; expired ones may need replacing.</span><span>On Windows, saved logins are encrypted for your Windows account and kept out of library and Drive copies, so a new PC needs them saved again. This does not protect against programs running as you; old exports and browser profiles stay separate and unencrypted. Saved does not mean signed in: only a test shows whether the site accepts a login. Browser scrapers remember a login only when you tick Remember; Use this login for downloads copies only that site's cookies into downloads.</span></InfoTip></Label>
   <div>
     <Hint>Only for posts that need you signed in. Many public videos, Facebook reels included, download without a login.</Hint>
     {#if saved.length}
@@ -144,7 +144,7 @@
     <Label for={id + '-site'}>Site</Label>
     <div>
       <select class="inp" id={id + '-site'} bind:value={site} onchange={reset} disabled={busy}>
-        <option value="facebook">Facebook</option><option value="instagram">Instagram</option><option value="reddit">Reddit</option><option value="youtube">YouTube</option><option value="general">Several sites (keeps every site in the file)</option>
+        <option value="facebook">Facebook</option><option value="instagram">Instagram</option><option value="reddit">Reddit</option><option value="threads">Threads</option><option value="youtube">YouTube</option><option value="general">Several sites (keeps every site in the file)</option>
       </select>
     </div>
     <Label as="span">Cookie file</Label>

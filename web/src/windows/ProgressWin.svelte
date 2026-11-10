@@ -46,7 +46,7 @@
 
   const running = $derived(!!live.jobs.current && live.jobs.current.id === job?.id)
   const paused = $derived(live.jobs.current?.state === 'paused')
-  const S: Record<string, [string, string]> = { queued: ['', 'queued'], working: ['run', 'working…'], done: ['ok', 'done'], error: ['bad', 'failed'] }
+  const S: Record<string, [string, string]> = { queued: ['', 'queued'], working: ['run', 'working…'], done: ['ok', 'done'], skipped: ['', 'skipped'], error: ['bad', 'failed'] }
   const name = (it: PItem) => { const r = lib.byId.get(it.id); return r ? titleOf(r) : it.title }
 </script>
 
@@ -55,7 +55,7 @@
     <div class="emp"><h3>No job yet</h3><p>Start one from the Process menu, the command palette (Ctrl+K) or a card's right-click menu. Each item shows its status here while the job runs.</p></div>
   {:else}
     {@const j = live.jobs.current?.id === job.id ? live.jobs.current : job}
-    <SectionTitle as="p">{j.label}{j.auto ? ' · automatic' : ''} · {j.done} done{j.err ? `, ${j.err} failed` : ''} of {j.total}</SectionTitle>
+    <SectionTitle as="p">{j.label}{j.auto ? ' · automatic' : ''} · {j.done} done{j.skipped ? `, ${j.skipped} skipped` : ''}{j.err ? `, ${j.err} failed` : ''} of {j.total}</SectionTitle>
     {#each items as it (it.id)}
       {@const [c, l] = S[it.state] ?? S.queued}
       <div class="prow" title={it.error ?? ''}>

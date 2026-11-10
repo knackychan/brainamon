@@ -23,7 +23,7 @@
 
   const job = $derived(live.jobs.current?.kind === kind ? live.jobs.current : null)
   const stopped = $derived(!job && live.jobs.last?.kind === kind && live.jobs.last.state === 'stopped' ? live.jobs.last : null)
-  const n = $derived(job ? job.done + job.err : 0)
+  const n = $derived(job ? job.done + (job.skipped ?? 0) + job.err : 0)
   const paused = $derived(job?.state === 'paused')
   const p = $derived(job ? progress(n, job.total, job.t0 * 1000, now) : { pct: 0, left: '' })
   const log = $derived(lines.filter(l => l.state !== 'queued'))
@@ -72,7 +72,7 @@
   <div class="job-live">
     <p class="job-live-hd"><span>{job.label}</span><b class:held={paused}>{paused ? 'PAUSED' : 'RUNNING'}</b></p>
     <Progress label={`${job.label} progress`} pct={job.total ? Math.floor(100 * n / job.total) : 0} />
-    <Hint>{n} of {job.total} steps{job.err ? ` · ${job.err} failed` : ''} · {elapsed(now - job.t0 * 1000)} so far{p.left ? ` · ${p.left}` : ''}</Hint>
+    <Hint>{n} of {job.total} steps{job.skipped ? ` · ${job.skipped} skipped` : ''}{job.err ? ` · ${job.err} failed` : ''} · {elapsed(now - job.t0 * 1000)} so far{p.left ? ` · ${p.left}` : ''}</Hint>
     {#if live.step}<Hint role="status">{live.step}</Hint>{/if}
     <div class="frow">
       <Button size="sm" onclick={() => jobControl(paused ? 'resume' : 'pause')}>{paused ? 'Resume' : 'Pause'}</Button>
@@ -81,7 +81,7 @@
     </div>
   </div>
 {:else if stopped}
-  <Hint role="status">Stopped after {stopped.done + stopped.err} of {stopped.total} steps. Everything finished is saved; {stopped.total - stopped.done} left{stopped.err ? ` (${stopped.err} failed)` : ''}. The next run does only what is left.</Hint>
+  <Hint role="status">Stopped after {stopped.done + (stopped.skipped ?? 0) + stopped.err} of {stopped.total} steps. Everything finished is saved; {stopped.total - stopped.done} left{stopped.err ? ` (${stopped.err} failed)` : ''}. The next run does only what is left.</Hint>
 {/if}
 {#if (job || stopped) && log.length}
   <Disclosure summary={`Activity · ${log.length} step${log.length === 1 ? '' : 's'}`} open={!!job}>

@@ -34,32 +34,40 @@ import { diagnoseNoLibrary, isLibraryName, projectOf, type NoLibraryWhy } from '
 import { CONTROL_LOGICALS } from '../mirror/license'
 import { cleanLink } from '../links'
 import { libraryIds } from './find'
-import { approveCanvas, declineCanvasPending, files, items as stored, kv, putCanvasPending } from '../store'
+import { canvasWire, declineCanvasPending, files, items as stored, kv, putCanvasPending } from '../store'
+import { baseKey, CHANGED, contextCheck, identity, version } from '../canvas/compose'
+import type { CanvasDraftContext } from './types'
 import { deviceName, isApp, linkGet, linkImage, vaultFs } from '../native'
-import { imageUrl, linkInfo } from '../linkinfo'
+import { linkInfo } from '../linkinfo'
 import { importChanges, type Saved } from '../imports'
+import { PIC_HINT_KEEP_MS, postPicOk, picturePlan, postKey, type PicHint } from '../sites'
 import { pcStatus, removeLegacy, vaultRound, type PcStatus, type Result as VaultResult } from '../vault/sync'
 import { beginCloudChange, CloudCancelled, cloudCheckpoint, cloudRevision, cloudStopped, endCloudChange, reconnecting, stopCloudWork } from '../mirror/gate'
 import { finishReconnect, recordPublish } from '../mirror/phone-reconnect'
 import { resendPending } from '../mirror/resend'
 import { dropPhoneRecord as dropRecord, syncPhoneRecord } from '../mirror/phone-record'
 import { PhoneLibrary, type TextRow } from '../ai/library'
-import { answerTitle, autoName, citedIds, citedNotes, Quick, strip, type Note, type Turn } from '../ai/quick'
+import { answerTitle, autoName, citedIds, citedNotes, Quick, strip, type Item, type Note, type Turn } from '../ai/quick'
 import { clean, Synth } from '../ai/synth'
 import { hybridRank, SMART_LIMIT, topk } from '../ai/search'
 import { AiError, askAgent, CLOUD, complete, embed, listModels, pdfText, transcribe, vision, type Endpoints, type Provider } from '../ai/providers'
 import { ATTACH_PROMPT, decodeText, DIGEST_PROMPT, mediaType, PDF_PROMPT, stamp, withSection, type Picked } from '../files'
 import { ASK, DEEP, PHONE_AI, SYNTH } from '../ai/prompts'
-import { CATEGORIZE_TOKENS, categorizePrompt, DESCRIBE_TOKENS, describePrompt, mergeTags, parseCategory } from '../ai/describe'
+import { appendLanguage } from '../ai/language'
+import { lang, type Lang } from '../../lib/i18n/index'
+import { CATEGORIZE_TOKENS, categorizePrompt, DESCRIBE_TOKENS, describePrompt, hasDescribeContent, mergeTags, NO_CONTENT, parseCategory, type ItemText } from '../ai/describe'
 import { auxRows, deepTurn, describeCall, Librarian, noteSections, PROFILE_FILE, profileOf, readAux, systemPrompt, topicTexts, type AuxVectors, type Cluster, type Resource } from '../ai/deep'
-import { applyCanvasLocal, canvasHash, canvasView, checkCanvas, normalizeCanvas, type CanvasDocument, type RawCanvasProposal, type CanvasProposal } from '../ai/canvas'
+import { applyCanvasLocal, canonJson, canvasHash, canvasView, checkCanvas, normalizeCanvas, type CanvasDocument, type RawCanvasProposal, type CanvasProposal } from '../ai/canvas'
 import type { AiInfo, AskEvent, CanvasDoc, CanvasRow, Category, CategoryProposal, PhoneCanvasProposal, Chat, ChatRow, FullItem, MobileSource, MyNote, NoteRow, OpenNote, Row } from './types'
-import { head as noteHead, parseStamps, wordCount, type Stamp } from '../../lib/note-format'
+import { head as noteHead, parseStamps, plain, wordCount, type Stamp } from '../../lib/note-format'
+import { checkRename, renameNotes, RENAME_NEEDS_PC } from '../../lib/note-category'
 import type { Preview } from '../../lib/capture'
+import { clearRun, dropWork, endLane, endWork, queueWork, startWork } from '../work.svelte'
+import { say, UndoRefused, type ToolWords, type ToolsUndo } from '../tools'
 
 export interface Manifest {
   format: number; reader?: number; published: number; items: number; embedding_model: string; videos: string; canvases: boolean
-  video_chunk: number; canvas_change?: number; applied?: Record<string, number>; files: Record<string, { n: string; v: string; size: number; id?: string; integrity?: number; bytes?: number; sha256?: string }>
+  video_chunk: number; canvas_change?: number; note_category?: number; applied?: Record<string, number>; files: Record<string, { n: string; v: string; size: number; id?: string; integrity?: number; bytes?: number; sha256?: string }>
   // server/delivery.py: the PC applies numbered change files once each; receipts per phone stream
   delivery?: number; receipts?: Record<string, { device: string; seq: number; digests?: Record<string, string>; want?: number }>
 }
@@ -88,18 +96,22 @@ export const tooOld = { fn: () => {} }
 
 export const THUMB_CACHE = 'bp-thumbs-v1', MIRROR_CACHE = 'bp-mirror-v1'
 const PIC_GAP_MS = 8000, PIC_JITTER_MS = 4000   // between two pictures of the slow queue (plans/09-link-details.md step 13)
+const HINT_GAP_MS = 1500, HINT_JITTER_MS = 1000 // after a picture from a site's own picture link (projects/phone-site-reader)
+const PIC_HINTS = 'site-pics'                   // kv: those links by phone link (sites.ts PicHint), never in a change file
 const LINK_THUMB_PX = 400          // a link's picture rides in a change file: as wide as the PC's thumbnails (library/importers.py)
 const NO_KEY = 'Wiskit needs an AI key on this phone: on the PC open Settings > Backup & phones > Add a phone, tick your Anthropic or OpenAI key under Also send, then pair this phone again with the new code.'
 const NO_TEXT = 'The PC has not uploaded the search text yet: update Brainamon on the PC and let it upload once.'
 const PROVIDER_LABEL: Record<string, string> = { anthropic: 'Anthropic', openai: 'OpenAI' }
 const Q = new Quick(ASK), S = new Synth(SYNTH)
 const AI_PICK = 'bp-ai'
-// More > Wiskit > Refresh: the models each key can use, after the PC's lists ({provider: [{id,label}]})
+// Settings > Wiskit > Refresh: the models each key can use, after the PC's lists ({provider: [{id,label}]})
 const AI_FOUND = 'bp-ai-found'
 const DEEP_TIP = 'Tip: create a note titled "About me" in My Notes (goals, equipment, level, constraints) and Deep mode will tailor its answers to it.'
 // without a PC (plans/08-phone-solo.md)
-const SOLO_NO_KEY = 'Wiskit needs an AI key on this phone: add your Anthropic or OpenAI key under More > Wiskit on this phone.'
+const SOLO_NO_KEY = 'Wiskit needs an AI key on this phone: add your Anthropic or OpenAI key under Settings > Wiskit on this phone.'
 const SOLO_SMART = 'Smart search needs the PC: it indexes the library by meaning. Keyword search works on this phone.'
+// Synthesize (projects/phone-solo-synthesize): no ticked source has a part to fold (synth.ts parts)
+const NO_SOURCE_TEXT = 'None of the selected sources have any text to synthesize yet: a report, an AI description, a transcript, a caption or a note on the card.'
 const SOLO_MANIFEST: Manifest = { format: 1, published: 0, items: 0, embedding_model: '', videos: 'off', canvases: false, video_chunk: 0, files: {} }
 
 // a gzip-compressed mirror file (search/text-NNN.json.gz), opened as text
@@ -202,7 +214,9 @@ export class MirrorSource implements MobileSource {
     try { await dropRecord(new Drive(this.pair.d || GOOGLE_DRIVE, () => token(this.pair), dropToken), await this.key, this.pair, deviceId()) } catch { /* Unpair goes on */ }
   }
 
-  constructor(pair: Pairing) {
+  private words?: ToolWords
+  constructor(pair: Pairing, words?: ToolWords) {
+    this.words = words
     this.pair = pair
     if (pair.backupTask) void stopCloudWork()
     this.drive = new Drive(pair.d || GOOGLE_DRIVE, () => token(pair), () => dropToken())
@@ -249,7 +263,7 @@ export class MirrorSource implements MobileSource {
     const why = diagnoseNoLibrary({
       listed, ours, problem, signedAs: this.pair.g || '', pcAccount: this.pair.e || '', pcProject,
       phoneProject: empty && pcProject ? await tokenProject() : '',
-    })
+    }, this.words)
     return new NoMirror(why.message, why)
   }
 
@@ -269,9 +283,9 @@ export class MirrorSource implements MobileSource {
   private async fetchFile(logical: string, onProgress?: (got: number, total: number) => void): Promise<Uint8Array> {
     const m = await this.man()
     const f = m.files[logical]
-    if (!f) throw new Error(`${logical} is not in the mirror`)
+    if (!f) throw Object.assign(new Error(`${logical} is not in the mirror`), { displayKey: 'common.error.mirrorFileMissing', displayParams: { logical: logical } })
     const id = f.id ?? (await this.drive.find(f.n))?.id
-    if (!id) throw new Error(`${logical} is missing from Google Drive`)
+    if (!id) throw Object.assign(new Error(`${logical} is missing from Google Drive`), { displayKey: 'common.error.driveFileMissing', displayParams: { logical: logical } })
     return (await this.key).open(logical, await this.drive.get(id, onProgress))
   }
 
@@ -303,19 +317,19 @@ export class MirrorSource implements MobileSource {
     if (cloudStopped()) return { rows: this.rowsNow as Row[], cats: this.cats() }
     step?.('read')
     if (this.solo) {
-      let note = 'not connected to Google Drive: the library stays on this phone'
+      let note = say(this.words, 'shell.sync.localOnly', {}, 'not connected to Google Drive: the library stays on this phone')
       try {
         const sent = await this.flush().then(() => true, () => false)
         if (navigator.onLine && token(this.pair)) {
           const n = await this.readBack()
-          note = n ? `${n} change${n > 1 ? 's' : ''} read from Google Drive` : 'nothing new in Google Drive'
+          note = n ? say(this.words, 'shell.sync.changesRead', { n }, `${n} change${n > 1 ? 's' : ''} read from Google Drive`) : say(this.words, 'shell.sync.nothingNew', {}, 'nothing new in Google Drive')
           // the status says Backed up only after a round that sent what was queued and read Drive back
           this.round = { at: Date.now(), ok: sent, error: sent ? '' : this.lastError }
         }
       } catch (e) {
         if (e instanceof CloudCancelled) throw e
         // the library is on the phone either way; a refused sign-in drops the token, so Backup & phones asks to sign in again
-        note = `Google Drive not read (${(e as Error).message})`
+        note = say(this.words, 'shell.sync.driveNotRead', { detail: (e as Error).message }, `Google Drive not read (${(e as Error).message})`)
         this.round = { at: Date.now(), ok: false, error: (e as Error).message }
       }
       step?.('lib', note)
@@ -328,7 +342,7 @@ export class MirrorSource implements MobileSource {
     const before = this.manifest
     const m = await this.loadManifest()
     const names = this.names('library/part-'), fresh = names.filter(p => before?.files[p]?.v !== m.files[p].v).length
-    step?.('lib', before?.published === m.published ? 'no new upload from the PC' : `${fresh} of ${names.length} parts changed`)
+    step?.('lib', before?.published === m.published ? say(this.words, 'shell.sync.noNewUpload', {}, 'no new upload from the PC') : say(this.words, 'shell.sync.partsChanged', { changed: fresh, total: names.length }, `${fresh} of ${names.length} parts changed`))
     this.meta = JSON.parse(await this.cached('library/meta.json')) as Meta
     let got = 0
     progress?.(0, names.length)
@@ -402,7 +416,7 @@ export class MirrorSource implements MobileSource {
   }
 
   private setRows() {
-    this.rowsNow = this.changes.overlay(this.base) as MRow[]
+    this.rowsNow = (this.changes.overlay(this.base) as MRow[]).map(r => r.desc?.trim() === NO_CONTENT ? { ...r, ai: false, desc: '' } : r)
     this.byId = new Map(this.rowsNow.map(r => [r.id, r]))
   }
 
@@ -492,65 +506,137 @@ export class MirrorSource implements MobileSource {
     const have = new Set(this.changes.list.filter(e => e.op === 'details').map(e => e.uid))
     const want = this.rowsNow.filter(r => r.id < 0 && r.uid && !have.has(r.uid) && (ids ? ids.includes(r.id) : !this.triedLinks.has(r.uid)))
     const done: number[] = []
-    for (const r of want) {
-      if (syncPaused()) break
-      this.triedLinks.add(r.uid!)
-      const info = await linkInfo(r.url, linkGet).catch(() => null)
-      if (!info) continue
-      const thumb = info.image && !syncPaused() ? await linkImage(info.image).then(shrinkJpeg).catch(() => '') : ''
-      if (!info.title && !info.desc && !thumb) continue
-      await this.changes.add({ op: 'details', uid: r.uid, title: info.title.slice(0, 300), creator: info.creator.slice(0, 120), desc: info.desc.slice(0, 5000), thumb })
-      this.setRows()
-      const row = this.byId.get(r.id)
-      if (thumb && row) {
-        const c = await caches.open(THUMB_CACHE)
-        await c.put(this.thumbUrl(row), new Response(Uint8Array.from(atob(thumb), ch => ch.charCodeAt(0)), { headers: { 'Content-Type': 'image/jpeg' } }))
+    // the cards show which link is being read and which wait (work.svelte.ts)
+    queueWork('links', 'FETCH', want.map(r => r.id))
+    try {
+      for (const r of want) {
+        if (syncPaused()) break
+        this.triedLinks.add(r.uid!)
+        startWork('links', 'FETCH', r.id)
+        const info = await linkInfo(r.url, linkGet).catch(() => null)
+        if (!info) { endWork(r.id, false); continue }
+        const thumb = info.image && !syncPaused() ? await linkImage(info.image).then(shrinkJpeg).catch(() => '') : ''
+        if (!info.title && !info.desc && !thumb) { endWork(r.id, false); continue }
+        await this.changes.add({ op: 'details', uid: r.uid, title: info.title.slice(0, 300), creator: info.creator.slice(0, 120), desc: info.desc.slice(0, 5000), thumb })
+        this.setRows()
+        const row = this.byId.get(r.id)
+        if (thumb && row) {
+          const c = await caches.open(THUMB_CACHE)
+          await c.put(this.thumbUrl(row), new Response(Uint8Array.from(atob(thumb), ch => ch.charCodeAt(0)), { headers: { 'Content-Type': 'image/jpeg' } }))
+        }
+        endWork(r.id, true)
+        done.push(r.id)
       }
-      done.push(r.id)
-    }
+    } finally { endLane('links') }
     if (done.length) this.flushSoon()
     return done
   }
 
   private triedPics = new Set<string>()
+  private hintsLoad: Promise<Record<string, PicHint>> | null = null
 
-  // The slow picture queue (plans/09-link-details.md step 13). Phone links whose picture can be built
-  // from the link alone (imageUrl) and that have none yet: one at a time, paced. `step` reports
-  // progress; `stop()` ends the run early. Returns the ids that got a picture and whether the site
-  // asked to slow down (403 / 429 / 3 failures in a row).
+  // the picture links the site reader saw, by phone link: one object, shared by addPicHints and the queue
+  private picHints() {
+    return (this.hintsLoad ??= kv.get<Record<string, PicHint>>(PIC_HINTS).then(async h => {
+      const hints = h && typeof h === 'object' && !Array.isArray(h) ? h : {}
+      const now = Date.now()
+      for (const [url, v] of Object.entries(hints)) {
+        if (!v || !Number.isFinite(v.at) || v.at > now || now - v.at > PIC_HINT_KEEP_MS ||
+          !postPicOk(url, v.u)) delete hints[url]
+      }
+      await kv.set(PIC_HINTS, hints)
+      return hints
+    }))
+  }
+
+  // keeps the picture links of posts read from a site (screens/SiteRead.svelte, projects/phone-site-reader):
+  // they are signed and expire within days, so they stay on this phone and never ride in a change file
+  async addPicHints(pairs: [string, string][]) {
+    if (!pairs.length) return
+    const hints = await this.picHints(), now = Date.now()
+    const rows = new Map(this.rowsNow.map(r => [postKey(r.url), r]))
+    for (const [k, v] of Object.entries(hints)) if (!v || now - v.at > PIC_HINT_KEEP_MS) delete hints[k]
+    for (const [url, u] of pairs) {
+      if (!postPicOk(url, u)) continue
+      const row = rows.get(postKey(url))
+      hints[cleanLink(row?.url || url) || url] = { u, at: now }
+      if (row?.uid) this.triedPics.delete(row.uid)
+    }
+    await kv.setRequired(PIC_HINTS, hints)
+  }
+
+  // The slow picture queue (plans/09-link-details.md step 13). Phone links with no picture yet whose picture
+  // can be found (sites.ts picturePlan): the site's own picture link first (posts read from a site), then
+  // the link's rule (imageUrl), then the picture the post's page names. One at a time, paced; a picture
+  // from a site's link waits less. `step` reports progress; `stop()` ends the run early. Returns the ids
+  // that got a picture and whether the site asked to slow down (403 / 429 / 3 failures in a row of the
+  // rule or page reads).
   async fillPictures(step: (p: { done: number; total: number }) => void, stop: () => boolean): Promise<{ got: number[]; blocked: boolean }> {
     if (!isApp || syncPaused()) return { got: [], blocked: false }
     await this.ready()
+    const hints = await this.picHints(), now = Date.now()
     const withPic = new Set(this.changes.list.filter(e => e.op === 'details' && e.thumb).map(e => e.uid))
-    const want = this.rowsNow.filter(r => r.id < 0 && r.uid && !withPic.has(r.uid) && !this.triedPics.has(r.uid) && imageUrl(r.url))
+    const plans = new Map<number, ReturnType<typeof picturePlan>>()
+    for (const r of this.rowsNow) {
+      if (r.id >= 0 || !r.uid || withPic.has(r.uid) || this.triedPics.has(r.uid)) continue
+      const plan = picturePlan(r.url, hints[cleanLink(r.url) || r.url], now)
+      if (plan.hint || plan.rule || plan.page) plans.set(r.id, plan)
+    }
+    const want = this.rowsNow.filter(r => plans.has(r.id))
     const got: number[] = []
-    let failed = 0
+    let failed = 0, used = 0
     step({ done: 0, total: want.length })
-    for (const r of want) {
-      if (stop() || syncPaused()) break
-      this.triedPics.add(r.uid!)
-      try {
-        const thumb = await shrinkJpeg(await linkImage(imageUrl(r.url)))
-        const prev = [...this.changes.list].reverse().find(e => e.op === 'details' && e.uid === r.uid)
-        await this.changes.add({ op: 'details', uid: r.uid, title: prev?.title ?? '', creator: prev?.creator ?? '', desc: prev?.desc ?? '', thumb })
-        this.setRows()
-        const row = this.byId.get(r.id)
-        if (row) {
-          const c = await caches.open(THUMB_CACHE)
-          await c.put(this.thumbUrl(row), new Response(Uint8Array.from(atob(thumb), ch => ch.charCodeAt(0)), { headers: { 'Content-Type': 'image/jpeg' } }))
+    queueWork('pics', 'PICTURE', want.map(r => r.id))
+    let blocked = false
+    try {
+      for (const r of want) {
+        if (stop() || syncPaused()) break
+        this.triedPics.add(r.uid!)
+        startWork('pics', 'PICTURE', r.id)
+        const plan = plans.get(r.id)!
+        let thumb = '', asked = false
+        if (plan.hint) {
+          thumb = await linkImage(plan.hint).then(shrinkJpeg).catch(() => '')
+          delete hints[cleanLink(r.url) || r.url]
+          used++
         }
-        got.push(r.id)
-        failed = 0
-      } catch (e) {
-        const status = (e as { status?: number }).status
-        failed++
-        if (status === 403 || status === 429 || failed >= 3) {
-          if (got.length) this.flushSoon()
-          return { got, blocked: true }
+        if (!thumb && (plan.rule || plan.page)) {
+          asked = true
+          try {
+            thumb = await shrinkJpeg(await linkImage(plan.rule || await pagePicture(r.url)))
+            failed = 0
+          } catch (e) {
+            const status = (e as { status?: number }).status
+            failed++
+            if (status === 403 || status === 429 || failed >= 3) {
+              if (got.length) this.flushSoon()
+              blocked = true
+              dropWork(r.id)
+              return { got, blocked: true }
+            }
+          }
         }
+        if (thumb) {
+          const prev = [...this.changes.list].reverse().find(e => e.op === 'details' && e.uid === r.uid)
+          await this.changes.add({ op: 'details', uid: r.uid, title: prev?.title ?? '', creator: prev?.creator ?? '', desc: prev?.desc ?? '', thumb })
+          this.setRows()
+          const row = this.byId.get(r.id)
+          if (row) {
+            try {
+              const c = await caches.open(THUMB_CACHE)
+              await c.put(this.thumbUrl(row), new Response(Uint8Array.from(atob(thumb), ch => ch.charCodeAt(0)), { headers: { 'Content-Type': 'image/jpeg' } }))
+            } catch { /* the picture is durable in the journal; cache failure must not stop the queue */ }
+          }
+          got.push(r.id)
+          endWork(r.id, true)
+        } else dropWork(r.id)
+        step({ done: got.length, total: want.length })
+        await new Promise(res => setTimeout(res, asked ? PIC_GAP_MS + Math.random() * PIC_JITTER_MS : HINT_GAP_MS + Math.random() * HINT_JITTER_MS))
       }
-      step({ done: got.length, total: want.length })
-      await new Promise(res => setTimeout(res, PIC_GAP_MS + Math.random() * PIC_JITTER_MS))
+    } finally {
+      // slowed down by the site: the rest keep waiting for the next run (runPictures), else the marks go
+      if (blocked) clearRun('pics'); else endLane('pics')
+      if (used) await kv.set(PIC_HINTS, hints)
     }
     if (got.length) this.flushSoon()
     return { got, blocked: false }
@@ -691,7 +777,7 @@ export class MirrorSource implements MobileSource {
     return this.replace(r)
   }
 
-  // More > Clear the phone's copy: forget what was read, so the next refresh downloads it all again
+  // Settings > Storage > Clear the phone's copy: forget what was read, so the next refresh downloads it all again
   forgetCopy() {
     this.manifest = null; this.meta = null; this.base = []; this.texts.clear(); this.vec = null
     this.lib = null; this.deepAux = null; this.looked = 0; this.primed = null
@@ -703,7 +789,7 @@ export class MirrorSource implements MobileSource {
   async deleteItem(id: number, pc: boolean): Promise<void> {
     await this.ready()
     const r = this.byId.get(id)
-    if (!r?.uid) throw new Error("This card is not in the phone's copy.")
+    if (!r?.uid) throw Object.assign(new Error("This card is not in the phone's copy."), { displayKey: 'common.error.cardMissing' })
     if (!(id < 0 && await this.changes.dropQueuedLink(r.uid))) {
       await this.changes.add({ op: 'delete', uid: r.uid, pc })
       this.flushSoon()
@@ -750,14 +836,23 @@ export class MirrorSource implements MobileSource {
   // queue adds their pictures. Returns the new rows' ids and how many were already there.
   async importLinks(posts: Saved[]): Promise<{ ids: number[]; dups: number }> {
     await this.ready()
-    const r = importChanges(posts, new Set(this.rowsNow.map(x => x.url)), cleanLink, () => hex(16))
+    const existing = new Set(this.rowsNow.map(x => x.url))
+    const keys = new Set(this.rowsNow.map(x => postKey(x.url)).filter(Boolean))
+    const fresh: Saved[] = []
+    let duplicates = 0
+    for (const p of posts) {
+      const key = postKey(p.url)
+      if (key && keys.has(key)) { duplicates++; continue }
+      if (key) keys.add(key)
+      fresh.push(p)
+    }
+    const r = importChanges(fresh, existing, cleanLink, () => hex(16))
     const ids: number[] = []
-    for (const c of r.changes) {
-      const e = await this.changes.add(c)
+    for (const e of await this.changes.addBatch(r.changes)) {
       if (e.op === 'link') ids.push(Changes.linkId(e))
     }
     if (ids.length) { this.setRows(); this.flushSoon() }
-    return { ids, dups: r.dups }
+    return { ids, dups: r.dups + duplicates }
   }
 
   flushSoon(ms = 1500) {
@@ -819,6 +914,11 @@ export class MirrorSource implements MobileSource {
         if (n) { n.body = withSection(n.body, e.name || 'Phone', e.text || '', e.when); n.meta = { ...n.meta, updated: isoNow(e.at) } }
         continue
       }
+      if (e.op === 'note_category') {                // a category renamed: shown before the PC has it
+        try { const r = checkRename(e.from ?? '', e.to ?? ''); out.splice(0, out.length, ...renameNotes(out, r.from, r.to)) }
+        catch { /* the PC skips a refused rename too */ }
+        continue
+      }
       if (e.op !== 'note' || !e.file) continue
       const at = out.findIndex(n => n.file === e.file)
       const old = at >= 0 ? out[at].meta : {}
@@ -831,7 +931,8 @@ export class MirrorSource implements MobileSource {
 
   private noteRow(n: NoteFile): NoteRow {
     const kind = (this.meta?.topic_notes ?? []).includes(n.file) ? 'Topic digest' : n.meta.kind === 'personal' ? 'Personal' : 'Synthesized'
-    const sources = (n.meta.sources || '').split(',').map(s => s.trim()).filter(s => /^\d+$/.test(s)).map(Number).sort((a, b) => a - b)
+    // a note synthesized on this phone cites links saved on it by their phone ids (negative)
+    const sources = (n.meta.sources || '').split(',').map(s => s.trim()).filter(s => /^-?\d+$/.test(s)).map(Number).sort((a, b) => a - b)
     return { file: n.file, title: n.meta.topic || n.file.replace(/\.md$/, ''), kind, sources: [...new Set(sources)], created: n.meta.created || '', updated: n.meta.updated || n.meta.created || '', snippet: snippet(n.body) }
   }
 
@@ -845,12 +946,17 @@ export class MirrorSource implements MobileSource {
   }
 
   async notes() {
-    if (!this.meta) this.meta = JSON.parse(await this.cached('library/meta.json')) as Meta
+    // the meta only names the Topic digests: a phone with no PC copy has none (its Knowledge notes are its own
+    // syntheses), so its missing meta is no error there
+    if (!this.meta) {
+      try { this.meta = JSON.parse(await this.cached('library/meta.json')) as Meta }
+      catch (e) { if (!this.solo) throw e }
+    }
     return (await this.noteFiles()).map(n => this.noteRow(n)).sort((a, b) => b.updated.localeCompare(a.updated))
   }
   async note(file: string): Promise<OpenNote> {
     const n = (await this.noteFiles()).find(x => x.file === file)
-    if (!n) throw new Error('No such note in the mirror.')
+    if (!n) throw Object.assign(new Error('No such note in the mirror.'), { displayKey: 'common.error.noteMissing' })
     return { file, meta: n.meta, body: n.body, row: this.noteRow(n) }
   }
   async myNotes() {
@@ -858,13 +964,29 @@ export class MirrorSource implements MobileSource {
   }
   async myNote(file: string) {
     const n = (await this.noteFiles()).find(x => x.file === file)
-    if (!n) throw new Error('No such note in the mirror.')
+    if (!n) throw Object.assign(new Error('No such note in the mirror.'), { displayKey: 'common.error.noteMissing' })
     return this.myNoteOf(n, true)
+  }
+  // the Notes search (projects/phone-notes-manager): every note's whole text, from the phone's copy and its journal
+  async noteBodies() {
+    const out: Record<string, string> = {}
+    for (const n of await this.noteFiles()) out[n.file] = plain(n.body)
+    return out
   }
   async myNoteCategories() {
     const c = new Set(['General'])
     for (const n of await this.noteFiles()) if (n.meta.kind === 'personal' && n.meta.category) c.add(n.meta.category)
     return [...c].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+  }
+  // a category rename travels as one note_category change; a paired PC must announce it (an older PC drops it)
+  renameBlocked(words?: ToolWords) { return this.solo || this.manifest?.note_category === 1 ? '' : say(words, 'notes.editor.renameNeedsPc', {}, RENAME_NEEDS_PC) }
+  async renameMyNoteCategory(from: string, to: string) {
+    const blocked = this.renameBlocked()
+    if (blocked) throw new Error(blocked)
+    const r = checkRename(from, to)
+    await this.changes.add({ op: 'note_category', from: r.from, to: r.to })
+    this.flushSoon()
+    return this.myNoteCategories()
   }
   async createMyNote(title: string, category: string) {
     const file = `${slug(title || 'Untitled')}-${hex(3)}.md`
@@ -892,26 +1014,27 @@ export class MirrorSource implements MobileSource {
     await this.changes.add({ op: 'note_delete', file })
     this.flushSoon()
   }
-  canTranscribe() { return !!this.keys().openai && !!this.settings()?.transcription_model }
+  canTranscribe() { return !!this.keys().openai }
   async transcribe(audio: Blob, signal?: AbortSignal): Promise<string> {
-    const key = this.keys().openai, model = this.settings()?.transcription_model
-    if (!key) throw new AiError('Voice notes need an OpenAI key on this phone (More > Wiskit on this phone).')
-    if (!model) throw new AiError('Open the library once while the PC is on: it tells the phone which speech model to use.')
+    // Use this app's transcription model even when the PC's cached metadata predates its migration.
+    const key = this.keys().openai, model = PHONE_AI.transcription_model
+    if (!key) throw Object.assign(new AiError('Voice notes need an OpenAI key on this phone (Settings > Wiskit on this phone).'), { displayKey: 'voice.record.keyNeeded' })
     return transcribe(this.endpoints(), key, model, audio, signal)
   }
   // Add a picture or file (projects/wiskit-files plan 04): pictures and PDFs read with the phone's own
   // key and Wiskit's model; text files need no AI. Nothing is kept or sent to the PC.
   async readFile(f: Picked, how: 'digest' | 'describe') {
+    const language = lang()
     if (f.kind === 'text') return decodeText(f.data)
     const info = this.ai()
     const key = info && this.keys()[info.provider as Provider]
-    if (!info || !key || !info.model) throw new AiError(this.noKey())
+    if (!info || !key || !info.model) throw Object.assign(new AiError(this.noKey()), { displayKey: this.solo ? 'processing.error.soloKey' : 'processing.error.pairedKey' })
     const p = info.provider as Provider, base = f.kind === 'pdf' ? 8000 : 4000
     const max = p === 'openai' ? this.cap(base) : base
     const text = f.kind === 'pdf'
       ? await pdfText(this.endpoints(), p, key, info.model, PDF_PROMPT, f.name, f.data, max)
-      : await vision(this.endpoints(), p, key, info.model, how === 'digest' ? DIGEST_PROMPT : ATTACH_PROMPT, mediaType(f.name, f.type), f.data, max)
-    if (!text) throw new AiError('The AI sent back no text.')
+      : await vision(this.endpoints(), p, key, info.model, how === 'digest' ? DIGEST_PROMPT : appendLanguage(ATTACH_PROMPT, language, 'describe'), mediaType(f.name, f.type), f.data, max)
+    if (!text) throw Object.assign(new AiError('The AI sent back no text.'), { displayKey: 'capture.attachment.emptyAi' })
     return text
   }
 
@@ -922,44 +1045,90 @@ export class MirrorSource implements MobileSource {
   private itemAi() {
     const info = this.ai()
     const key = info && this.keys()[info.provider as Provider]
-    if (!info || !key || !info.model) throw new AiError(this.noKey())
+    if (!info || !key || !info.model) throw Object.assign(new AiError(this.noKey()), { displayKey: this.solo ? 'processing.error.soloKey' : 'processing.error.pairedKey' })
     const p = info.provider as Provider
     return { p, key, model: info.model, cap: (n: number) => (p === 'openai' ? this.cap(n) : n) }
   }
 
-  async describe(id: number): Promise<string> {
+  async describe(id: number, undo?: (t: ToolsUndo) => void): Promise<string | null> {
+    const language = lang()
     await this.ready()
     const r = this.byId.get(id)
     if (!r?.uid) throw new Error('This card is not in the phone\'s copy.')
-    const a = this.itemAi()
     const full = await this.item(id)
+    const saved = this.texts.get(id)
+    const content = { ...full, transcript: saved?.transcript || full.transcript || '', report: saved?.report || '' }
     const blob = await this.thumbBlob(r).catch(() => null)
     const b64 = blob ? toB64(new Uint8Array(await blob.arrayBuffer())) : ''
-    const prompt = describePrompt(full, !!b64)
+    if (!hasDescribeContent(content, !!b64)) return null
+    const a = this.itemAi()
+    const prompt = appendLanguage(describePrompt(content, !!b64), language, 'describe')
     const text = b64
       ? await vision(this.endpoints(), a.p, a.key, a.model, prompt, blob!.type || 'image/jpeg', b64, a.cap(DESCRIBE_TOKENS))
       : await complete(this.endpoints(), a.p, a.key, a.model, prompt, a.cap(DESCRIBE_TOKENS))
-    if (!text) throw new AiError('The AI sent back no text.')
+    if (!text.trim()) throw new AiError('The AI sent back no text.')
+    if (text.trim() === NO_CONTENT) return null
     await this.changes.add({ op: 'edit', uid: r.uid, fields: { ai_desc: text }, was: { ai_desc: full.ai_desc || '' } })
+    undo?.({ kind: 'describe', uid: r.uid, was: { ai_desc: full.ai_desc || '' }, now: { ai_desc: text } })    // Tools' Undo token (a single-item run keeps it)
     this.setRows()
     this.flushSoon()
     return text
   }
 
+  // Tools' Undo on one item (projects/phone-processing-flow, plans/00-review-repairs.md R5): one more `edit` change puts
+  // back what the single-item Describe or Auto-categorize replaced, but only while the card still holds what that run
+  // wrote. The card is found by its uid (a link's number can change when the PC numbers it); the written values are the
+  // change's `was`, so the PC still keeps a newer edit of its own (server/intake.py); a card that changed or is gone
+  // writes nothing (UndoRefused); two calls take turns. A restored empty description puts the card's own text back:
+  // `plain` rides on the local change only (mirror/changes.ts) and never reaches the change file.
+  async undoTool(t: ToolsUndo): Promise<Row> {
+    await this.ready()
+    let row: Row
+    await this.changes.commitUndo(async (): Promise<Omit<ChangeEntry, 'state' | 'at'>> => {
+      this.setRows()
+      const r = this.rowsNow.find(x => x.uid === t.uid)
+      if (!r?.uid) throw new UndoRefused('This card is no longer on the phone, so nothing was undone.')
+      row = r
+      if (t.kind === 'describe') {
+        const full = await this.item(r.id)
+        if ((full.ai_desc || '').trim() !== (t.now.ai_desc ?? '').trim()) throw new UndoRefused('The description changed after Describe, so nothing was undone.')
+        const empty = !(t.was.ai_desc ?? '').trim()
+        return { op: 'edit', uid: r.uid, fields: { ai_desc: t.was.ai_desc ?? '' }, was: { ai_desc: t.now.ai_desc ?? '' },
+          ...(empty && r.id > 0 ? { plain: (full.description || '').slice(0, 200) } : {}) }     // 200: the mirror row's SNIPPET
+      } else {
+        if (r.cat !== t.now.cat || r.tags !== t.now.tags) throw new UndoRefused('The collection or tags changed after Auto-categorize, so nothing was undone.')
+        return { op: 'edit', uid: r.uid, fields: { category: t.was.cat ?? '', tags: t.was.tags ?? '' }, was: { category: r.cat, tags: r.tags } }
+      }
+    })
+    this.flushSoon()
+    return this.replace(row!)
+  }
+
   async categorize(id: number, categories: string[]): Promise<Row> {
+    const language = lang()
     await this.ready()
     const r = this.byId.get(id)
     if (!r?.uid) throw new Error('This card is not in the phone\'s copy.')
-    if (!categories.length) throw new Error('There are no collections to choose from yet.')
+    if (!categories.length) throw Object.assign(new Error('There are no collections to choose from yet.'), { displayKey: 'capture.suggest.noCollections' })
     const a = this.itemAi()
     const full = await this.item(id)
-    const text = await complete(this.endpoints(), a.p, a.key, a.model, categorizePrompt(full, categories), a.cap(CATEGORIZE_TOKENS))
+    const text = await complete(this.endpoints(), a.p, a.key, a.model, appendLanguage(categorizePrompt(full, categories), language, 'tags'), a.cap(CATEGORIZE_TOKENS))
     const got = parseCategory(text, categories)
     return this.edit(id, { category: got.category, tags: mergeTags(r.tags, got.tags) })
   }
 
+  // Add's Suggest (projects/phone-add-confirm): Categorize's prompt for a link that is not a card yet. Nothing is
+  // written or queued; the recap shows the answer and Save sends it with the link.
+  async suggestCategory(item: ItemText, categories: string[]): Promise<{ category: string; tags: string }> {
+    const language = lang()
+    if (!categories.length) throw Object.assign(new Error('There are no collections to choose from yet.'), { displayKey: 'capture.suggest.noCollections' })
+    const a = this.itemAi()
+    const text = await complete(this.endpoints(), a.p, a.key, a.model, appendLanguage(categorizePrompt(item, categories), language, 'tags'), a.cap(CATEGORIZE_TOKENS))
+    return parseCategory(text, categories)
+  }
+
   // vault sync (Android app): the folder in kv 'vault' against the PC's list, through this pairing's Drive and key
-  async syncVault(force = false, progress?: (step: string, done: number, total: number, overall?: number) => void, signal?: { aborted: boolean }): Promise<VaultResult> {
+  async syncVault(force = false, progress?: (step: string, done: number, total: number, overall?: number, display?: string) => void, signal?: { aborted: boolean }, words?: (key: string, params?: Record<string, unknown>) => string): Promise<VaultResult> {
     const opts = await kv.get<{ on: boolean; uri: string; name: string }>('vault')
     if (!opts?.on || !opts.uri) return { state: 'idle', reason: 'Vault sync is off.', summary: '' }
     const fs = vaultFs(opts.uri)
@@ -968,8 +1137,8 @@ export class MirrorSource implements MobileSource {
       drive: this.drive, key: await this.key, fs: { ...fs,
         write: async (path, data) => { await this.drive.authorize(); await fs.write(path, data) },
         remove: async path => { await this.drive.authorize(); await fs.remove(path) },
-      }, device: deviceId(), force, progress, signal,
-      load: async () => kv.get('vault-state'), save: async s => { await kv.set('vault-state', s) },
+      }, device: deviceId(), force, progress, signal, words,
+      load: async () => kv.get('vault-state'), save: async s => { await kv.setRequired('vault-state', s) },
     })
   }
   // the PC's last vault round (state, step, done/total), null until the PC has written one
@@ -983,14 +1152,15 @@ export class MirrorSource implements MobileSource {
   }
 
   // ── canvases ──────────────────────────────────────────────────────────────
-  private async mirrorCanvas(id: string): Promise<CanvasDocument | null> {
-    const m = await this.man()
-    if (m.files[`canvases/${id}.json`]) {
+  private async mirrorCanvas(id: string, pcOnly = false): Promise<CanvasDocument | null> {
+    const m = await this.man().catch(() => null)
+    if (m?.files[`canvases/${id}.json`]) {
       try {
         const d = JSON.parse(await this.cached(`canvases/${id}.json`)) as CanvasDocument
         if (d?.id === id && Array.isArray(d.items)) return d
       } catch { /* use the pinned local copy below */ }
     }
+    if (pcOnly) return null
     const saved = (await kv.get<{ id: string; doc: CanvasDocument }[]>('saved-canvases')) ?? []
     return saved.find(x => x.id === id)?.doc ?? null
   }
@@ -999,12 +1169,24 @@ export class MirrorSource implements MobileSource {
     await this.ready()
     this.unresolvedCanvases.delete(id)
     this.supersededCanvases.delete(id)
-    let doc = await this.mirrorCanvas(id)
+    const canonical = await this.mirrorCanvas(id, true)
+    const saved = canonical ? null : ((await kv.get<{ id: string; doc: CanvasDocument }[]>('saved-canvases')) ?? []).find(c => c.id === id)?.doc ?? null
+    let doc = canonical || saved
     const pcAt = doc?.modified ?? doc?.created ?? 0
     const byUid = new Map(this.rowsNow.map(r => [r.uid, r.id])), uidOf = new Map(this.rowsNow.map(r => [r.id, r.uid]))
     const ops = this.changes.list.filter(e => e.op === 'canvas' && e.canvas_id === id)
-      .sort((a, b) => a.at - b.at || (a.proposal?.new_name ? -1 : 0) - (b.proposal?.new_name ? -1 : 0) || (a.op_id ?? '').localeCompare(b.op_id ?? ''))
-    for (const e of ops) {
+      .sort((a, b) => (a.proposal?.new_name ? -1 : 0) - (b.proposal?.new_name ? -1 : 0)
+        || (a.id ?? 0) - (b.id ?? 0) || a.at - b.at || (a.op_id ?? '').localeCompare(b.op_id ?? ''))
+    // A pinned local snapshot already includes the operations through its last reflected result.
+    const savedOps = new Set(saved?.items.map(e => e.id.split('_')[0]))
+    const savedElements = new Map(saved?.items.map(e => [e.id, canonJson(e)]))
+    let through = -1
+    if (saved) ops.forEach((e, i) => {
+      const result = e.canvasLocal?.result.items
+      if (savedOps.has(e.op_id!) || result?.length && result.every(el => savedElements.get(el.id) === canonJson(el))) through = i
+    })
+    for (const [i, e] of ops.entries()) {
+      if (i <= through) continue
       if (doc?.phone_ops?.[e.op_id ?? '']) continue
       if (e.canvasLocal?.status === 'refused') {
         // the kept phone copy, until the PC's own canvas changes after the refusal
@@ -1017,7 +1199,7 @@ export class MirrorSource implements MobileSource {
         const dims = new Map<number, [number, number]>(), missing = new Map<number, string>()
         for (const x of (raw.elements as Record<string, unknown>[] ?? [])) if (x.kind === 'thumbnail') {
           const uid = e.refs?.[String(x.item_id)]
-          if (!uid) throw new Error('A canvas item reference is missing.')
+          if (!uid) throw Object.assign(new Error('A canvas item reference is missing.'), { displayKey: 'common.error.canvasReferenceMissing' })
           // an item not on this phone (a change restored from a backup) keeps its place as a placeholder
           let localId = byUid.get(uid)
           if (localId === undefined) {
@@ -1028,7 +1210,7 @@ export class MirrorSource implements MobileSource {
           if (e.sizes?.[uid]) dims.set(localId, e.sizes[uid])
         }
         const p = normalizeCanvas(raw)
-        if (p.canvas_id && !doc) { this.unresolvedCanvases.add(id); throw new Error('The earlier canvas creation is missing.') }
+        if (p.canvas_id && !doc) { this.unresolvedCanvases.add(id); throw Object.assign(new Error('The earlier canvas creation is missing.'), { displayKey: 'common.error.canvasEarlierMissing' }) }
         doc = applyCanvasLocal(p, doc, dims, e.op_id!, id, e.at)
         for (const el of doc.items) if (el.source === 'db' && el.item_id !== undefined && !el.uid) {
           const uid = missing.get(el.item_id) ?? uidOf.get(el.item_id)
@@ -1057,7 +1239,6 @@ export class MirrorSource implements MobileSource {
         } catch { /* geometry and notes remain readable when image cache is full */ }
       }
     }
-    if (doc) this.unresolvedCanvases.delete(id)
     return doc
   }
 
@@ -1110,9 +1291,9 @@ export class MirrorSource implements MobileSource {
             await cache.put(this.canvasImageUrl(file), new Response(blob)); images.push(file); bytes += blob.size
           } else if (el.source === 'db' && el.item_id !== undefined) {
             const row = this.byId.get(el.item_id)
-            if (!row) throw new Error('A canonical canvas item is missing from the mirror.')
+            if (!row) throw Object.assign(new Error('A canonical canvas item is missing from the mirror.'), { displayKey: 'common.error.canvasCanonicalMissing' })
             const blob = e.canvasLocal?.assets.find(a => a.uid === row.uid)?.blob || await this.thumbBlob(row)
-            if (!blob) throw new Error('A canonical thumbnail is unavailable.')
+            if (!blob) throw Object.assign(new Error('A canonical thumbnail is unavailable.'), { displayKey: 'common.error.canvasThumbnailMissing' })
             await thumbCache.put(this.thumbUrl(row), new Response(blob)); bytes += blob.size
           }
         }
@@ -1129,7 +1310,7 @@ export class MirrorSource implements MobileSource {
   private async refuseCanvas(e: ChangeEntry, reason: string): Promise<boolean> {
     const result = e.canvasLocal?.result || await this.effectiveCanvas(e.canvas_id!)
     if (!result) return false
-    const pc = await this.mirrorCanvas(e.canvas_id!)
+    const pc = await this.mirrorCanvas(e.canvas_id!, true)
     e.canvasLocal ??= { base: null, result, assets: [], status: 'pending' }
     e.canvasLocal.pc = pc?.modified ?? pc?.created ?? 0
     await this.changes.canvasResult(e, 'refused', reason)
@@ -1138,8 +1319,8 @@ export class MirrorSource implements MobileSource {
 
   // the mirror's canvas list (canvases/index.json), with no canvas file read
   private async canvasIndex(): Promise<{ id: string; name?: string; item_count?: number; modified?: number }[]> {
-    const m = await this.man()
-    if (!m.files['canvases/index.json']) return []
+    const m = await this.man().catch(() => null)
+    if (!m?.files['canvases/index.json']) return []
     try {
       const idx = JSON.parse(await this.cached('canvases/index.json')) as { id: string }[]
       return Array.isArray(idx) ? idx.filter(e => typeof e?.id === 'string' && m.files[`canvases/${e.id}.json`]) : []
@@ -1158,28 +1339,54 @@ export class MirrorSource implements MobileSource {
   async canvases(): Promise<CanvasRow[]> {
     const idx = await this.canvasIndex()
     await this.ready()
-    const ids = new Set([...idx.map(e => e.id),
+    const saved = (await kv.get<{ id: string }[]>('saved-canvases')) ?? []
+    const ids = new Set([...idx.map(e => e.id), ...saved.map(e => e.id),
       ...this.changes.list.filter(e => e.op === 'canvas' && e.canvas_id).map(e => e.canvas_id!)])
     const rows: CanvasRow[] = []
     for (const id of ids) {
       const d = await this.effectiveCanvas(id)
-      if (d) rows.push({ id, name: d.name, count: d.items.length, updated: d.modified ?? d.created ?? 0 })
-      else if (this.unresolvedCanvases.has(id)) rows.push({ id, name: 'Canvas waiting for earlier backup', count: 0, updated: 0 })
+      if (this.unresolvedCanvases.has(id)) rows.push({ id, name: 'Canvas waiting for earlier backup', count: 0, updated: 0 })
+      else if (d) rows.push({ id, name: d.name, count: d.items.length, updated: d.modified ?? d.created ?? 0 })
     }
     return rows.sort((a, b) => b.updated - a.updated)
   }
+  canvasTitle(id: string, words?: ToolWords): string {
+    return this.unresolvedCanvases.has(id) ? say(words, 'canvas.waitingBackup', {}, 'Canvas waiting for earlier backup') : ''
+  }
   async canvas(id: string): Promise<CanvasDoc> {
     const d = await this.effectiveCanvas(id)
-    if (!d) throw new Error('This canvas is unavailable. Refresh and try again.')
+    if (!d) throw Object.assign(new Error('This canvas is unavailable. Refresh and try again.'), { displayKey: 'common.error.canvasUnavailable' })
     return d as CanvasDoc
   }
-  canvasStatus(id: string): string {
-    if (this.unresolvedCanvases.has(id)) return 'Earlier canvas creation is missing. Refresh after the backup arrives.'
+  async canvasDraftProblem(id: string, words?: ToolWords): Promise<string | null> {
+    const doc = await this.effectiveCanvas(id), canonical = await this.mirrorCanvas(id)
+    const pc = await this.mirrorCanvas(id, true)
+    const ops = this.changes.list.filter(e => e.op === 'canvas' && e.canvas_id === id)
+    const creation = ops.find(e => e.proposal?.new_name)
+    if (creation?.canvasLocal?.status === 'refused') return say(words, 'canvas.status.refusedCreation', { reason: creation.canvasLocal.reason || say(words, 'canvas.status.creationReason', {}, 'The PC refused this creation.') }, `Not synced: ${creation.canvasLocal.reason || 'The PC refused this creation.'}`)
+    if (!canonical && !creation || !doc || this.unresolvedCanvases.has(id)) return say(words, 'canvas.status.missing', {}, 'Earlier canvas creation is missing. Refresh after the backup arrives.')
+    const pcAt = canonical?.modified ?? canonical?.created ?? 0
+    for (const e of ops) {
+      if (e.canvasLocal?.status !== 'refused' || canonical?.phone_ops?.[e.op_id!] === await canvasHash(e)) continue
+      if (pc && e.canvasLocal.pc !== undefined && (pc.modified ?? pc.created ?? 0) > e.canvasLocal.pc) continue
+      const existing = Array.isArray(e.proposal?.elements) ? e.proposal.elements as { kind: string; id?: string }[] : []
+      const kept = doc.items.some(el => el.id.startsWith(`${e.op_id}_`)) || existing.some(p => {
+        if (p.kind !== 'existing') return false
+        const before = e.canvasLocal?.base?.items.find(el => el.id === p.id), after = e.canvasLocal?.result.items.find(el => el.id === p.id), now = doc.items.find(el => el.id === p.id)
+        return after && now && (!before || before.x !== after.x || before.y !== after.y) && now.x === after.x && now.y === after.y
+      })
+      if (kept || e.canvasLocal.pc === undefined || pcAt <= e.canvasLocal.pc)
+        return say(words, 'canvas.status.refused', { reason: e.canvasLocal.reason || say(words, 'canvas.status.changeReason', {}, 'The PC refused this change.'), kept: say(words, 'canvas.status.kept', {}, 'Your phone copy is kept.') }, `Not synced: ${e.canvasLocal.reason || 'The PC refused this change.'} Your phone copy is kept.`)
+    }
+    return null
+  }
+  canvasStatus(id: string, words?: ToolWords): string {
+    if (this.unresolvedCanvases.has(id)) return say(words, 'canvas.status.missing', {}, 'Earlier canvas creation is missing. Refresh after the backup arrives.')
     const last = this.changes.list.filter(e => e.op === 'canvas' && e.canvas_id === id).at(-1)
-    if (last?.canvasLocal?.status === 'refused') return `Not synced: ${last.canvasLocal.reason || 'The PC refused this change.'} ${this.supersededCanvases.has(id) ? 'The PC changed this canvas since, so its copy is shown.' : 'Your phone copy is kept.'}`
-    if (last?.canvasLocal?.status === 'synced') return 'Synced'
-    if (last) return this.solo ? 'On this phone' : this.manifest?.canvas_change === 1 ? 'Waiting to sync' : 'Saved on this phone. Update the PC to sync canvases.'
-    return 'Synced'
+    if (last?.canvasLocal?.status === 'refused') return say(words, 'canvas.status.refused', { reason: last.canvasLocal.reason || say(words, 'canvas.status.changeReason', {}, 'The PC refused this change.'), kept: this.supersededCanvases.has(id) ? say(words, 'canvas.status.pcCopy', {}, 'The PC changed this canvas since, so its copy is shown.') : say(words, 'canvas.status.kept', {}, 'Your phone copy is kept.') }, `Not synced: ${last.canvasLocal.reason || 'The PC refused this change.'} ${this.supersededCanvases.has(id) ? 'The PC changed this canvas since, so its copy is shown.' : 'Your phone copy is kept.'}`)
+    if (last?.canvasLocal?.status === 'synced') return say(words, 'canvas.status.synced', {}, 'Synced')
+    if (last) return this.solo ? say(words, 'canvas.status.phone', {}, 'On this phone') : this.manifest?.canvas_change === 1 ? say(words, 'canvas.status.waiting', {}, 'Waiting to sync') : say(words, 'canvas.status.update', {}, 'Saved on this phone. Update the PC to sync canvases.')
+    return say(words, 'canvas.status.synced', {}, 'Synced')
   }
   lastCanvasRefusal(): { id: string; reason: string } | null {
     const e = [...this.changes.list].reverse().find(e => e.op === 'canvas' && e.canvas_id && e.canvasLocal?.status === 'refused')
@@ -1197,9 +1404,9 @@ export class MirrorSource implements MobileSource {
     const logical = `videos/${uid}.bin`
     const m = await this.man()
     const f = m.files[logical]
-    if (!uid || !f) throw new Error('The PC has not put this video in Google Drive.')
+    if (!uid || !f) throw Object.assign(new Error('The PC has not put this video in Google Drive.'), { displayKey: 'common.error.videoNotUploaded' })
     const id_ = f.id ?? (await this.drive.find(f.n))?.id
-    if (!id_) throw new Error('The video is missing from Google Drive.')
+    if (!id_) throw Object.assign(new Error('The video is missing from Google Drive.'), { displayKey: 'common.error.videoMissing' })
     const blob = await this.drive.get(id_, onProgress)
     const parts = await (await this.key).openVideo(logical, blob, f)
     return new Blob(parts as BlobPart[], { type: 'video/mp4' })
@@ -1245,7 +1452,7 @@ export class MirrorSource implements MobileSource {
     if (e) return { slug, name: e.name || 'Chat', history: e.history || [], sources: (e.source_ids || []).map(i => this.byId.get(i)).filter((r): r is MRow => !!r) }
     const d = this.drafts.get(slug)
     if (d) return d
-    if (this.deletedChats().has(slug)) throw new Error('This chat was deleted.')
+    if (this.deletedChats().has(slug)) throw Object.assign(new Error('This chat was deleted.'), { displayKey: 'common.error.chatDeleted' })
     const c = JSON.parse(await this.cached(`chats/${slug}.json`)) as { name?: string; history?: Turn[]; source_ids?: number[] }
     return { slug, name: c.name || 'Chat', history: (c.history || []).filter(t => t && (t.role === 'user' || t.role === 'assistant')), sources: (c.source_ids || []).map(i => this.byId.get(i)).filter((r): r is MRow => !!r) }
   }
@@ -1267,11 +1474,13 @@ export class MirrorSource implements MobileSource {
   // ── the phone's own AI ─────────────────────────────────────────────────────
   private keys(): Partial<Record<Provider, string>> { return this.pair.ai || {} }
   // the AI keys a new pairing left in Drive (a note for the More screen, or '')
-  takeKeys(): Promise<string> { return takeKeys(this.pair, this.drive) }
+  takeKeys(): Promise<string> { return takeKeys(this.pair, this.drive, this.words) }
   forgetKeys() { forgetKeys(this.pair) }
   private endpoints(): Endpoints { return { ...CLOUD, ...(this.pair.x || {}) } }
   private settings(): AiSettings | null { return this.meta?.ai ?? (this.solo ? PHONE_AI as AiSettings : null) }
-  private noKey() { return this.solo ? SOLO_NO_KEY : NO_KEY }
+  private noKey(words?: ToolWords) { return this.solo ? say(words, 'processing.error.soloKey', {}, SOLO_NO_KEY) : say(words, 'processing.error.pairedKey', {}, NO_KEY) }
+  // the Tools panel's no-key line (projects/phone-processing-flow), before any AI call
+  noKeyText(words?: ToolWords) { return this.noKey(words) }
 
   ai(): AiInfo | null {
     const st = this.settings(), keys = this.keys()
@@ -1294,13 +1503,13 @@ export class MirrorSource implements MobileSource {
     try { localStorage.setItem(AI_PICK, JSON.stringify({ provider, model })) } catch { /* private window */ }
   }
   // ai_client.discover_cloud_models, from the phone with its own keys: one line per provider for More
-  async refreshModels(): Promise<string> {
+  async refreshModels(words?: ToolWords): Promise<string> {
     const keys = this.keys(), ep = this.endpoints(), retired = this.settings()?.retired ?? []
     let found: Partial<Record<Provider, { id: string; label: string }[]>> = {}
     try { found = JSON.parse(localStorage.getItem(AI_FOUND) || '{}') } catch { /* none */ }
     const lines = await Promise.all((['anthropic', 'openai'] as Provider[]).filter(p => keys[p]).map(async p => {
-      try { found[p] = await listModels(ep, p, keys[p]!, retired); return `${PROVIDER_LABEL[p]}: ${found[p]!.length} models` }
-      catch (e) { return `${PROVIDER_LABEL[p]}: ${(e as Error).message}` }
+      try { found[p] = await listModels(ep, p, keys[p]!, retired); return say(words, 'settings.keys.modelCount', { provider: PROVIDER_LABEL[p], n: found[p]!.length }, `${PROVIDER_LABEL[p]}: ${found[p]!.length} models`) }
+      catch (e) { return say(words, 'settings.keys.modelError', { provider: PROVIDER_LABEL[p], detail: (e as Error).message }, `${PROVIDER_LABEL[p]}: ${(e as Error).message}`) }
     }))
     try { localStorage.setItem(AI_FOUND, JSON.stringify(found)) } catch { /* private window */ }
     return lines.join(' · ')
@@ -1363,9 +1572,9 @@ export class MirrorSource implements MobileSource {
     const sizes = new Map<number, [number, number]>()
     for (const e of p.elements) if (e.kind === 'thumbnail' && !sizes.has(e.item_id!)) {
       const r = this.byId.get(e.item_id!)
-      if (!r?.uid || r.uid !== refs[String(e.item_id)]) throw new Error('A canvas item changed. Ask Wiskit for a fresh proposal.')
+      if (!r?.uid || r.uid !== refs[String(e.item_id)]) throw Object.assign(new Error('A canvas item changed. Ask Wiskit for a fresh proposal.'), { displayKey: 'common.error.canvasItemChanged' })
       const blob = await this.thumbBlob(r).catch(() => null)
-      if (!blob) throw new Error('Thumbnail unavailable offline. Connect and retry, or ask for text only.')
+      if (!blob) throw Object.assign(new Error('Thumbnail unavailable offline. Connect and retry, or ask for text only.'), { displayKey: 'common.error.thumbnailOffline' })
       const bitmap = await createImageBitmap(blob)
       sizes.set(e.item_id!, [bitmap.width, bitmap.height]); bitmap.close()
     }
@@ -1400,29 +1609,70 @@ export class MirrorSource implements MobileSource {
   }
 
   async declineCanvasProposal(review: PhoneCanvasProposal): Promise<void> {
-    if (review.mode !== 'local') throw new Error('This is not a phone proposal.')
+    if (review.mode !== 'local') throw Object.assign(new Error('This is not a phone proposal.'), { displayKey: 'common.error.phoneProposal' })
     await this.proposalLocked(() => declineCanvasPending(this.canvasKey(), review.token))
   }
 
   async applyCanvasProposal(review: PhoneCanvasProposal): Promise<string> {
-    if (review.mode !== 'local') throw new Error('This is not a phone proposal.')
+    if (review.mode !== 'local') throw Object.assign(new Error('This is not a phone proposal.'), { displayKey: 'common.error.phoneProposal' })
     return this.proposalLocked(async () => {
       await this.ready()
       const pending = await kv.get<{ token: string; raw: RawCanvasProposal; refs: Record<string, string>; quick?: boolean; preview?: PhoneCanvasProposal['preview'] }>(this.canvasKey())
-      if (!pending || pending.token !== review.token) throw new Error('This proposal is no longer pending.')
+      if (!pending || pending.token !== review.token) throw Object.assign(new Error('This proposal is no longer pending.'), { displayKey: 'common.error.proposalPending' })
       const p = normalizeCanvas(pending.raw)
       const sizes = await this.canvasSizes(p, pending.refs)
       const base = p.canvas_id ? await this.effectiveCanvas(p.canvas_id) : null
       const names = (await this.canvases()).map(c => ({ id: c.id, name: c.name }))
       const current = checkCanvas(p, base, names, new Map(this.rowsNow.map(r => [r.id, r])), sizes)
-      if (p.canvas_id && pending.preview && JSON.stringify(current) !== JSON.stringify(pending.preview)) throw new Error('The canvas changed after review. Decline this proposal and prepare it again.')
+      if (p.canvas_id && pending.preview && JSON.stringify(current) !== JSON.stringify(pending.preview)) throw Object.assign(new Error('The canvas changed after review. Decline this proposal and prepare it again.'), { displayKey: 'common.error.canvasReviewChanged' })
       const at = Date.now(), op_id = hex(16), canvas_id = p.canvas_id || hex(16)
+      return this.commitCanvas(pending.raw, pending.refs, p, base, sizes, op_id, canvas_id, at, undefined, { key: this.canvasKey(), token: review.token })
+    })
+  }
+
+  async applyCanvasDraft(raw: RawCanvasProposal, context: CanvasDraftContext): Promise<string> {
+    return this.proposalLocked(async () => {
+      const p = contextCheck(raw, context, true)
+      await this.ready()
+      const refs = Object.fromEntries(context.thumbs.map(t => [String(t.id), t.uid!]))
+      const sizes = new Map(context.thumbs.map(t => [t.id, t.size]))
+      const entry: ChangeEntry = { op: 'canvas', op_id: context.opId, canvas_id: context.canvasId, at: context.at,
+        state: 'queued', proposal: raw, refs, sizes: Object.fromEntries(context.thumbs.map(t => [t.uid!, t.size])) }
+      const old = this.changes.list.find(e => e.op === 'canvas' && e.op_id === context.opId)
+      if (old) {
+        if (canvasWire(old) !== canvasWire(entry)) throw Object.assign(new Error('Canvas operation ID was reused with different content.'), { displayKey: 'common.error.canvasOperationReused' })
+        return old.canvas_id!
+      }
+      const hash = await canvasHash(entry), canonical = await this.mirrorCanvas(context.canvasId)
+      if (canonical?.phone_ops?.[context.opId]) {
+        if (canonical.phone_ops[context.opId] !== hash) throw Object.assign(new Error('Canvas operation ID was reused with different content.'), { displayKey: 'common.error.canvasOperationReused' })
+        return context.canvasId
+      }
+      if (!p.canvas_id && (canonical || this.changes.list.some(e => e.op === 'canvas' && e.canvas_id === context.canvasId))) throw Object.assign(new Error('The new canvas ID is occupied.'), { displayKey: 'common.error.canvasIdOccupied' })
+      const base = p.canvas_id ? await this.effectiveCanvas(p.canvas_id) : null
+      if (p.canvas_id) { const problem = await this.canvasDraftProblem(p.canvas_id); if (problem) throw new Error(problem) }
+      if (baseKey(base) !== baseKey(context.base)) throw new Error(CHANGED)
+      const used = new Set((base?.items ?? []).filter(e => e.source === 'db').map(e => e.uid || this.byId.get(e.item_id!)?.uid || String(e.item_id)))
+      for (const t of context.thumbs) {
+        const row = this.byId.get(t.id)
+        if (!row || identity(row) !== identity(t) || version(row) !== t.version) throw new Error(CHANGED)
+        if (used.has(identity(t))) throw Object.assign(new Error('A picked image is already on this canvas.'), { displayKey: 'common.error.imageAlreadyPicked' })
+      }
+      checkCanvas(p, base, await this.canvases(), new Map(this.rowsNow.map(r => [r.id, r])), sizes)
+      return this.commitCanvas(raw, refs, p, base, sizes, context.opId, context.canvasId, context.at, context)
+    })
+  }
+
+  private async commitCanvas(raw: RawCanvasProposal, refs: Record<string, string>, p: CanvasProposal,
+    base: CanvasDocument | null, sizes: Map<number, [number, number]>, op_id: string, canvas_id: string, at: number,
+    context?: CanvasDraftContext, review?: { key: string; token: string }): Promise<string> {
+      const retained = context?.thumbs ?? []
       const result = applyCanvasLocal(p, base, sizes, op_id, canvas_id, at)
       for (const el of result.items) if (el.source === 'db' && el.item_id !== undefined && !el.uid) {
-        const uid = this.byId.get(el.item_id)?.uid
+        const uid = refs[String(el.item_id)] || this.byId.get(el.item_id)?.uid
         if (uid) el.uid = uid
       }
-      const assets: { uid?: string; file?: string; blob: Blob }[] = []
+      const assets: { uid?: string; file?: string; blob: Blob }[] = retained.map(t => ({ uid: t.uid, blob: t.blob }))
       for (const el of result.items) {
         if (el.source === 'db' && el.item_id !== undefined) {
           const row = this.byId.get(el.item_id), uid = row?.uid
@@ -1439,16 +1689,20 @@ export class MirrorSource implements MobileSource {
         }
       }
       const sizeRecord: Record<string, [number, number]> = {}
-      for (const [id, dims] of sizes) sizeRecord[pending.refs[String(id)]] = dims
-      await approveCanvas(this.canvasKey(), review.token, {
-        op: 'canvas', op_id, canvas_id, at, state: 'queued', proposal: pending.raw, refs: pending.refs, sizes: sizeRecord,
+      for (const [id, dims] of sizes) sizeRecord[refs[String(id)]] = dims
+      if (context) {
+        const current = p.canvas_id ? await this.effectiveCanvas(p.canvas_id) : null
+        if (baseKey(current) !== baseKey(base)) throw new Error(CHANGED)
+        if (p.canvas_id) { const problem = await this.canvasDraftProblem(p.canvas_id); if (problem) throw new Error(problem) }
+        if (retained.some(t => { const r = this.byId.get(t.id); return !r || identity(r) !== identity(t) || version(r) !== t.version })) throw new Error(CHANGED)
+      }
+      await this.changes.commitCanvas({
+        op: 'canvas', op_id, canvas_id, at, state: 'queued', proposal: raw, refs, sizes: sizeRecord,
         canvasLocal: { base, result, assets, status: 'pending' },
-      })
-      await this.changes.reload()
+      }, review)
       window.dispatchEvent(new Event('brainamon-canvas-change'))
-      this.flushSoon()
+      try { this.flushSoon() } catch { /* the saved operation remains queued */ }
       return canvas_id
-    })
   }
 
   async categoryProposal(): Promise<CategoryProposal | null> { return (await kv.get<CategoryProposal>(this.categoryKey())) ?? null }
@@ -1458,13 +1712,13 @@ export class MirrorSource implements MobileSource {
   async applyCategoryProposal(proposal: CategoryProposal): Promise<void> {
     await this.ready()
     const pending = await this.categoryProposal()
-    if (!pending || JSON.stringify(pending) !== JSON.stringify(proposal)) throw new Error('This proposal is no longer pending.')
+    if (!pending || JSON.stringify(pending) !== JSON.stringify(proposal)) throw Object.assign(new Error('This proposal is no longer pending.'), { displayKey: 'common.error.proposalPending' })
     const names = new Set(this.cats().map(c => c.name))
     const seen = new Set<number>(), entries: { uid: string; from: string; category: string }[] = []
-    if (!proposal.entries.length || proposal.entries.length > 100) throw new Error('A category batch must contain 1 to 100 items.')
+    if (!proposal.entries.length || proposal.entries.length > 100) throw Object.assign(new Error('A category batch must contain 1 to 100 items.'), { displayKey: 'common.error.categoryBatchSize' })
     for (const e of proposal.entries) {
       const r = this.byId.get(e.id)
-      if (!r?.uid || seen.has(e.id) || r.cat !== e.from || !names.has(e.category)) throw new Error('An item or category changed. Ask Wiskit for a fresh proposal.')
+      if (!r?.uid || seen.has(e.id) || r.cat !== e.from || !names.has(e.category)) throw Object.assign(new Error('An item or category changed. Ask Wiskit for a fresh proposal.'), { displayKey: 'common.error.itemCategoryChanged' })
       seen.add(e.id); entries.push({ uid: r.uid, from: e.from, category: e.category })
     }
     await this.changes.add({ op: 'category_batch', entries })
@@ -1507,45 +1761,49 @@ export class MirrorSource implements MobileSource {
   }
 
   // Wiskit Quick: knowledge/ask_core.py + server/routes/ask.py _quick, on the phone
-  async ask(question: string, chat: string, onEvent: (e: AskEvent) => void, signal: AbortSignal, mode: 'quick' | 'deep' = 'quick'): Promise<void> {
+  async ask(question: string, chat: string, onEvent: (e: AskEvent, display?: string) => void, signal: AbortSignal, mode: 'quick' | 'deep' = 'quick', words?: ToolWords): Promise<void> {
+    const language = lang()
     const q = question.trim()
-    if (!q) { onEvent({ ev: 'error', message: 'Type a question first.' }); return }
+    if (!q) { onEvent({ ev: 'error', message: say(words, 'wiskit.progress.typeFirst', {}, 'Type a question first.') }); return }
     const info = this.ai()
     const key = info && this.keys()[info.provider as Provider]
-    if (!info || !key || !info.model) throw new AiError(this.noKey())
+    if (!info || !key || !info.model) throw new AiError(this.noKey(words))
     onEvent({ ev: 'start', run: hex(6) })
     const base = chat ? await this.chat(chat).catch(() => null) : null
     const history = base?.history ?? []
-    onEvent({ ev: 'progress', line: 'Reading the library…' })
+    onEvent({ ev: 'progress', line: 'Reading the library…' }, words?.('wiskit.reading'))
     const policy = DEEP.agent_budgets
     const budget = { ...policy[mode] }
     const deadline = performance.now() + budget.research_seconds * 1000
     if (mode === 'deep') {
-      const { text, ids, notes } = await this.deep(q, history, info.provider as Provider, key, info.model, info.label, onEvent, signal, mode, undefined, deadline)
+      const { text, ids, notes } = await this.deep(q, history, info.provider as Provider, key, info.model, info.label, onEvent, signal, language, mode, undefined, deadline, words)
       return this.finish(q, text, ids, base, history, info, onEvent, signal, notes)
     }
     const lib = await this.library(signal, deadline)
     const depth = Q.effectiveDepth(q, Q.L.depth_default)
     const keys = this.keys(), v = await this.vectors().catch(() => null)
-    let rows, retrieval
+    let rows, retrieval, displayRetrieval
     if (keys.openai && v?.ids.length) {
       try {
         const [vec] = await embed(this.endpoints(), keys.openai, v.model, [q], signal)
         rows = Q.rankRows(lib, q, depth, '', k => topk(v, vec, k))
-        retrieval = 'keyword + semantic search'
+        retrieval = 'keyword + semantic search'; displayRetrieval = words?.('wiskit.retrieval.both')
       } catch (e) {
         if ((e as Error).name === 'AbortError') throw e
         rows = Q.fallbackRows(lib, q, depth, '', lib.all)
         retrieval = Q.fallbackLabel(`embedding failed: ${(e as Error).message.slice(0, 120)}`)
+        displayRetrieval = words?.('wiskit.retrieval.fallback', { reason: words('wiskit.retrieval.embedError', { detail: (e as Error).message.slice(0, 120) }) })
       }
     } else {
       rows = Q.fallbackRows(lib, q, depth, '', lib.all)
       retrieval = Q.fallbackLabel(keys.openai ? 'no items indexed - run "Index for search" on the PC' : 'no OpenAI key on this phone')
+      displayRetrieval = words?.('wiskit.retrieval.fallback', { reason: words(keys.openai ? 'wiskit.retrieval.noIndex' : 'wiskit.retrieval.noKey') })
     }
-    const turn = Q.buildTurn(lib, q, rows, history, retrieval, { ...budget, control_chars: policy.control_chars })
-    onEvent({ ev: 'context', line: turn.info, ids: turn.sources.map(r => r.id), list: turn.listMode })
+    let displayInfo: string | undefined
+    const turn = Q.buildTurn(lib, q, rows, history, retrieval, { ...budget, control_chars: policy.control_chars }, words, text => displayInfo = text, displayRetrieval)
+    onEvent({ ev: 'context', line: turn.info, ids: turn.sources.map(r => r.id), list: turn.listMode }, displayInfo)
     const { text, ids, notes } = await this.deep(q, history, info.provider as Provider, key, info.model, info.label,
-      onEvent, signal, mode, turn, deadline)
+      onEvent, signal, language, mode, turn, deadline, words)
     return this.finish(q, text, Q.answerSources(turn.sources, text, turn.listMode).map(r => r.id).concat(ids).filter((id, n, all) => all.indexOf(id) === n), base, history, info, onEvent, signal, notes)
   }
 
@@ -1622,8 +1880,8 @@ export class MirrorSource implements MobileSource {
   }
 
   private async deep(q: string, history: Turn[], provider: Provider, key: string, model: string, label: string,
-    onEvent: (e: AskEvent) => void, signal: AbortSignal, mode: 'quick' | 'deep' = 'deep',
-    startingTurn?: ReturnType<typeof Q.buildTurn>, researchDeadline?: number): Promise<{ text: string; ids: number[]; notes: string[] }> {
+    onEvent: (e: AskEvent, display?: string) => void, signal: AbortSignal, language: Lang, mode: 'quick' | 'deep' = 'deep',
+    startingTurn?: ReturnType<typeof Q.buildTurn>, researchDeadline?: number, words?: ToolWords): Promise<{ text: string; ids: number[]; notes: string[] }> {
     const P = DEEP, st = this.settings(), keys = this.keys()
     const budget = { ...P.agent_budgets[mode] }
     const positive = (n: unknown): n is number => typeof n === 'number' && Number.isSafeInteger(n) && n > 0
@@ -1635,8 +1893,8 @@ export class MirrorSource implements MobileSource {
     check()
     const [lib, d, v] = await Promise.all([this.library(signal, deadline), this.deepFiles(), this.vectors().catch(e => { if ((e as Error).name === 'AbortError') throw e; return null })])
     lib.setResources(d.resources)
-    if (!this.manifest?.files['search/deep.json.gz']) onEvent({ ev: 'progress', line: 'Topic/resource indexes unavailable; item and note keyword search is available.' })
-    const progress = (line: string) => onEvent({ ev: 'progress', line })
+    if (!this.manifest?.files['search/deep.json.gz']) onEvent({ ev: 'progress', line: 'Topic/resource indexes unavailable; item and note keyword search is available.' }, words?.('wiskit.progress.topicIndexMissing'))
+    const progress = (line: string, display?: string) => onEvent({ ev: 'progress', line }, display)
     // embeddings need the OpenAI key (Anthropic has none): without it Deep searches by keywords only
     const embedKey = keys.openai || ''
     const eModel = v?.model || st?.embedding_model || d.aux?.model || ''
@@ -1649,16 +1907,16 @@ export class MirrorSource implements MobileSource {
         check()
         if (performance.now() >= deadline) return []
         return (await embed(this.endpoints(), embedKey, eModel, texts, signal)).map(quantize)
-      } : null, P.limits.aux_batch, progress, () => { check(); return performance.now() < deadline })
+      } : null, P.limits.aux_batch, progress, () => { check(); return performance.now() < deadline }, words)
     if (aux.fresh.size) {
       const keep = new Set(aux.hashes), out: Record<string, Int8Array> = {}
       for (const [h, x] of [...cache, ...aux.fresh]) if (keep.has(h)) out[h] = x as Int8Array
       await kv.set('deep-aux', { model: eModel, v: out })
     }
-    if (!embedKey) progress('No OpenAI key on this phone: Deep searches by keywords only.')
+    if (!embedKey) progress('No OpenAI key on this phone: Deep searches by keywords only.', words?.('wiskit.progress.keyword'))
     const profile = profileOf(notes.find(([f]) => f === PROFILE_FILE)?.[1], P.limits.profile_max)
-    if (!profile) progress(DEEP_TIP)
-    if (!startingTurn) onEvent({ ev: 'context', line: `Deep mode · ${label} is researching your library...`, ids: [], list: false })
+    if (!profile) progress(DEEP_TIP, words?.('wiskit.progress.tip'))
+    if (!startingTurn) onEvent({ ev: 'context', line: `Deep mode · ${label} is researching your library...`, ids: [], list: false }, words?.('wiskit.progress.deep', { model: label }))
     const qvec = async (text: string) => { check(); if (performance.now() >= deadline) return null; return (await embed(this.endpoints(), embedKey, eModel, [text], signal))[0] }
     const L = new Librarian(P, lib, embedKey && v?.model === eModel ? v : null, aux.rows, embedKey ? qvec : async () => null, id => this.report(lib, id))
     L.budget = budget; L.signal = signal; L.deadline = deadline
@@ -1668,11 +1926,11 @@ export class MirrorSource implements MobileSource {
       for (const row of startingTurn.sources) { L.read.push(row.id); L.admitted.add(row.id); L.delivered.add(row.id); L.consulted.push(row.id) }
     }
     const canvasRows = await this.canvases().catch(() => [])
-    const system = systemPrompt(P, profile, lib.countByCategory(), lib.countItems()) + '\n\n'
+    const system = appendLanguage(systemPrompt(P, profile, lib.countByCategory(), lib.countItems()) + '\n\n'
       + (P.category_instructions + '\n- On this phone, any one proposal stops at 100 items.')
         .replace('on this desktop', 'on this phone').replace('{categories}', JSON.stringify(this.cats().map(c => c.name)))
       + `\n\n${mode} mode: research only as needed, within ${budget.max_items} distinct items, ${budget.read_max_ids} IDs per read and ${budget.max_rounds} rounds including the final answer. State partial coverage honestly.`
-      + '\n\n' + P.phone_canvas_instructions.replace('{canvases}', JSON.stringify(canvasRows.map(c => ({ id: c.id, name: c.name, elements: c.count }))))
+      + '\n\n' + P.phone_canvas_instructions.replace('{canvases}', JSON.stringify(canvasRows.map(c => ({ id: c.id, name: c.name, elements: c.count })))), language, 'reply')
     const content = startingTurn ? '' : await deepTurn(L, q)
     const hist = history.slice(-(Q.L.history_turns * 2))
     const text = strip(await askAgent(this.endpoints(), provider, key, model, system,
@@ -1700,7 +1958,7 @@ export class MirrorSource implements MobileSource {
           return L.runTool(n, a)
         } catch (e) { if ((e as Error).name === 'AbortError') throw e; return `Error: ${(e as Error).message}` }
       },
-      (n, a) => { check(); progress(describeCall(n, a)) }, budget.max_rounds, budget.max_tokens, signal,
+      (n, a) => { check(); progress(describeCall(n, a), words ? describeCall(n, a, words) : undefined) }, budget.max_rounds, budget.max_tokens, signal,
       { onText: text => onEvent({ ev: 'chunk', text }), onReset: () => onEvent({ ev: 'reset' }),
         maxToolCalls: budget.max_tool_calls, researchDeadline: deadline, requestTimeoutMs: P.agent_budgets.request_seconds * 1000 }))
     // ask_core.deep_sources: the cited items, else the first 20 the agent consulted
@@ -1718,36 +1976,67 @@ export class MirrorSource implements MobileSource {
     return { file }
   }
 
-  // Synthesize: knowledge/synth.py on the phone, up to S.max sources (3 AI calls); more are queued
-  // for the PC (server/intake.py `synth_queue`)
+  // Synthesize: knowledge/synth.py on the phone, up to S.max sources (3 AI calls). A paired phone queues more for
+  // the PC (server/intake.py `synth_queue`); a phone with no PC refuses them (the page disables the run key and says
+  // to untick). Sources (projects/phone-solo-synthesize): the PC's items from the search text, links saved on this
+  // phone from the journal (synthItems). A source with no part is left out and counted in the last line.
   readonly synthMax = S.max
-  async synthesize(topic: string, ids: number[], onLine: (line: string) => void, signal: AbortSignal) {
+  async synthTextless(ids: number[]): Promise<number[]> {
+    const items = await this.synthItems(ids)
+    const usable = new Set(items.filter(item => S.hasText(item)).map(item => item.id))
+    return ids.filter(id => !usable.has(id))
+  }
+  async synthesize(topic: string, ids: number[], onLine: (line: string) => void, signal: AbortSignal, words?: ToolWords) {
+    const language = lang()
     topic = topic.trim()
-    if (!topic) throw new Error('Give the note a topic first.')
+    if (!topic) throw new Error(say(words, 'notes.synthesize.topicFirst', {}, 'Give the note a topic first.'))
     if (ids.length > S.max) {
+      if (this.solo) throw new Error(say(words, 'notes.synthesize.limit', { max: S.max, n: ids.length - S.max }, `Over the phone limit (${S.max}): untick ${ids.length - S.max} source${ids.length - S.max === 1 ? '' : 's'}`) + '.')
       await this.changes.add({ op: 'synth_queue', topic, ids })
       this.flushSoon()
-      onLine(`${ids.length} sources is more than the phone folds (${S.max}): ${this.solo ? 'it waits for a PC paired with this phone' : 'the PC writes this note when it runs'}.`)
+      onLine(say(words, 'notes.synthesize.queued', { n: ids.length, max: S.max }, `${ids.length} sources is more than the phone folds (${S.max}): the PC writes this note when it runs.`))
       return { file: '', queued: true }
     }
     const pick = this.synthChoice()
     const key = pick && this.keys()[pick[0]]
-    if (!pick || !key) throw new AiError(this.noKey())
-    const lib = await this.library()
-    const batches = S.batches(lib.getItemsByIds(ids))
-    if (!batches.length) throw new Error('None of the selected sources have any text to synthesize (no description, transcript, or AI analysis yet).')
+    if (!pick || !key) throw new AiError(this.noKey(words))
+    const items = await this.synthItems(ids)
+    const batches = S.batches(items)
+    if (!batches.length) throw new Error(say(words, 'notes.synthesize.noSourceText', {}, NO_SOURCE_TEXT))
+    const left = items.length - batches.flat().length
     let note = ''
     const max = pick[0] === 'openai' ? this.cap(S.P.limits.max_tokens) : S.P.limits.max_tokens
     for (const [i, b] of batches.entries()) {
-      onLine(`Folding ${b.length} source(s) into the note (${i + 1} of ${batches.length})…`)
-      note = clean(await complete(this.endpoints(), pick[0], key, pick[1], S.batchPrompt(topic, note, b), max, signal)) || note
+      onLine(say(words, 'notes.synthesize.folding', { n: b.length, at: i + 1, total: batches.length }, `Folding ${b.length} source(s) into the note (${i + 1} of ${batches.length})…`))
+      note = clean(await complete(this.endpoints(), pick[0], key, pick[1], appendLanguage(S.batchPrompt(topic, note, b), language, strip(note) ? 'keep' : 'write'), max, signal)) || note
     }
-    if (!strip(note)) throw new AiError('The AI sent back an empty note.')
+    if (!strip(note)) throw new AiError(say(words, 'notes.synthesize.emptyAi', {}, 'The AI sent back an empty note.'))
     const file = await this.newNoteFile(topic)
-    await this.changes.add({ op: 'synth', topic, sources: batches.flat().map(r => r.id), body: note, file })
+    const sources = batches.flat().map(r => r.id)
+    // a link saved on this phone is cited to the PC by its uid (server/intake.py _source_ids): its phone id means nothing there
+    const uids = sources.map(id => (id < 0 && this.byId.get(id)?.uid) || '')
+    await this.changes.add({ op: 'synth', topic, sources, uids, body: note, file })
     this.flushSoon()
-    onLine(this.solo ? 'Written. It is in Notes.' : 'Written. It reaches the PC\'s Knowledge tab once the PC runs.')
+    onLine((left ? say(words, 'notes.synthesize.leftOut', { n: left }, `${left} source${left === 1 ? ' was' : 's were'} left out (no text yet). `) : '')
+      + (this.solo ? say(words, 'notes.synthesize.writtenSolo', {}, 'Written. It is in Notes.') : say(words, 'notes.synthesize.writtenPhone', {}, 'Written. It reaches the PC\'s Knowledge tab once the PC runs.')))
     return { file, queued: false }
+  }
+
+  // the items Synthesize folds, in the order asked: a PC item from the phone's search text (quick.ts Item; the
+  // report's Key information stands in for the report, the search text carries no note), a link saved on this phone
+  // from its journal entries (item(): title, caption, AI description, note, tags, category). The library is read only
+  // when a PC item is asked, so a phone with no PC copy never needs it.
+  private async synthItems(ids: number[]): Promise<Item[]> {
+    const out = new Map<number, Item>()
+    const pc = ids.filter(id => id > 0)
+    if (pc.length) for (const it of (await this.library()).getItemsByIds(pc)) out.set(it.id, { ...it, report: it.key || '' })
+    for (const id of ids) {
+      if (id > 0) continue
+      const f = await this.item(id).catch(() => null)
+      if (f) out.set(id, { id, url: f.url, description: f.description, short_desc: f.short_desc, creator: f.creator, category: f.category,
+        ai_desc: f.ai_desc, tags: f.tags, notes: f.notes, created: f.created, type: f.type })
+    }
+    return ids.map(id => out.get(id)).filter((s): s is Item => !!s)
   }
 
   // no live stream from Drive: look at the manifest when the app comes back to the front and every
@@ -1780,6 +2069,16 @@ export class MirrorSource implements MobileSource {
 }
 
 const toB64 = (a: Uint8Array) => { let s = ''; for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode(...a.subarray(i, i + 0x8000)); return btoa(s) }
+
+// a post's picture as its own page names it (og:image), for a post read from a site whose picture link
+// failed or expired (sites.ts picturePlan)
+async function pagePicture(url: string): Promise<string> {
+  const info = await linkInfo(url, linkGet)
+  if (!info?.image) throw new Error('no picture')
+  const pic = new URL(info.image, url).href
+  if (!postPicOk(url, pic)) throw new Error('no safe picture')
+  return pic
+}
 
 // a link's picture as a small JPEG (base64, at most LINK_THUMB_PX wide), so it rides in a change file
 async function shrinkJpeg(bytes: Uint8Array): Promise<string> {

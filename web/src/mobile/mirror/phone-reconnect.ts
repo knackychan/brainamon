@@ -32,6 +32,7 @@ export const REFUSALS = {
 export const KIT_IN_CODE = 'This is a recovery file. Open it with File under Unlock with.'
 export type Reason = keyof typeof REFUSALS | 'eligible'
 export interface Eligibility { ok: boolean; reason: Reason; message: string; batch?: Batch & { id: string } }
+export const eligibilityText = (check: Eligibility, words?: (key: string, params?: Record<string, unknown>) => string) => words?.(`recovery.eligibility.${check.reason}`) ?? check.message
 const refuse = (reason: keyof typeof REFUSALS): Eligibility => ({ ok: false, reason, message: REFUSALS[reason] })
 
 const enc = new TextEncoder()
@@ -81,13 +82,13 @@ export async function requeueStrays(changes: Changes, from: string): Promise<num
 // exported recovery file (mirror/recovery.ts); the same set library/recovery.py import_key accepts
 export async function keyFromMaterial(text: string): Promise<string> {
   let t = text.trim()
-  if (t.length > RECOVERY_LIMIT) throw new Error('Recovery files must be smaller than 32 KiB.')
+  if (t.length > RECOVERY_LIMIT) throw Object.assign(new Error('Recovery files must be smaller than 32 KiB.'), { code: 'file-limit' })
   let fingerprint = ''
   if (t.startsWith('{')) {
     let v: { format?: unknown; version?: unknown; key?: unknown; fingerprint?: unknown }
-    try { v = JSON.parse(t) } catch { throw new Error('Unsupported recovery file.') }
-    if (v.format === 'brainamon-phone-backup-kit') throw new Error(KIT_IN_CODE)
-    if (v.format !== 'brainamon-phone-recovery' || v.version !== 1 || typeof v.key !== 'string') throw new Error('Unsupported recovery file.')
+    try { v = JSON.parse(t) } catch { throw Object.assign(new Error('Unsupported recovery file.'), { code: 'unsupported' }) }
+    if (v.format === 'brainamon-phone-backup-kit') throw Object.assign(new Error(KIT_IN_CODE), { code: 'kit-in-code' })
+    if (v.format !== 'brainamon-phone-recovery' || v.version !== 1 || typeof v.key !== 'string') throw Object.assign(new Error('Unsupported recovery file.'), { code: 'unsupported' })
     t = v.key.trim()
     if (typeof v.fingerprint === 'string') fingerprint = v.fingerprint
   } else if (t.includes('#pair=')) {
@@ -96,12 +97,12 @@ export async function keyFromMaterial(text: string): Promise<string> {
       try {
         const b = atob(t.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (t.length % 4)) % 4))
         t = String((JSON.parse(new TextDecoder().decode(Uint8Array.from(b, c => c.charCodeAt(0)))) as { k?: unknown }).k ?? '')
-      } catch { throw new Error('Use the original recovery code, a pairing link or the text of an exported phone recovery file.') }
+      } catch { throw Object.assign(new Error('Use the original recovery code, a pairing link or the text of an exported phone recovery file.'), { code: 'material' }) }
     }
   }
-  if (!/^[A-Za-z0-9_-]{43}$/.test(t)) throw new Error('Use the original recovery code, a pairing link or the text of an exported phone recovery file.')
+  if (!/^[A-Za-z0-9_-]{43}$/.test(t)) throw Object.assign(new Error('Use the original recovery code, a pairing link or the text of an exported phone recovery file.'), { code: 'material' })
   const key = await MirrorKey.fromText(t)
-  if (fingerprint && key.fingerprint !== fingerprint) throw new Error('Phone recovery key does not match its fingerprint.')
+  if (fingerprint && key.fingerprint !== fingerprint) throw Object.assign(new Error('Phone recovery key does not match its fingerprint.'), { code: 'fingerprint' })
   return t
 }
 
@@ -148,7 +149,7 @@ export async function finishReconnect(changes: Changes, key: MirrorKey): Promise
 // current pairing, the marker, the pairing, and the journal entries that went up under the old key; never Drive.
 export async function reconnectPhone(pair: Pairing, drive: Drive, changes: Changes, keyText: string, account: string, kit?: PhoneKit): Promise<void> {
   reconnectGate()
-  if (cloudChanging()) throw new Error(REFUSALS.busy)
+  if (cloudChanging()) throw Object.assign(new Error(REFUSALS.busy), { code: 'eligibility-busy' })
   setReconnecting(true)
   const revision = cloudRevision()
   let wrote = false
@@ -156,11 +157,11 @@ export async function reconnectPhone(pair: Pairing, drive: Drive, changes: Chang
     const key = await MirrorKey.fromText(keyText.trim())
     const same = (p: Pairing | null): p is Pairing => !!p?.solo && p.k === pair.k && !!token(p) && (p.g ?? '').toLowerCase() === account.toLowerCase()
     const live = pairing()
-    if (!same(live)) throw new Error('The phone library or Google account changed. Reconnect and retry recovery.')
+    if (!same(live)) throw Object.assign(new Error('The phone library or Google account changed. Reconnect and retry recovery.'), { code: 'identity' })
     const check = await reconnectCheck(key, drive, changes)
     cloudCheckpoint(revision)
-    if (!check.ok) throw new Error(check.message)
-    if (!same(pairing())) throw new Error('The phone library or Google account changed. Reconnect and retry recovery.')
+    if (!check.ok) throw Object.assign(new Error(check.message), { code: 'eligibility-' + check.reason })
+    if (!same(pairing())) throw Object.assign(new Error('The phone library or Google account changed. Reconnect and retry recovery.'), { code: 'identity' })
     // Everything above only read. The first write backs up the pairing this phone holds now (its key included).
     const stamp = Date.now()
     secrets.set(`bp-pair-before-reconnect-${stamp}`, JSON.stringify(live))
@@ -181,7 +182,7 @@ export async function reconnectPhone(pair: Pairing, drive: Drive, changes: Chang
     if (from !== to) await requeueStrays(changes, from)
     await kv.del(STRAYS_KEY)
   } catch (e) {
-    if (wrote) throw new Error(REFUSALS.interrupted)
+    if (wrote) throw Object.assign(new Error(REFUSALS.interrupted), { code: 'eligibility-interrupted' })
     throw e
   } finally {
     setReconnecting(false)

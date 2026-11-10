@@ -20,7 +20,7 @@ MODES = {'100644', '100755'}
 CARDS = {'design/card-designs/cards.css', 'design/card-designs/engine.js',
          'design/card-designs/full-art-v2/fa2.css', 'design/card-designs/full-art-v2/fa2.js'}
 PRIVATE_ROOTS = {'.git', '.claude', '.commandcode', '.superpowers', '.worktrees',
-                 '_old', 'assets', 'data', 'local', 'certificate', 'projects',
+                 '_old', 'archive', 'assets', 'data', 'local', 'certificate', 'projects',
                  'build', 'dist', 'graphify-out'}
 PRIVATE_NAMES = re.compile(r'(?i)(^\.env($|\.)|cookies|^id_(rsa|ed25519)$|'
                            r'\.(key|pem|pfx|p12|dpapi|jks|keystore|db|sqlite3?)($|\.)|'

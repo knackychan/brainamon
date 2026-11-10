@@ -21,7 +21,7 @@ def needs(r: dict, embedded: set | None = None) -> int:
     n = 0
     if not r.get('thumb_path'):
         n |= NEED_THUMB
-    if not r.get('ai_desc'):
+    if (r.get('ai_desc') or '').strip().upper() in ('', 'NO_CONTENT'):
         n |= NEED_DESCRIBE
     if not r.get('analysis_done') and r.get('type') in ('Reel', 'Video'):
         n |= NEED_ANALYZE
@@ -35,6 +35,8 @@ def needs(r: dict, embedded: set | None = None) -> int:
 def compact(r: dict, embedded: set | None = None) -> dict:
     """One row of GET /api/items. Keys are short on purpose (3,000+ rows).
     `embedded`: ids that have a vector (sets nd bit 16 for the others); None skips the bit."""
+    ai_desc = r.get('ai_desc') or ''
+    marker = ai_desc.strip().upper() == 'NO_CONTENT'
     return {
         'id': r['id'],
         'title': card_title(r),
@@ -42,11 +44,11 @@ def compact(r: dict, embedded: set | None = None) -> dict:
         'type': r.get('type') or '',
         'cat': r.get('category') or '',
         'tags': r.get('tags') or '',
-        'desc': (r.get('ai_desc') or r.get('description') or '')[:DESC_CAP],
+        'desc': ((ai_desc if not marker else '') or r.get('description') or '')[:DESC_CAP],
         'url': r.get('url') or '',
         'src': platform_of(r.get('url') or ''),
         'thumb': r.get('thumb_path') == 'thumb.jpg',
-        'ai': bool(r.get('ai_desc') or r.get('processed')),
+        'ai': bool(not marker and (ai_desc or r.get('processed'))),
         'an': bool(r.get('analysis_done')),
         'nd': needs(r, embedded),
         'fav': bool(r.get('favourite')),

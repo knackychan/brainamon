@@ -24,6 +24,7 @@ PLAYWRIGHT = {
     'facebook': ('Facebook', 'fb_saved_playwright.py', 'facebook-profile'),
     'instagram': ('Instagram', 'ig_saved_playwright.py', 'instagram-profile'),
     'reddit': ('Reddit', 'reddit_saved_playwright.py', 'reddit-profile'),
+    'threads': ('Threads', 'threads_saved_playwright.py', 'threads-profile'),
 }
 PLAYWRIGHT_FB = SCRAPERS_DIR / PLAYWRIGHT['facebook'][1]
 PLAYWRIGHT_PROFILE_DIR = app_paths.CACHE / 'playwright' / PLAYWRIGHT['facebook'][2]
@@ -56,7 +57,7 @@ PLATFORMS = {
     ),
 }
 
-CSV_PREFIXES = tuple(p[3] for p in PLATFORMS.values())
+CSV_PREFIXES = tuple(p[3] for p in PLATFORMS.values()) + ('threads_saved_',)
 
 
 def default_downloads_dir() -> Path:

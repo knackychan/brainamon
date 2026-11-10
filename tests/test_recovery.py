@@ -1080,6 +1080,55 @@ class RecoveryServiceTest(Library):
         self.assertTrue(any('Removing the old encrypted copies' in stage for stage in stages))
         self.assertEqual(self.svc._rotation()['stage'], 'complete')
 
+    def test_rotation_task_stays_on_step_four_while_the_vault_is_uploaded_and_read_back(self):
+        """The page must not fall back to "Re-encrypting" (step 3) once the library's files are checked: the vault's part of the
+        check is still step 4, and the step goes back only when the check ends (a failure here retries from the upload)."""
+        self.setup_recovery()
+        self.assertTrue(self.svc._publish())
+        self.svc.unpair(PASSWORD)
+        folder = self.root / 'vault'
+        folder.mkdir()
+        self.writer.call(lambda db: db.set_setting('obsidian_vault', str(folder)))
+        seen = []
+        def vault(*args, **kw):
+            status = self.svc.status()
+            seen.append((status['upload_step'], status['task']['step']))
+            raise drive_client.DriveError('stop before the vault upload')
+        with mock.patch.object(self.svc, '_rotation_vault_round', side_effect=vault):
+            self.assertFalse(self.svc._publish())
+        self.assertEqual(seen, [('Uploading and verifying the vault with the replacement key…', 4)])
+        self.assertEqual(self.svc.status()['task']['step'], 3)
+
+    def rotation_download_peak(self):
+        """The most downloads in flight at once in the check's own workers while a removal checks the new copy."""
+        self.setup_recovery()
+        self.assertTrue(self.svc._publish())
+        self.svc.unpair(PASSWORD)
+        original, lock, state = self.drive.download, threading.Lock(), {'now': 0, 'peak': 0}
+        def tracked(fid):
+            if not threading.current_thread().name.startswith('cm-rotate'):
+                return original(fid)            # the recovery thread's own reads are not the check
+            with lock:
+                state['now'] += 1
+                state['peak'] = max(state['peak'], state['now'])
+            try:
+                time.sleep(.02)
+                return original(fid)
+            finally:
+                with lock:
+                    state['now'] -= 1
+        with mock.patch.object(self.drive, 'download', side_effect=tracked):
+            self.assertTrue(self.svc._publish(), self.svc.status())
+        self.assertEqual(self.svc._rotation()['stage'], 'complete')
+        return state['peak']
+
+    def test_rotation_check_reads_several_files_at_once(self):
+        self.assertGreater(self.rotation_download_peak(), 1)
+
+    def test_rotation_check_holds_few_big_files_in_memory_at_once(self):
+        with mock.patch.object(sync_mod, 'VERIFY_BIG', -1), mock.patch.object(sync_mod, 'VERIFY_BIG_AT_ONCE', 1):
+            self.assertEqual(self.rotation_download_peak(), 1)
+
     def test_rotation_failed_parallel_verification_keeps_old_copy_then_resumes(self):
         self.setup_recovery()
         self.assertTrue(self.svc._publish())

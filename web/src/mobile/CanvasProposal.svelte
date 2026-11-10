@@ -1,22 +1,24 @@
 <script lang="ts">
+  import { t } from '../lib/i18n/index.ts'
+  import { proposalKind, layoutName } from './canvas/words.ts'
   import type { PhoneCanvasProposal } from './source/types'
   import type { PreviewElement } from './ai/canvas'
+  import MInfo from './ui/MInfo.svelte'
   let { preview, imageUrl, busy, error, onApply, onDecline }:
     { preview: PhoneCanvasProposal['preview']; imageUrl: (e: PreviewElement) => string;
       busy: boolean; error: string; onApply: () => void; onDecline: () => void } = $props()
 </script>
 
-<section class="m-canvas-review" tabindex="-1" aria-label="Wiskit canvas proposal">
-  <h3>{preview.target.new ? 'New canvas' : 'Add to canvas'}: {preview.target.name}</h3>
-  <p>{preview.target.new ? 'New board' : `${preview.target.count} elements already here`} · {preview.layout} layout · {preview.counts.thumbnail} thumbnails · {preview.counts.frame} frames · {preview.counts.text} text notes · {preview.counts.moves} moved</p>
-  <p>Existing elements stay. Only the listed elements move when rearranging is requested. Nothing changes until you tap Apply.</p>
+<section class="m-canvas-review" tabindex="-1" aria-label={t('canvas.proposal.label')}>
+  <h3>{preview.target.new ? t('canvas.new') : t('canvas.proposal.add')}: {preview.target.name} <MInfo title={t('canvas.proposal.helpTitle')}><p>{t('canvas.proposal.help')}</p></MInfo></h3>
+  <p>{preview.target.new ? t('canvas.proposal.newBoard') : t('canvas.proposal.existing', { n: preview.target.count })} · {t('canvas.proposal.summary', { layout: layoutName(preview.layout), thumbs: preview.counts.thumbnail, frames: preview.counts.frame, notes: preview.counts.text, moves: preview.counts.moves })}</p>
   {#each preview.sections as section}
     <div class="m-review-section">
-      <h4>{section.title || 'Ungrouped'}</h4>
+      <h4>{section.title || t('canvas.proposal.ungrouped')}</h4>
       {#each section.elements as el}
         <div class="m-review-element">
           {#if imageUrl(el)}<img src={imageUrl(el)} alt="" />{/if}
-          <div><b>{el.kind === 'existing' ? 'Move existing' : el.kind === 'text' ? 'Text note' : el.kind === 'frame' ? 'Frame' : 'Thumbnail'}</b>
+          <div><b>{el.kind === 'existing' ? t('canvas.proposal.move') : el.kind === 'text' ? t('canvas.proposal.text') : el.kind === 'frame' ? t('canvas.proposal.frame') : t('canvas.proposal.thumbnail')}</b>
             {#if el.title}<span>{el.title}</span>{/if}
             {#if el.label}<span>{el.label}</span>{/if}
             {#if el.text}<p>{el.text}</p>{/if}</div>
@@ -24,11 +26,11 @@
       {/each}
     </div>
   {/each}
-  {#if preview.explicit.length}<div class="m-review-section"><h4>Placed positions</h4>
-    {#each preview.explicit as el}<div class="m-review-element"><div><b>{el.kind}</b>{#if el.title}<span>{el.title}</span>{/if}{#if el.text}<p>{el.text}</p>{/if}</div></div>{/each}
+  {#if preview.explicit.length}<div class="m-review-section"><h4>{t('canvas.proposal.placed')}</h4>
+    {#each preview.explicit as el}<div class="m-review-element"><div><b>{proposalKind(el.kind)}</b>{#if el.title}<span>{el.title}</span>{/if}{#if el.text}<p>{el.text}</p>{/if}</div></div>{/each}
   </div>{/if}
-  {#if error}<p role="alert" class="m-review-error">{error}</p>{/if}
-  <div class="m-review-actions"><button type="button" disabled={busy} onclick={onDecline}>Decline</button><button type="button" disabled={busy} onclick={onApply}>{busy ? 'Applying…' : 'Apply'}</button></div>
+  {#if error}<p role="alert" class="m-review-error">{t('canvas.error.detail', { detail: error })}</p>{/if}
+  <div class="m-review-actions"><button type="button" disabled={busy} onclick={onDecline}>{t('canvas.proposal.decline')}</button><button type="button" disabled={busy} onclick={onApply}>{busy ? t('canvas.proposal.applying') : t('canvas.proposal.apply')}</button></div>
 </section>
 
 <style>

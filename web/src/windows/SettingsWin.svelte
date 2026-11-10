@@ -920,7 +920,7 @@
           <Label as="span">Search</Label>
           <div><Status on={!!v.keys[embed]}>{v.keys[embed] ? embedLabel : `Needs ${embed === 'openai' ? 'an OpenAI' : 'a FreeLLMAPI'} key`}</Status></div>
           <Label as="span">Transcription</Label>
-          <div><Status on={!!v.keys.openai && audioReady}>{v.keys.openai ? 'OpenAI Whisper' : 'Needs an OpenAI key'} · {audioToolsError ? 'audio tools not checked' : !audioTools ? 'checking audio tools…' : audioReady ? 'FFmpeg ready' : 'FFmpeg missing'}</Status></div>
+          <div><Status on={!!v.keys.openai && audioReady}>{v.keys.openai ? 'OpenAI GPT-Transcribe' : 'Needs an OpenAI key'} · {audioToolsError ? 'audio tools not checked' : !audioTools ? 'checking audio tools…' : audioReady ? 'FFmpeg ready' : 'FFmpeg missing'}</Status></div>
         </GroupBox>
 
         <GroupBox active={!v.keys.openai && !v.keys.anthropic} aria-label="API keys">
@@ -1062,7 +1062,7 @@
       <ObsidianSettings sync={vaultSummary}>
         {#snippet phoneSync()}
           <GroupBox active={!!cloud && (cloud.vault_state === 'starting' || cloud.vault_state === 'syncing' || cloud.vault_state === 'brake')} aria-label="Vault sync with phone">
-            <Label as="span" id="set-s-sync-vault" tabindex={-1}>Vault sync with phone<InfoTip label="Conflicts, deletions and skipped files"><span>In a Brainamon vault, the pages Brainamon generates go from PC to phone only; your own files, and anything you add inside the Brainamon folder, go both ways. A classic export's Content Manager folder only goes from PC to phone. If both sides change a file, the PC copy stays and a separate "phone conflict" copy is added. Deleted files go to .trash. Files over 50 MB, plugins, themes and workspace files are skipped.</span><span>A Brainamon vault syncs only while every phone runs the current app; the phone's More &gt; Obsidian vault shows its name. Drop forgets a phone you no longer use. Vault sync can stay off.</span></InfoTip></Label>
+            <Label as="span" id="set-s-sync-vault" tabindex={-1}>Vault sync with phone<InfoTip label="Conflicts, deletions and skipped files"><span>In a Brainamon vault, the pages Brainamon generates go from PC to phone only; your own files, and anything you add inside the Brainamon folder, go both ways. A classic export's Content Manager folder only goes from PC to phone. If both sides change a file, the PC copy stays and a separate "phone conflict" copy is added. Deleted files go to .trash. Files over 50 MB, plugins, themes and workspace files are skipped.</span><span>A Brainamon vault syncs only while every phone runs the current app; the phone's Settings &gt; Obsidian shows its name. Drop forgets a phone you no longer use. Vault sync can stay off.</span></InfoTip></Label>
             {#if cloud}
               <div>
                 <Status on={cloud.vault_running && !['stopping', 'brake', 'error'].includes(cloud.vault_state)} aria-live="polite">{vaultLine}</Status>

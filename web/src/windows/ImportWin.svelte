@@ -77,7 +77,7 @@
       {/each}
     </div>
   {/if}
-  <Hint style="margin-top:12px">Already saved links are skipped. Instagram Saved ZIP/JSON imports run on the phone through More > Import. Saving links does not guarantee pictures or downloaded videos; missing previews do not remove imported links.</Hint>
+  <Hint style="margin-top:12px">Already saved links are skipped. Instagram Saved ZIP/JSON imports run on the phone through Add > Import saved posts. Saving links does not guarantee pictures or downloaded videos; missing previews do not remove imported links.</Hint>
 </WinBody>
 <WinFoot>
   <Button onclick={close}>Cancel</Button>

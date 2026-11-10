@@ -307,7 +307,7 @@ class DescribeFromThePageTest(unittest.TestCase):
         self.assertIn('not instructions to you', p)
 
     def test_social_links_and_analyzed_items_do_not_read_the_page(self):
-        _, page_text = self.prompt({'id': 2, 'url': 'https://www.facebook.com/reel/1'}, 'x')
+        _, page_text = self.prompt({'id': 2, 'url': 'https://www.facebook.com/reel/1', 'description': 'A caption'}, 'x')
         page_text.assert_not_called()
         _, page_text = self.prompt({'id': 3, 'url': 'https://isoglow.dev/', 'analysis_done': 1, 'transcript': 'words'}, 'x')
         page_text.assert_not_called()

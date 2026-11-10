@@ -6,9 +6,11 @@
 // after each refresh, on Wi-Fi only unless the user allows mobile data. The first save asks the
 // browser for persistent storage so Android does not clear it.
 import type { CanvasDoc, Row } from './source/types'
-import { items as idb, kv, putCanvasPending, type StoredItem } from './store'
+import { items as idb, kv, type StoredItem } from './store'
 import { mirrorSource, phone, source } from './state.svelte'
 import { network, setWifiOnly, syncPaused } from './network.svelte'
+import { t } from '../lib/i18n/index.ts'
+import { beginLanguageWork } from './language-switch.ts'
 
 export const OFFLINE = 'bp-offline-v1'
 export interface SavedCanvas { id: string; name: string; at: number; size: number; doc: CanvasDoc; images: string[]; missing?: number }
@@ -53,39 +55,45 @@ export const videoKey = (id: number) => `/offline/video/${id}`
 export const thumbKey = (id: number) => `/offline/thumb/${id}`
 
 export async function saveItem(id: number, withVideo = true, onProgress?: (got: number, total: number) => void): Promise<StoredItem> {
-  await persist()
-  const row = phone.byId.get(id)
-  const it = await source.item(id)
-  const [report, transcript] = await Promise.all([
-    it.files.report ? source.itemText(id, 'report').catch(() => '') : Promise.resolve(''),
-    it.files.transcript ? source.itemText(id, 'transcript').catch(() => it.transcript || '') : Promise.resolve(it.transcript || ''),
-  ])
-  let size = report.length + transcript.length + 2000
-  const c = await caches.open(OFFLINE)
-  if (row?.thumb && source.thumbBlob) {
-    const b = await source.thumbBlob(row).catch(() => null)
-    if (b) { await c.put(thumbKey(id), new Response(b, { headers: { 'Content-Type': 'image/jpeg' } })); size += b.size }
-  }
-  if (withVideo && source.video && (source.videoSize?.(id) ?? 0) > 0) {
-    offline.busy = `Video of No. ${id}`
-    try {
-      const v = await source.video(id, onProgress)
-      await c.put(videoKey(id), new Response(v, { headers: { 'Content-Type': v.type || 'video/mp4' } }))
-      size += v.size
-    } finally { offline.busy = '' }
-  }
-  const s: StoredItem = { id, at: Date.now(), item: it, report, transcript, saved: true, size, uid: (row as Row & { uid?: string })?.uid }
-  await idb.put(s)
-  await offline.load()
-  return s
+  const done = beginLanguageWork()
+  try {
+    await persist()
+    const row = phone.byId.get(id)
+    const it = await source.item(id)
+    const [report, transcript] = await Promise.all([
+      it.files.report ? source.itemText(id, 'report').catch(() => '') : Promise.resolve(''),
+      it.files.transcript ? source.itemText(id, 'transcript').catch(() => it.transcript || '') : Promise.resolve(it.transcript || ''),
+    ])
+    let size = report.length + transcript.length + 2000
+    const c = await caches.open(OFFLINE)
+    if (row?.thumb && source.thumbBlob) {
+      const b = await source.thumbBlob(row).catch(() => null)
+      if (b) { await c.put(thumbKey(id), new Response(b, { headers: { 'Content-Type': 'image/jpeg' } })); size += b.size }
+    }
+    if (withVideo && source.video && (source.videoSize?.(id) ?? 0) > 0) {
+      offline.busy = t('settings.storage.videoOf', { id })
+      try {
+        const v = await source.video(id, onProgress)
+        await c.put(videoKey(id), new Response(v, { headers: { 'Content-Type': v.type || 'video/mp4' } }))
+        size += v.size
+      } finally { offline.busy = '' }
+    }
+    const s: StoredItem = { id, at: Date.now(), item: it, report, transcript, saved: true, size, uid: (row as Row & { uid?: string })?.uid }
+    await idb.putRequired(s)
+    await offline.load()
+    return s
+  } finally { done() }
 }
 
 export async function removeItem(id: number) {
-  const s = await idb.get(id)
-  if (s) await idb.put({ ...s, saved: false, size: 0 })
-  const c = await caches.open(OFFLINE)
-  await c.delete(videoKey(id)); await c.delete(thumbKey(id))
-  await offline.load()
+  const done = beginLanguageWork()
+  try {
+    const s = await idb.getRequired(id)
+    if (s) await idb.putRequired({ ...s, saved: false, size: 0 })
+    const c = await caches.open(OFFLINE)
+    await c.delete(videoKey(id)); await c.delete(thumbKey(id))
+    await offline.load()
+  } finally { done() }
 }
 
 export async function isSaved(id: number) { return !!(await idb.get(id))?.saved }
@@ -100,41 +108,47 @@ export async function videoUrl(id: number, onProgress?: (got: number, total: num
 
 // ── canvases ─────────────────────────────────────────────────────────────────
 export async function saveCanvas(id: string): Promise<SavedCanvas> {
-  await persist()
-  const doc = await source.canvas(id)
-  const list = await source.canvases().catch(() => [])
-  const c = await caches.open(OFFLINE)
-  const images: string[] = []
-  let size = JSON.stringify(doc).length
-  let missing = 0
-  for (const el of doc.items) {
-    if (el.source === 'file' && el.file_path && source.canvasImage) {
-      const name = el.file_path.split(/[\\/]/).pop() || ''
-      const b = await source.canvasImage(name).catch(() => null)
-      if (b) { await c.put(source.canvasImageUrl(name), new Response(b, { headers: { 'Content-Type': b.type } })); images.push(name); size += b.size }
-      else missing++
-    } else if (el.item_id) {
-      const r = phone.byId.get(el.item_id)
-      if (r?.thumb && source.thumbBlob) {
-        const b = await source.thumbBlob(r).catch(() => null)
-        if (b) { await c.put(thumbKey(r.id), new Response(b, { headers: { 'Content-Type': 'image/jpeg' } })); size += b.size }
+  const done = beginLanguageWork()
+  try {
+    await persist()
+    const doc = await source.canvas(id)
+    const list = await source.canvases().catch(() => [])
+    const c = await caches.open(OFFLINE)
+    const images: string[] = []
+    let size = JSON.stringify(doc).length
+    let missing = 0
+    for (const el of doc.items) {
+      if (el.source === 'file' && el.file_path && source.canvasImage) {
+        const name = el.file_path.split(/[\\/]/).pop() || ''
+        const b = await source.canvasImage(name).catch(() => null)
+        if (b) { await c.put(source.canvasImageUrl(name), new Response(b, { headers: { 'Content-Type': b.type } })); images.push(name); size += b.size }
         else missing++
+      } else if (el.item_id) {
+        const r = phone.byId.get(el.item_id)
+        if (r?.thumb && source.thumbBlob) {
+          const b = await source.thumbBlob(r).catch(() => null)
+          if (b) { await c.put(thumbKey(r.id), new Response(b, { headers: { 'Content-Type': 'image/jpeg' } })); size += b.size }
+          else missing++
+        }
       }
     }
-  }
-  const s: SavedCanvas = { id, name: list.find(x => x.id === id)?.name || doc.name || id, at: Date.now(), size, doc, images, missing }
-  const all = ((await kv.get<SavedCanvas[]>('saved-canvases')) ?? []).filter(x => x.id !== id)
-  await putCanvasPending('saved-canvases', [s, ...all])
-  await offline.load()
-  return s
+    const s: SavedCanvas = { id, name: list.find(x => x.id === id)?.name || doc.name || id, at: Date.now(), size, doc, images, missing }
+    const all = ((await kv.getRequired<SavedCanvas[]>('saved-canvases')) ?? []).filter(x => x.id !== id)
+    await kv.setOfflineRequired('saved-canvases', [s, ...all])
+    await offline.load()
+    return s
+  } finally { done() }
 }
 
 export async function removeCanvas(id: string) {
-  const all = (await kv.get<SavedCanvas[]>('saved-canvases')) ?? []
-  const gone = all.find(x => x.id === id)
-  await kv.set('saved-canvases', all.filter(x => x.id !== id))
-  if (gone) { const c = await caches.open(OFFLINE); for (const n of gone.images) await c.delete(source.canvasImageUrl(n)) }
-  await offline.load()
+  const done = beginLanguageWork()
+  try {
+    const all = (await kv.getRequired<SavedCanvas[]>('saved-canvases')) ?? []
+    const gone = all.find(x => x.id === id)
+    await kv.setOfflineRequired('saved-canvases', all.filter(x => x.id !== id))
+    if (gone) { const c = await caches.open(OFFLINE); for (const n of gone.images) await c.delete(source.canvasImageUrl(n)) }
+    await offline.load()
+  } finally { done() }
 }
 
 export async function savedCanvas(id: string): Promise<CanvasDoc | null> {
@@ -163,6 +177,7 @@ let keeping = false
 // after a refresh: save what the auto-keep settings ask for and is not saved yet
 export async function autoKeep() {
   if (keeping || !mirrorSource || !navigator.onLine || !bigOk()) return
+  const done = beginLanguageWork()
   keeping = true
   try {
     await offline.load()
@@ -178,7 +193,7 @@ export async function autoKeep() {
         await saveItem(r.id).catch(() => null)
       }
     }
-  } finally { keeping = false }
+  } finally { keeping = false; done() }
 }
 
 // storage the phone reports (quota and use), for the size warning

@@ -6,7 +6,7 @@ Features:
 - `extract_frames()` samples frames into a subfolder of the output directory via ffmpeg
   (fast C decode + downscale to _FRAME_MAX_WIDTH), with local-only input protocols.
 - `extract_audio_compressed()` extracts audio to a mono 16 kHz MP3 using ffmpeg.
-- `transcribe_audio()` sends the audio to the OpenAI Whisper API (the only transcription path).
+- `transcribe_audio()` sends the audio to the OpenAI file-transcription API (the only transcription path).
 - `analyze_media()` is the single analysis engine (frames + transcript + AI + report.md/json),
   shared by the V6 server analyze job (server/job_kinds.py), Video Tools, and the CLI.
 
@@ -30,7 +30,7 @@ from core import app_paths
 # User-facing messages: what to do, not how the code failed. FFmpeg is not bundled with the app.
 FFMPEG_MISSING = ("Video analysis needs FFmpeg (ffmpeg and ffprobe), which was not found on this PC. "
                   "Open Settings > Tools to install it or to pick the folder that holds it, then try again.")
-OPENAI_KEY_MISSING = ("Transcription with whisper-api needs an OpenAI key. Add it in Settings > API keys, "
+OPENAI_KEY_MISSING = ("Audio transcription needs an OpenAI key. Add it in Settings > API keys, "
                       "or turn transcription off in the Analyze options.")
 _WHISPER_API_MAX_BYTES = 24 * 1024 * 1024  # Leave room below the provider's 25 MB upload limit.
 
@@ -371,7 +371,7 @@ def extract_audio_compressed(video_path: str, output_dir: str = None, bitrate: s
                              should_stop=None):
     """Extract audio as a compressed mono 16 kHz MP3 (~0.5 MB/min at 64k).
 
-    Uncompressed 16 kHz WAV is ~1.9 MB/min, so a 20-min video exceeds the Whisper API's
+    Uncompressed 16 kHz WAV is ~1.9 MB/min, so a 20-min video exceeds the transcription API's
     25 MB upload limit; MP3 at 64k handles ~50 min in a single request."""
     vp = Path(video_path)
     output_dir = Path(output_dir) if output_dir else vp.parent
@@ -412,7 +412,7 @@ def _audio_duration_seconds(path: str):
 
 
 def _whisper_api_parse(response) -> str:
-    """Pull the transcript text out of a Whisper API response (dict or SDK object)."""
+    """Pull the transcript text out of a file-transcription API response (dict or SDK object)."""
     if isinstance(response, dict):
         return str(response.get("text", "")).strip()
     text = getattr(response, "text", None)
@@ -433,7 +433,7 @@ def _whisper_api_transcribe_file(client, audio_path: str):
 
 
 def _whisper_api_transcribe(client, audio_path: str, logger=None, should_stop=None) -> str:
-    """Transcribe via the Whisper API, splitting into time chunks when the file exceeds the
+    """Transcribe via the OpenAI API, splitting into time chunks when the file exceeds the
     upload limit. Chunks are cut with ffmpeg (stream copy) and transcribed in order. An upload
     in flight is not cut: `should_stop` is checked before each one."""
     path = Path(audio_path)
@@ -488,7 +488,7 @@ def transcribe_audio(video_path: str, method: str = "whisper-api", whisper_api_k
     _log(f"Transcription method: {method}", logger)
     if method != "whisper-api":
         raise ValueError("Unknown transcription method: %s" % method)
-    _log("Using OpenAI Whisper API", logger)
+    _log("Using OpenAI file-transcription API", logger)
     if not whisper_api_key:
         raise ValueError(OPENAI_KEY_MISSING)
     from core import ai_client
@@ -502,7 +502,7 @@ def transcribe_audio(video_path: str, method: str = "whisper-api", whisper_api_k
     audio_path = extract_audio_compressed(video_path, output_dir=output_dir, logger=logger, should_stop=should_stop)
     _check_stop(should_stop)
     text = _whisper_api_transcribe(client, audio_path, logger=logger, should_stop=should_stop)
-    _log("Whisper API transcription complete", logger)
+    _log("OpenAI transcription complete", logger)
     _log(f"Transcript length: {len(text)} characters", logger)
     return text, "whisper_api"
 
@@ -513,7 +513,7 @@ def audio_duration(path: str):
 
 
 def transcribe_long(audio_path: str, logger=None, should_stop=None) -> str:
-    """Whisper text for an audio file of any length (chunked over 24 MB). Uses the OpenAI key from
+    """Transcribed text for an audio file of any length (chunked over 24 MB). Uses the OpenAI key from
     core/config.py; the caller has checked it exists."""
     from core import ai_client
     return _whisper_api_transcribe(ai_client.openai_client(), audio_path, logger=logger, should_stop=should_stop)
@@ -552,7 +552,7 @@ def analyze_media(
 
     `step(msg)` is an optional progress callback (the QThread worker maps it to its step_update
     signal); `logger(msg)` is the plain text logger. `should_stop()` true raises AnalysisStopped
-    and no report is written: a running ffmpeg is killed at once; a Whisper upload or the AI
+    and no report is written: a running ffmpeg is killed at once; a transcription upload or the AI
     call (HTTP requests) is let finish, and the run stops right after. This function never
     touches Qt or the DB."""
     import shutil
@@ -778,7 +778,7 @@ def main():
     parser.add_argument("--format", "-f", default="jpg", choices=["jpg", "jpeg", "png", "bmp", "webp"], help="Image format")
     parser.add_argument("--extract-only", action="store_true", help="Only extract frames, do not run analysis")
     parser.add_argument("--transcribe-method", choices=["whisper-api"], default="whisper-api", help="Audio transcription method")
-    parser.add_argument("--whisper-api-key", default=None, help="OpenAI API key for Whisper API transcription")
+    parser.add_argument("--whisper-api-key", default=None, help="OpenAI API key for file transcription (legacy flag name)")
     parser.add_argument("--analysis-provider", choices=["none", "claude", "openai", "freellmapi"], default="none", help="AI analysis provider")
     parser.add_argument("--analysis-api-key", default=None, help="Claude/OpenAI API key for analysis")
     parser.add_argument("--analysis-model", default=None, help="AI model to use for analysis")

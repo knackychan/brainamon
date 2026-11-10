@@ -318,11 +318,13 @@ def _stamp(paths: list[Path]) -> str:
 def row(it: dict, tint: str | None) -> dict:
     """A card row for the phone's light copy: the desktop's Row shape (server/library.compact)
     with the uid, a 200-character snippet and the thumbnail tint."""
+    ai_desc = it['ai_desc'] or ''
+    marker = ai_desc.strip().upper() == 'NO_CONTENT'
     return {
         'id': it['id'], 'uid': it.get('uid', ''), 'title': card_title(it), 'creator': it['creator'],
         'type': it['type'], 'cat': it['category'], 'tags': ', '.join(it['tags']),
-        'desc': (it['ai_desc'] or it['description'])[:SNIPPET], 'url': it['url'], 'src': it['platform'],
-        'thumb': it['has_thumb'], 'ai': bool(it['ai_desc'] or it['processed']), 'an': bool(it.get('analysis_done')),
+        'desc': ((ai_desc if not marker else '') or it['description'])[:SNIPPET], 'url': it['url'], 'src': it['platform'],
+        'thumb': it['has_thumb'], 'ai': bool(not marker and (ai_desc or it['processed'])), 'an': bool(it.get('analysis_done')),
         'fav': bool(it.get('favourite')), 'created': it['created'], 'tv': it.get('modified', 0), 'tint': tint or '',
     }
 
@@ -675,7 +677,7 @@ def manifest(files: dict, payload: dict, opts: Options, skipped: dict | None = N
     body = {'format': FORMAT, 'reader': READER, 'generated_at': payload.get('generated_at', ''),
             'published': int(time.time() * 1000),
             'items': len(payload.get('items', [])), 'embedding_model': vec.get('model', ''),
-            'videos': opts.videos, 'canvases': opts.canvases, 'canvas_change': 1, 'video_chunk': VIDEO_CHUNK,
+            'videos': opts.videos, 'canvases': opts.canvases, 'canvas_change': 1, 'note_category': 1, 'video_chunk': VIDEO_CHUNK,
             'applied': payload.get('applied') or {}, 'delivery': DELIVERY, 'receipts': payload.get('receipts') or {},
             'files': files}
     if skipped:

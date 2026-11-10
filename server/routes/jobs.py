@@ -135,8 +135,15 @@ def resume(request: Request):
 
 
 @router.post('/api/jobs/stop')
-def stop(request: Request):
-    return _jm(request).stop()
+def stop(request: Request, body: dict = Body(default={})):
+    """Stop the running job. Optional {id}: stop only that job (a refused id changes nothing); no body as before."""
+    job_id = body.get('id') if isinstance(body, dict) else None
+    if job_id is not None and (type(job_id) is not int or job_id < 1):
+        raise HTTPException(400, 'id must be a positive whole number.')
+    try:
+        return _jm(request).stop(job_id)
+    except JobError as exc:
+        raise HTTPException(400, str(exc))
 
 
 @router.post('/api/items/{item_id}/download')

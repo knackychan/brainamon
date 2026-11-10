@@ -147,6 +147,17 @@ export async function addCategory(name: string) {
   nt.categories = (await api.post<{ categories: string[] }>('/api/my-notes/categories', { name })).categories
 }
 
+// rename a category on every note in it (POST /api/my-notes/categories/rename); the open note's pending edit is
+// saved first, so it lands under the old name and moves with the others
+export async function renameCategory(from: string, to: string) {
+  if (!await flush()) return false
+  nt.categories = (await api.post<{ categories: string[] }>('/api/my-notes/categories/rename', { from, to })).categories
+  if (nt.category === from) nt.category = to
+  if (nt.cat === from) nt.cat = to
+  await loadList()
+  return true
+}
+
 export async function summarize() {
   if (!nt.file) return
   if (!nt.body.trim()) { toast('Nothing to summarize: write something first.', 'w'); return }
@@ -200,7 +211,7 @@ export async function digestShots(files: File[]) {
   catch (e) { toast((e as Error).message, 'w') }
 }
 
-// Voice note: the audio goes to the PC's Whisper call; the text lands in the open note (or a new one)
+// Voice note: the audio goes to the PC's transcription call; the text lands in the open note (or a new one)
 export async function voiceNote(audio: Blob, file: string | null) {
   if (!await flush()) return
   const q = file ? `?file=${encodeURIComponent(file)}` : ''

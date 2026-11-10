@@ -8,7 +8,9 @@
   import Sprite from './Sprite.svelte'
   import { openPairing, saveOnb } from './onboard.svelte'
   import { DOWNLOAD_URL } from '../lib/product-links'
+  import { t } from '../lib/i18n/index.ts'
   import MButton from './ui/MButton.svelte'
+  import MInfo from './ui/MInfo.svelte'
 
   let box: HTMLDivElement | undefined = $state()
   onMount(() => box?.focus())         // a screen reader starts on the question, not on the page behind
@@ -19,14 +21,14 @@
 </script>
 
 <div class="m-ob" role="dialog" aria-modal="true" aria-labelledby="m-ob-q" tabindex="-1" bind:this={box}>
-  <div class="m-ob-top"><span class="m-ob-wm"><Wordmark label="Brainamon" /></span><span class="m-sp"></span><MButton size="sm" onclick={() => answer('skip')}>Skip</MButton></div>
+  <div class="m-ob-top"><span class="m-ob-wm"><Wordmark label="Brainamon" /></span><span class="m-sp"></span><MButton size="sm" onclick={() => answer('skip')}>{t('onboarding.answer.skip')}</MButton></div>
   <div class="m-ob-mid"><Sprite pose="hover" /></div>
   <div class="m-ob-low">
-    <h2 id="m-ob-q">Do you use Brainamon on a PC?</h2>
-    <p>This mobile companion lets you browse your desktop library anywhere. Keep the desktop app for the full experience, including video analysis and Claude Code integration.</p>
-    <button type="button" class="m-ob-opt dk" onclick={() => answer('pc')}><b>Yes, connect my PC</b><small>Your PC library shows up here</small></button>
-    <button type="button" class="m-ob-opt" onclick={() => answer('phone')}><b>Not yet, start on this phone</b><small>Save links and notes; connect a PC later</small></button>
-    <MButton as="a" href={DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">Get the desktop app</MButton>
+    <h2 id="m-ob-q">{t('onboarding.answer.question')}</h2>
+    <MInfo title={t('onboarding.answer.helpTitle')} label={t('onboarding.answer.helpLabel')}><p>{t('onboarding.answer.help')}</p></MInfo>
+    <button type="button" class="m-ob-opt dk" onclick={() => answer('pc')}><b>{t('onboarding.answer.pc')}</b><small>{t('onboarding.answer.pcHelp')}</small></button>
+    <button type="button" class="m-ob-opt" onclick={() => answer('phone')}><b>{t('onboarding.answer.phone')}</b><small>{t('onboarding.answer.phoneHelp')}</small></button>
+    <MButton as="a" href={DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">{t('onboarding.answer.desktop')}</MButton>
   </div>
 </div>
 

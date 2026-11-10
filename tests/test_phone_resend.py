@@ -263,30 +263,50 @@ class Journal(unittest.TestCase):
             const log = []
             await c.add({ op: 'fav', uid: 'A', on: true })
             const canvas = { id: 99, op: 'canvas', state: 'sent', at: 1, sentAt: 1,
-              canvasLocal: { base: null, result: { id: 'x', name: '', items: [] }, assets: [], status: 'refused' } }
+              canvasLocal: { base: null, result: { id: 'x', name: '', items: [] }, assets: [], status: 'refused', reason: 'original refusal' } }
             c.list.push(canvas)
-            let release
-            const gate = new Promise(r => { release = r })
-            const slow = async doc => { log.push('send ' + doc.seq); await gate; sent.push(doc); return 'chg-slow' }
+            await db.put(canvas)
+            const view = entries => entries.map(e => [e.uid ?? e.op, e.state, e.seq ?? null, !!e.resend])
+            let release, started, saving, releaseSave
+            const gate = new Promise(r => { release = r }), began = new Promise(r => { started = r })
+            const saveGate = new Promise(r => { releaseSave = r }), saveBegan = new Promise(r => { saving = r })
+            const put = db.put
+            db.put = async e => {
+              if (e.uid === 'A' && e.state === 'sent') { saving(); await saveGate }
+              return put(e)
+            }
+            const slow = async doc => { log.push('send ' + doc.seq); started(); await gate; sent.push(doc); return 'chg-slow' }
             const flushing = c.flush(slow, 'phone', true, true)
             const twice = c.flush(slow, 'phone', true, true)                   // Send now while the online event's flush runs
-            await new Promise(r => setTimeout(r, 20))
+            await began
+            await c.add({ op: 'fav', uid: 'B', on: true })
+            log.push('added B')
+            log.push('release')
+            release()
+            await saveBegan                                                  // mutations wait for persistence, not the network
             R.markResend(P)
             const pruning = c.prune(0, { delivery: 2, published: 1, receipts: {} }, P).then(v => log.push('prune ' + v))
             const result = c.canvasResult(canvas, 'synced').then(() => log.push('canvas saved'), e => log.push('canvas: ' + e.message))
-            await c.add({ op: 'fav', uid: 'B', on: true })
-            log.push('added B')
-            await new Promise(r => setTimeout(r, 20))
-            log.push('release')
-            release()
+            await new Promise(setImmediate)
+            const blocked = { log: [...log], pending: R.resendPending(P), stored: view(saved().rows),
+              canvas: [canvas.canvasLocal.status, canvas.canvasLocal.reason] }
+            releaseSave()
             const n = [await flushing, await twice]
             await Promise.all([pruning, result])
-            console.log(JSON.stringify({ log, n, sent: sent.map(d => [d.seq, d.changes.map(x => x.uid)]),
-              list: c.list.map(e => [e.uid ?? e.op, e.state, e.seq ?? null, !!e.resend]) }))
+            console.log(JSON.stringify({ log, blocked, n, sent: sent.map(d => [d.seq, d.changes.map(x => x.uid)]),
+              list: view(c.list), stored: saved().rows, memory: c.list, pending: R.resendPending(P),
+              canvas: [canvas.canvasLocal.status, canvas.canvasLocal.reason] }))
         """, STATE=None)
+        self.assertEqual(out.pop('blocked'), {
+            'log': ['send 1', 'added B', 'release'], 'pending': True,
+            'stored': [['A', 'sending', 1, False], ['canvas', 'sent', None, False], ['B', 'queued', None, False]],
+            'canvas': ['refused', 'original refusal']})
+        self.assertEqual(out.pop('stored'), out.pop('memory'))
+        self.assertFalse(out.pop('pending'))
+        self.assertEqual(out.pop('canvas'), ['refused', 'original refusal'])
         log = out.pop('log')
-        self.assertEqual(log[:3], ['send 1', 'added B', 'release'])          # nothing else ran during the upload
-        self.assertEqual(sorted(log[3:]), sorted(['prune true', 'canvas: Phone storage is unavailable.', 'send 1', 'send 2']))
+        self.assertEqual(log[:3], ['send 1', 'added B', 'release'])          # adding B does not wait for the upload
+        self.assertEqual(log[3:], ['prune true', 'canvas: Phone storage is unavailable.', 'send 1', 'send 2'])
         self.assertLess(log.index('prune true'), log.index('send 2'))
         self.assertEqual(out, {                                              # A again: the prune ran before the next upload
             'n': [3, 3], 'sent': [[1, ['A']], [1, ['A']], [2, ['B']]],

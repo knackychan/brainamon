@@ -38,7 +38,10 @@ async function failure(p: Provider, r: Response): Promise<AiError> {
   const what = r.status === 401 || r.status === 403 ? `${NAME[p]} refused the key (${r.status}). Pair the phone again with a working key.`
     : r.status === 429 ? `${NAME[p]} says too many requests or no credit left (429).`
     : `${NAME[p]} answered ${r.status}.`
-  return new AiError(detail ? `${what} ${detail.slice(0, 200)}` : what)
+  return Object.assign(new AiError(detail ? `${what} ${detail.slice(0, 200)}` : what), {
+    displayKey: r.status === 401 || r.status === 403 ? 'capture.error.providerKey' : r.status === 429 ? 'capture.error.providerLimit' : 'capture.error.providerStatus',
+    displayParams: { provider: NAME[p], status: r.status, detail: detail ? ` ${detail.slice(0, 200)}` : '' },
+  })
 }
 
 async function post(p: Provider, url: string, key: string, body: unknown, signal?: AbortSignal): Promise<Response> {
@@ -46,13 +49,15 @@ async function post(p: Provider, url: string, key: string, body: unknown, signal
 }
 async function call(p: Provider, url: string, key: string, init: RequestInit): Promise<Response> {
   const target = new URL(url)
-  if (target.origin !== CLOUD[p] && !(import.meta.env?.DEV === true && target.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname))) throw new AiError('Untrusted AI endpoint')
+  if (target.origin !== CLOUD[p] && !(import.meta.env?.DEV === true && target.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname))) throw Object.assign(new AiError('Untrusted AI endpoint'), { displayKey: 'capture.error.untrusted' })
   let r: Response
   try {
     r = await send(url, { ...init, redirect: 'error', headers: headers(p, key) })
   } catch (e) {
     if ((e as Error).name === 'AbortError') throw e
-    throw new AiError(navigator.onLine === false ? 'No signal: Wiskit needs the internet to reach the AI.' : `${NAME[p]} could not be reached (${(e as Error).message}).`)
+    throw Object.assign(new AiError(navigator.onLine === false ? 'No signal: Wiskit needs the internet to reach the AI.' : `${NAME[p]} could not be reached (${(e as Error).message}).`), {
+      code: 'network', displayKey: navigator.onLine === false ? 'capture.error.offline' : 'capture.error.unreachable', displayParams: { provider: NAME[p], message: (e as Error).message },
+    })
   }
   if (!r.ok) throw await failure(p, r)
   return r
@@ -94,7 +99,7 @@ export async function complete(ep: Endpoints, p: Provider, key: string, model: s
   return String(j.choices?.[0]?.message?.content || '').trim()
 }
 
-// ai_client.discover_cloud_models + chat_models_from_list: the models the key can use (More > Wiskit >
+// ai_client.discover_cloud_models + chat_models_from_list: the models the key can use (Settings > Wiskit >
 // Refresh), retired ids dropped. OpenAI: chat ids only, newest first; Anthropic: its order and display names
 const OPENAI_SKIP = ['audio', 'realtime', 'tts', 'transcribe', 'search', 'image', 'embedding',
   'instruct', 'moderation', 'dall-e', 'whisper', 'codex', 'davinci', 'babbage']
@@ -157,18 +162,21 @@ export async function embed(ep: Endpoints, key: string, model: string, texts: st
   return j.data.slice().sort((a, b) => a.index - b.index).map(d => d.embedding)
 }
 
-// Whisper (ai_client.transcribe_file): one multipart upload, the key in the header, the model id from the PC.
+// ai_client.transcribe_file: one multipart upload, the key in the header, the model id from shared settings.
 // OpenAI answers browser calls cross-origin like its other endpoints.
 export async function transcribe(ep: Endpoints, key: string, model: string, audio: Blob, signal?: AbortSignal): Promise<string> {
   const form = new FormData()
   form.append('model', model)
+  form.append('response_format', 'json')
   form.append('file', audio, audio.type.includes('mp4') ? 'voice.m4a' : audio.type.includes('ogg') ? 'voice.ogg' : 'voice.webm')
   let r: Response
   try {
     r = await send(ep.openai + '/v1/audio/transcriptions', { method: 'POST', headers: { authorization: `Bearer ${key}` }, body: form, signal })
   } catch (e) {
     if ((e as Error).name === 'AbortError') throw e
-    throw new AiError(navigator.onLine === false ? 'No signal: the recording waits on this phone.' : `OpenAI could not be reached (${(e as Error).message}).`)
+    throw Object.assign(new AiError(navigator.onLine === false ? 'No signal: the recording waits on this phone.' : `OpenAI could not be reached (${(e as Error).message}).`), {
+      code: 'network', displayKey: navigator.onLine === false ? 'voice.queue.offline' : 'capture.error.unreachable', displayParams: { provider: 'OpenAI', message: (e as Error).message },
+    })
   }
   if (!r.ok) throw await failure('openai', r)
   const j = await r.json() as { text?: string }

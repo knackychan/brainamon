@@ -76,13 +76,13 @@ class IoServerTest(unittest.TestCase):
         for raw in (b'{"saved_saved_media": []}', b'[{"label_values": []}]'):
             response = self.c.post('/api/import?name=meta.json', content=raw, headers=W)
             self.assertEqual(response.status_code, 400)
-            self.assertIn('More > Import', response.json()['detail'])
+            self.assertIn('Add > Import saved posts', response.json()['detail'])
         self.assertEqual(self.c.get('/api/items').json()['total'], 1)
 
     def test_scrapers(self):
         r = self.c.get('/api/scrapers').json()
         self.assertEqual({p['key'] for p in r['platforms']}, {'facebook', 'instagram', 'youtube', 'reddit'})
-        self.assertEqual([p['key'] for p in r['playwright']], ['facebook', 'instagram', 'reddit'])
+        self.assertEqual([p['key'] for p in r['playwright']], ['facebook', 'instagram', 'reddit', 'threads'])
         self.assertEqual(self.c.post('/api/scrapers/playwright', json={'platform': 'nope'}, headers=W).status_code, 404)
         self.assertFalse(r['watching'])
         js = self.c.get('/api/scrapers/facebook.js?stop_at=Last%20one&unsave=true').text

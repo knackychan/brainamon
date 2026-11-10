@@ -1,7 +1,7 @@
 <script lang="ts">
   // Record (MediaRecorder) or pick/drop an audio file, then voiceNote() sends it to the PC.
   // The wave panel shows the level over time while recording (last WINDOW seconds, timeline
-  // underneath), then the whole take with a scanning band and a progress bar while Whisper runs.
+  // underneath), then the whole take with a scanning band and a progress bar while transcription runs.
   // The server gives no progress for a transcription, so the bar eases toward 92% on the expected
   // time (roughly a fifth of the audio length plus the upload) and jumps to 100% when the answer lands.
   import { onDestroy } from 'svelte'

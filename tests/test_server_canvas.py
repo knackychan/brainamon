@@ -29,6 +29,22 @@ def jpeg(w=90, h=160) -> bytes:
 
 
 class CanvasElementsTest(unittest.TestCase):
+    def test_direct_draft_replay_survives_server_restart(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
+            root = Path(td)
+            body = {'op_id': '1' * 32, 'canvas_id': '2' * 32, 'at': 42, 'base_rev': None, 'sizes': {},
+                    'proposal': {'new_name': 'Durable', 'layout': 'rows',
+                                 'elements': [{'kind': 'text', 'text': 'Restart', 'color': '#FFE0CC'}]}}
+            revisions = []
+            for _ in range(2):
+                app = create_app(data_dir=root, cloud_dir=root / 'cloud', port=8765, web_dist=root / 'x', cards_dir=root / 'x')
+                with TestClient(app, base_url=BASE) as client:
+                    self.assertEqual(client.post('/api/canvases/draft', json=body, headers=W).status_code, 200)
+                    got = client.get('/api/canvases/' + '2' * 32).json()
+                    revisions.append(got['rev'])
+                    self.assertEqual(len(got['canvas']['items']), 1)
+            self.assertEqual(*revisions)
+
     def test_elements_and_place(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
             cs = CanvasStore(Path(td))
@@ -73,6 +89,108 @@ class CanvasServerTest(unittest.TestCase):
         r = self.c.post('/api/canvases', json={'name': name}, headers=W)
         self.assertEqual(r.status_code, 200, r.text)
         return r.json()['id']
+
+    def draft_body(self, name='Manual', elements=None, cid=None, op='a', layout='rows'):
+        return {'op_id': op * 32, 'canvas_id': cid or 'b' * 32, 'at': 123,
+                'proposal': {**({'canvas_id': cid} if cid else {'new_name': name}), 'layout': layout,
+                             'elements': elements or [{'kind': 'text', 'text': 'Note', 'color': '#D9F2E3'}]},
+                'base_rev': self.c.get(f'/api/canvases/{cid}').json()['rev'] if cid else None,
+                'sizes': {str(e['item_id']): [90, 160] for e in elements or [] if e['kind'] == 'thumbnail'}}
+
+    def post_draft(self, body):
+        return self.c.post('/api/canvases/draft', json=body, headers=W)
+
+    def test_draft_atomic_replay_layout_colour_and_active(self):
+        active = self.new('Active stays')
+        body = self.draft_body(elements=[{'kind': 'thumbnail', 'item_id': self.a},
+                                       {'kind': 'text', 'text': 'Full\ntext', 'color': '#E6DDF5'}], layout='columns')
+        self.assertEqual(self.post_draft(body).json(), {'canvas_id': 'b' * 32})
+        opened = self.c.get('/api/canvases/' + 'b' * 32).json()
+        items = opened['canvas']['items']
+        self.assertEqual(items[1]['color'], '#E6DDF5')
+        self.assertGreater(items[1]['y'], items[0]['y'])
+        self.assertEqual(self.c.get('/api/canvas/active').json(), {'id': active})
+        self.assertEqual(self.post_draft(body).status_code, 200)
+        self.assertEqual(self.c.get('/api/canvases/' + 'b' * 32).json()['rev'], opened['rev'])
+        append = self.draft_body(cid='b' * 32, op='c')
+        self.assertEqual(self.post_draft(append).status_code, 200)
+        self.assertEqual(self.post_draft(append).status_code, 200)  # replay precedes stale-base validation
+        current = self.c.get('/api/canvases/' + 'b' * 32).json()
+        self.assertEqual(current['canvas']['items'][:2], items)
+        self.assertEqual(len(current['canvas']['items']), 3)
+        append['op_id'] = 'd' * 32
+        self.assertEqual(self.post_draft(append).status_code, 409)
+        body['proposal']['new_name'] = 'Changed replay'
+        self.assertEqual(self.post_draft(body).status_code, 409)
+
+    def test_draft_missing_and_changed_thumbnails_never_create_partial_board(self):
+        for elements in ([{'kind': 'thumbnail', 'item_id': self.b}],
+                         [{'kind': 'thumbnail', 'item_id': self.a}, {'kind': 'thumbnail', 'item_id': self.b}]):
+            body = self.draft_body(elements=elements)
+            self.assertEqual(self.post_draft(body).status_code, 400)
+            self.assertEqual(self.c.get('/api/canvases').json(), [])
+        body = self.draft_body(elements=[{'kind': 'thumbnail', 'item_id': self.a}])
+        body['sizes'][str(self.a)] = [10, 10]
+        self.assertEqual(self.post_draft(body).status_code, 409)
+        (self.data / 'items' / str(self.a) / 'thumb.jpg').write_bytes(b'corrupt')
+        self.assertEqual(self.post_draft(body).status_code, 400)
+        self.assertEqual(self.c.get('/api/canvases').json(), [])
+
+    def test_draft_shape_limits_duplicate_and_unicode(self):
+        import copy
+        body = self.draft_body()
+        variations = [dict(body, extra=1), dict(body, at=True), dict(body, at=2 ** 53), dict(body, op_id='X' * 32),
+                      dict(body, canvas_id='index'), dict(body, base_rev=1), dict(body, sizes={'1': [1, 2]})]
+        for name in ('😀' * 81, '\ud800', ' \u001c\u0085'):
+            b = copy.deepcopy(body); b['proposal']['new_name'] = name; variations.append(b)
+        for text in ('😀' * 1001, '\udfff'):
+            b = copy.deepcopy(body); b['proposal']['elements'][0]['text'] = text; variations.append(b)
+        for extra in ({'arrange': False}, {'layout': None}):
+            b = copy.deepcopy(body); b['proposal'].update(extra); variations.append(b)
+        for b in variations:
+            # httpx cannot encode lone surrogate request bodies; JSON escaping is valid HTTP input.
+            import json
+            r = self.c.post('/api/canvases/draft', content=json.dumps(b), headers={**W, 'Content-Type': 'application/json'})
+            self.assertEqual(r.status_code, 400, r.text)
+        duplicate = self.draft_body(elements=[{'kind': 'thumbnail', 'item_id': self.a}] * 2)
+        self.assertEqual(self.post_draft(duplicate).status_code, 400)
+        valid = self.draft_body(name='😀' * 80, elements=[{'kind': 'text', 'text': '😀' * 1000, 'color': '#D6E8FA'}])
+        self.assertEqual(self.post_draft(valid).status_code, 200)
+
+    def test_draft_deleted_replay_foreign_operation_and_write_failure(self):
+        from unittest.mock import patch
+        body = self.draft_body()
+        with patch.object(CanvasStore, '_write_canvas', side_effect=OSError('disk full')):
+            with self.assertRaises(OSError):
+                self.post_draft(body)
+        self.assertEqual(self.c.get('/api/canvases').json(), [])
+        self.assertEqual(self.post_draft(body).status_code, 200)
+        foreign = self.draft_body(name='Foreign')
+        foreign['canvas_id'] = 'c' * 32
+        self.assertEqual(self.post_draft(foreign).status_code, 409)
+        self.c.delete('/api/canvases/' + 'b' * 32, headers=W)
+        self.assertEqual(self.post_draft(body).status_code, 410)
+        self.assertEqual(self.c.get('/api/canvases').json(), [])
+
+    def test_draft_already_present_image_and_missing_target(self):
+        body = self.draft_body(elements=[{'kind': 'thumbnail', 'item_id': self.a}])
+        self.assertEqual(self.post_draft(body).status_code, 200)
+        append = self.draft_body(cid='b' * 32, op='c', elements=[{'kind': 'thumbnail', 'item_id': self.a}])
+        self.assertEqual(self.post_draft(append).status_code, 400)
+        append['canvas_id'] = append['proposal']['canvas_id'] = 'missing'
+        self.assertEqual(self.post_draft(append).status_code, 404)
+
+    def test_draft_keeps_local_origin_and_mutation_guards(self):
+        from fastapi.testclient import TestClient as RawClient
+        body = self.draft_body()
+        raw = RawClient(self.c.app, base_url=BASE)
+        try:
+            self.assertEqual(raw.post('/api/canvases/draft', json=body, headers=W).status_code, 403)
+        finally:
+            raw.close()
+        self.assertEqual(self.c.post('/api/canvases/draft', json=body).status_code, 403)
+        self.assertEqual(self.c.post('/api/canvases/draft', json=body, headers={**W, 'Origin': 'https://foreign.test'}).status_code, 403)
+        self.assertEqual(self.c.get('/api/canvases').json(), [])
 
     def test_manual_save_preserves_server_phone_markers(self):
         cid = self.new()

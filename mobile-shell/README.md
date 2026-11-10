@@ -89,8 +89,11 @@ upload key kept outside source and CI.
 The app is distributed only through Google Play. The script builds the phone page, signs
 `dist/android/Brainamon-<version>.aab` (the Play upload) and a `.apk` (your own device tests only,
 never given to users) with the upload key, runs the private-file gate and prints the certificate.
-The version name is the desktop's (`core/version.py`); the version code is derived from it
-(0.2.4 -> 2004), so every desktop version bump gives Play a higher number. Back up the key and its
+Android versions are independent of the desktop. `mobile-shell/version.json` supplies
+`versionName` (`137.1.01`) and the explicit `versionCode` (`1001003`); the leading zero in the
+display name is preserved. Increase the code for every Play upload. `BRAINAMON_VERSION_NAME`
+and `BRAINAMON_VERSION_CODE` override these defaults for a build. A phone-only release leaves
+the desktop's `core/version.py` unchanged (`1.1.2`). Back up the key and its
 passwords (Play can reset a lost upload key, slowly). Play re-signs its copy with the Play App
 Signing key, so the test APK cannot install over a Play copy; Drive sign-in in the test APK needs
 an optional Android OAuth client with the upload key's SHA-1. A debug APK cannot validate Play signing or release

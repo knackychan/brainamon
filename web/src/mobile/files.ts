@@ -81,8 +81,8 @@ export function bestNote(text: string, notes: { file: string; title: string; bod
 export async function toPicked(blob: Blob, rawName: string, rawType: string): Promise<Picked> {
   const type = rawType || blob.type
   const name = fileName(rawName, type), kind = kindOf(name, type)
-  if (!kind) throw new Error(UNREADABLE)
-  if (blob.size > MAX_BYTES[kind]) throw new Error(`That file is over ${MAX_BYTES[kind] / 1024 / 1024} MB.`)
+  if (!kind) throw Object.assign(new Error(UNREADABLE), { displayKey: 'capture.attachment.unreadable' })
+  if (blob.size > MAX_BYTES[kind]) throw Object.assign(new Error(`That file is over ${MAX_BYTES[kind] / 1024 / 1024} MB.`), { displayKey: 'capture.attachment.tooBig', displayParams: { mb: MAX_BYTES[kind] / 1024 / 1024 } })
   const data = await new Promise<string>((res, rej) => {
     const r = new FileReader()
     r.onload = () => res(String(r.result).split(',')[1] ?? '')

@@ -14,6 +14,7 @@ import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.os.Build;
+import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.security.keystore.KeyGenParameterSpec;
@@ -84,6 +85,8 @@ import javax.crypto.spec.GCMParameterSpec;
  * - "sharedFile" event: a picture, PDF or .md / .txt file shared to Brainamon (ACTION_SEND with
  *   EXTRA_STREAM), read from its content URI as base64 {name, type, data} or {error}; kept the same way
  * - deviceName: the name the PC's Phones list shows (D13): Settings.Global.DEVICE_NAME from API 25, else maker and model
+ * - site*: the phone site reader (projects/phone-site-reader) through SiteBridge. The reader is only in the
+ *   Contributor (debug) build and is found by name, so in a release build these reject with "unavailable"
  */
 @CapacitorPlugin(name = "Brainamon")
 public class BrainamonPlugin extends Plugin {
@@ -297,6 +300,9 @@ public class BrainamonPlugin extends Plugin {
                 call.reject("Google sign-in failed: " + e.getMessage(), "failed", e);
             }
         });
+        // the site reader (Contributor build only): profiles forgotten earlier go before any profile is loaded
+        SiteBridge sites = sites();
+        if (sites != null) sites.startup(getContext());
     }
 
     // ── Obsidian: an obsidian:// link, with an answer when no app takes it (Obsidian not installed) ──
@@ -572,19 +578,39 @@ public class BrainamonPlugin extends Plugin {
         call.resolve(o);
     }
 
-    // each folder's children by name, read once per round (vaultList starts over): findFile lists the whole
-    // folder on every call, which made a first sync into folders of thousands of files quadratic
+    // Read names in one provider query: DocumentFile.findFile makes a separate name query for every sibling.
     private final Map<String, Map<String, DocumentFile>> vaultDirs = new HashMap<>();
 
     private Map<String, DocumentFile> vaultChildren(DocumentFile dir) {
+        return vaultChildren(dir, false);
+    }
+
+    private Map<String, DocumentFile> vaultChildren(DocumentFile dir, boolean refresh) {
         String k = dir.getUri().toString();
-        Map<String, DocumentFile> kids = vaultDirs.get(k);
-        if (kids == null) {
-            kids = new HashMap<>();
-            for (DocumentFile f : dir.listFiles()) if (f.getName() != null) kids.put(f.getName(), f);
+        Map<String, DocumentFile> previous = vaultDirs.get(k);
+        if (previous == null || refresh) {
+            Map<String, DocumentFile> kids = new HashMap<>();
+            Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(dir.getUri(), DocumentsContract.getDocumentId(dir.getUri()));
+            try (Cursor c = getContext().getContentResolver().query(children,
+                    new String[] { DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME }, null, null, null)) {
+                if (c == null) throw new IllegalStateException("Cannot list the vault folder");
+                while (c.moveToNext()) {
+                    String id = c.getString(0), name = c.getString(1);
+                    if (id == null || name == null) continue;
+                    // fromTreeUri checks PackageManager; reuse a wrapper only if the live document ID still matches.
+                    DocumentFile f = previous != null ? previous.get(name) : null;
+                    if (f == null || !id.equals(DocumentsContract.getDocumentId(f.getUri())))
+                        f = DocumentFile.fromTreeUri(getContext(), DocumentsContract.buildDocumentUriUsingTree(dir.getUri(), id));
+                    if (f != null) kids.put(name, f);
+                }
+            } catch (RuntimeException e) {
+                vaultDirs.remove(k);
+                throw e;
+            }
             vaultDirs.put(k, kids);
+            return kids;
         }
-        return kids;
+        return previous;
     }
 
     private DocumentFile vaultFind(String uri, String path, boolean create) {
@@ -613,12 +639,25 @@ public class BrainamonPlugin extends Plugin {
     }
 
     private RecoverableReplace.Folder vaultReplacementFolder(DocumentFile parent) {
+        String key = parent.getUri().toString();
+        Map<String, DocumentFile> kids = vaultChildren(parent, true); // Include Obsidian's changes since the scan.
         return name -> {
-            DocumentFile file = parent.findFile(name);
+            DocumentFile file = kids.get(name);
             if (file == null) return null;
             return new RecoverableReplace.Entry() {
-                public boolean rename(String next) { return file.renameTo(next); }
-                public boolean delete() { return file.delete(); }
+                private String current = name;
+                public boolean rename(String next) {
+                    if (!file.renameTo(next)) { vaultDirs.remove(key); return false; }
+                    kids.remove(current);
+                    kids.put(next, file);
+                    current = next;
+                    return true;
+                }
+                public boolean delete() {
+                    if (!file.delete()) { vaultDirs.remove(key); return false; }
+                    kids.remove(current);
+                    return true;
+                }
             };
         };
     }
@@ -730,10 +769,8 @@ public class BrainamonPlugin extends Plugin {
             String uri = call.getString("uri"), path = call.getString("path"), tmpPath = call.getString("tmp");
             DocumentFile parent = vaultParent(uri, path);
             if (parent == null) { call.reject("missing"); return; }
-            Map<String, DocumentFile> kids = vaultChildren(parent);
             String name = vaultLeaf(path), tmpName = vaultLeaf(tmpPath);
             RecoverableReplace.finish(vaultReplacementFolder(parent), name, tmpName);
-            vaultDirs.remove(parent.getUri().toString());
             call.resolve();
         } catch (Exception e) {
             call.reject(String.valueOf(e.getMessage()));
@@ -754,5 +791,112 @@ public class BrainamonPlugin extends Plugin {
         } catch (Exception e) {
             call.reject(String.valueOf(e.getMessage()));
         }
+    }
+
+    // ── the phone site reader (projects/phone-site-reader/plans/01-engine.md), Contributor (debug) build only.
+    // SiteReader is looked up by name, so a release build has none of its code; there every call rejects "unavailable". ──
+    private SiteBridge siteBridge;
+    private boolean siteLooked;
+
+    private synchronized SiteBridge sites() {
+        if (!siteLooked) {
+            siteLooked = true;
+            try {
+                siteBridge = (SiteBridge) Class.forName("app.brainamon.mobile.SiteReader").getDeclaredConstructor().newInstance();
+            } catch (ReflectiveOperationException | ClassCastException | LinkageError e) {
+                siteBridge = null;
+            }
+        }
+        return siteBridge;
+    }
+
+    private boolean noSites(PluginCall call, SiteBridge s) {
+        if (s != null) return false;
+        call.reject("The site reader is not in this build.", "unavailable");
+        return true;
+    }
+
+    // fixed words only: an exception's own text never reaches the page
+    private void siteReject(PluginCall call, Exception e) {
+        String code = e.getMessage();
+        if ("site".equals(code)) call.reject("Unknown site.", "site");
+        else if ("webview".equals(code)) call.reject("Update Android System WebView to read sites.", "webview");
+        else if ("busy".equals(code)) call.reject("A site window is already open.", "busy");
+        else call.reject("The site reader failed.", "failed");
+    }
+
+    @PluginMethod
+    public void siteState(PluginCall call) {
+        SiteBridge s = sites();
+        if (noSites(call, s)) return;
+        try {
+            call.resolve(JSObject.fromJSONObject(s.state(getContext())));
+        } catch (Exception e) {
+            siteReject(call, e);
+        }
+    }
+
+    @PluginMethod
+    public void siteOpen(PluginCall call) {
+        SiteBridge s = sites();
+        if (noSites(call, s)) return;
+        try {
+            Intent i = s.openIntent(getContext(), call.getString("site", ""), call.getArray("known", new JSArray()),
+                Boolean.TRUE.equals(call.getBoolean("full", false)), Boolean.TRUE.equals(call.getBoolean("complete", false)));
+            startActivityForResult(call, i, "siteClosed");
+        } catch (Exception e) {
+            siteReject(call, e);
+        }
+    }
+
+    @ActivityCallback
+    private void siteClosed(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        Intent d = result.getData();
+        String reason = d == null ? null : d.getStringExtra("reason");
+        JSObject o = new JSObject();
+        o.put("reason", reason == null ? "stop" : reason);
+        for (String k : new String[] {"added", "known", "other", "dropped"}) o.put(k, d == null ? 0 : d.getIntExtra(k, 0));
+        call.resolve(o);
+    }
+
+    @PluginMethod
+    public void sitePending(PluginCall call) {
+        SiteBridge s = sites();
+        if (noSites(call, s)) return;
+        try {
+            call.resolve(JSObject.fromJSONObject(s.pending(getContext(), call.getString("site", ""), call.getInt("offset", 0), call.getInt("max", 500))));
+        } catch (Exception e) {
+            siteReject(call, e);
+        }
+    }
+
+    @PluginMethod
+    public void siteClear(PluginCall call) {
+        SiteBridge s = sites();
+        if (noSites(call, s)) return;
+        try {
+            s.clear(getContext(), call.getString("site", ""));
+            call.resolve();
+        } catch (Exception e) {
+            siteReject(call, e);
+        }
+    }
+
+    // WebView profiles are UI-thread only
+    @PluginMethod
+    public void siteForget(PluginCall call) {
+        SiteBridge s = sites();
+        if (noSites(call, s)) return;
+        String site = call.getString("site", "");
+        getActivity().runOnUiThread(() -> {
+            try {
+                JSObject o = new JSObject();
+                o.put("result", s.forget(getActivity(), site));
+                call.resolve(o);
+            } catch (Exception e) {
+                siteReject(call, e);
+            }
+        });
     }
 }

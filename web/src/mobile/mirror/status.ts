@@ -1,4 +1,4 @@
-// What the phone says about Google Drive (the app bar lamp, More > Google Drive). The lamp used to
+// What the phone says about Google Drive (the app bar lamp, Settings > Google Drive). The lamp used to
 // read "offline" whenever the last refresh failed, or had not finished yet, even with Drive signed in
 // and answering: a refresh that found no library (the PC has not finished its first upload), or met
 // a file Drive no longer has, is Drive replying, not Drive out of reach. Only a failed network call is.

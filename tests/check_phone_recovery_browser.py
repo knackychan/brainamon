@@ -21,6 +21,7 @@ from playwright.sync_api import expect, sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from library import mirror  # noqa: E402  (the fixture's batch file is sealed by the desktop's MirrorKey)
+from tests.phone_groups import open_group  # noqa: E402  (the Recovery group, projects/phone-settings)
 
 ART = Path(tempfile.mkdtemp(prefix='brainamon-phone-recovery-shots-'))
 RAW = bytes([7]) * 32
@@ -52,7 +53,8 @@ def main():
                     raise AssertionError('Vite did not start')
                 with sync_playwright() as pw:
                     browser = pw.chromium.launch(headless=True, channel='msedge')
-                    ctx = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True)
+                    ctx = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True, locale='en-US')
+                    ctx.add_init_script("localStorage.setItem('bp-lang','en')")
                     # This fixture starts only Vite, so serve the card engine without its backend proxy.
                     cards = {name: ROOT / 'design/card-designs' / name for name in
                              ('cards.css', 'engine.js', 'full-art-v2/fa2.css', 'full-art-v2/fa2.js')}
@@ -100,6 +102,7 @@ def main():
                     status = page.locator('#m-backup-status')
                     button = lambda name: box.get_by_role('button', name=name, exact=True)
                     page.wait_for_function("async()=> !(await import('/src/mobile/state.svelte.ts')).phone.refreshing")
+                    open_group(page, 'Recovery')
                     guide = box.locator('details').first
                     guide.locator('summary').first.focus()
                     page.keyboard.press('Enter')
@@ -225,6 +228,7 @@ def main():
                     expect(box.get_by_text(checked)).to_be_visible()
                     expect(box.get_by_text('Recovery file checked against your backup.', exact=True)).to_be_visible()
                     page.reload()
+                    open_group(page, 'Recovery')
                     expect(box.get_by_text(checked)).to_be_visible()
 
                     # Recover a library… (#/recover): from here on `box`, and button() with it, is that screen's box
@@ -330,7 +334,7 @@ def main():
                     }""", [name, batch['at'], hashlib.sha256(plain).hexdigest(), FP, stray_name])
                     page.reload()
                     page.wait_for_function("async()=> (await import('/src/mobile/mirror/pairing.ts')).pairing()?.k === 'B'.repeat(43)")
-                    page.locator('#m-recovery').get_by_role('link', name='Recover a library…', exact=True).click()
+                    open_group(page, 'Recovery').get_by_role('link', name='Recover a library…', exact=True).click()
                     box.get_by_role('group', name='Unlock with').get_by_role('button', name='File', exact=True).click()
                     with page.expect_file_chooser() as chooser:
                         button('Open recovery file…').click()
@@ -350,7 +354,7 @@ def main():
                     with page.expect_navigation():
                         button('Confirm reconnect').click()
                     assert len(writes) == before_reconnect, 'reconnect wrote Drive'
-                    box = page.locator('#m-recovery')                      # back on Backup & phones: the Recovery group
+                    box = open_group(page, 'Recovery')                     # back on Backup & phones: the Recovery group
                     expect(box.get_by_role('button', name='Create another passphrase…', exact=True)).to_be_enabled()      # the recovery file was remembered: a passphrase set, the file not saved from here yet
                     expect(box.get_by_text(re.compile(r'^Passphrase set \d{1,2} \w+$'))).to_be_visible()
                     state = page.evaluate("""async()=>{
@@ -369,6 +373,7 @@ def main():
                     assert all(w.startswith(('vi-phone-recovery-', PREFIX)) for w in writes), writes
                     page.evaluate("sessionStorage.removeItem('reconnect-offline')")
                     page.reload()
+                    open_group(page, 'Recovery')
                     expect(box.get_by_role('button', name='Create another passphrase…', exact=True)).to_be_enabled()
                     page.wait_for_function("async()=> {const {phone}=await import('/src/mobile/state.svelte.ts');return phone.tried && !phone.refreshing}")
                     page.wait_for_function("async()=> (await (await import('/src/mobile/store.ts')).changes.all()).every(e=>e.state==='sent')")
@@ -384,7 +389,8 @@ def main():
                     }""")
                     assert not errors, errors
                     # Paired phone UI: actual missing-grant handling keeps Google connection visible.
-                    paired_ctx = browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True)
+                    paired_ctx = browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True, locale='en-US')
+                    paired_ctx.add_init_script("localStorage.setItem('bp-lang','en')")
                     paired_ctx.route(base + '/cards/**', card)
                     paired = dict(v=2,k=KEY,f=FP,c='',e='sample@example.com',ai={},at=0,l='A'*122)
                     paired_ctx.add_init_script("localStorage.setItem('bp-wifi','off'); if(!sessionStorage.getItem('fixture')) {sessionStorage.setItem('fixture','1');sessionStorage.setItem('bp-pair-setup','1');localStorage.setItem('bp-pair'," + json.dumps(json.dumps(paired)) + ");}")
@@ -398,7 +404,7 @@ def main():
                     paired_page = paired_ctx.new_page()
                     paired_page.on('pageerror',lambda e:errors.append(str(e)))
                     paired_page.goto(base+'/mobile.html#/more')
-                    # More shows the status card; its heading opens More > Backup & phones, which holds the guide
+                    # Settings shows the status card; its kicker opens Settings > Backup & phones, which holds the guide
                     card=paired_page.locator('#m-status')
                     expect(card.get_by_text('Connect Google Drive.',exact=True)).to_be_visible()
                     expect(card.get_by_role('button',name='Connect',exact=True)).to_be_enabled()
@@ -406,7 +412,7 @@ def main():
                     assert paired_page.locator('#m-pair-setup').count()==0
                     card.get_by_role('link',name='Backup & phones').click()
                     expect(paired_page).to_have_url(base+'/mobile.html#/backup')
-                    recovery_guide = paired_page.locator('#m-recovery details').first
+                    recovery_guide = open_group(paired_page, 'Recovery').locator('details').first
                     recovery_guide.locator('summary').first.click()
                     recovery_guide.get_by_text('I can still open my library', exact=True).click()
                     expect(recovery_guide.get_by_text('The desktop passphrase is managed on the PC.', exact=False)).to_be_visible()
@@ -433,7 +439,11 @@ def main():
                     expect(status.get_by_role('button',name='Retry',exact=True)).to_be_enabled()
                     assert guide.get_by_role('button').count()==0          # the Status holds the one Retry
                     assert paired_page.get_by_text('to confirm this phone: keep Brainamon open',exact=False).count()==0
-                    expect(paired_page.locator('.m-abar .m-lamp')).to_have_text('Drive · access pending')
+                    prev = paired_page.evaluate('location.hash')                 # the lamp is the sync key's name: on the Library
+                    paired_page.evaluate("location.hash = '#/lib'")
+                    expect(paired_page.locator('.m-sync-key')).to_have_attribute('aria-label', 'Drive · access pending')
+                    paired_page.evaluate('h => { location.hash = h }', prev)
+                    expect(status.get_by_role('button', name='Retry', exact=True)).to_be_visible()
                     assert paired_page.locator('.m-pad').evaluate('(e)=>e.scrollWidth<=e.clientWidth+1')
                     paired_page.screenshot(path=str(ART/'paired-access-pending.png'))
                     paired_page.reload()

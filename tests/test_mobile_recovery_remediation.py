@@ -11,10 +11,11 @@ globalThis.__rows = new Map(); globalThis.__kv = new Map(); globalThis.__id = 0
 registerHooks({load(url, c, next) {
   if (url.endsWith('/mobile/store.ts')) return {format:'module', shortCircuit:true, source:`
     const rows=globalThis.__rows, data=globalThis.__kv;
-    export const changes={all:async()=>structuredClone([...rows.values()]),add:async e=>{const id=++globalThis.__id;rows.set(id,structuredClone({...e,id}));return id},put:async e=>rows.set(e.id,structuredClone(e)),del:async id=>rows.delete(id)};
+    export const changes={all:async()=>structuredClone([...rows.values()]),add:async e=>{const id=++globalThis.__id;rows.set(id,structuredClone({...e,id}));return id},put:async e=>{rows.set(e.id,structuredClone(e));return e.id},del:async id=>rows.delete(id),delConfirmed:async id=>{rows.delete(id);return true}};
     export const kv={get:async k=>structuredClone(data.get(k)),set:async(k,v)=>data.set(k,structuredClone(v)),del:async k=>data.delete(k)};
     export async function journal(entries, drop=[], values={}) {for(const e of entries)await changes.put(e);for(const id of drop)rows.delete(id);for(const [k,v]of Object.entries(values))await kv.set(k,v)}
     export const updateCanvasChange=async()=>{};
+    export const queueCanvas=async()=>{throw new Error('Canvas writes are outside this recovery fixture')};
   `}
   return next(url,c)
 }})

@@ -26,6 +26,8 @@ export default defineConfig({
       fileURLToPath(new URL('../LICENSE', import.meta.url)),
       fileURLToPath(new URL('../THIRD_PARTY_NOTICES.md', import.meta.url)),
       fileURLToPath(new URL('../mobile-shell/store/privacy-policy.md', import.meta.url)),
+      fileURLToPath(new URL('../mobile-shell/store/privacy-policy.fr.md', import.meta.url)),
+      fileURLToPath(new URL('../mobile-shell/store/privacy-policy.zh-Hant.md', import.meta.url)),
     ] },
   },
   build: {

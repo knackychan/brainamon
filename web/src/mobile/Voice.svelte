@@ -1,11 +1,16 @@
 <script lang="ts">
-  // The record button of a My Note on the phone: record -> Whisper -> onText(text). Without signal the
+  // The record button of a My Note on the phone: record -> transcription -> onText(text). Without signal the
   // recording is queued (voice.ts) and turned into text later (Notes.svelte flushes the queue).
   import { appendVoice, enqueue, MAX_BYTES } from './voice'
   import { source } from './state.svelte'
+  import { t } from '../lib/i18n/index.ts'
+  import { captureError } from './capture-words.ts'
+  import { beginLanguageWork } from './language-switch.ts'
+  import { discardVoice, retainVoice, retryVoice, unsavedVoice } from './voice-pending.svelte'
   import { onDestroy, onMount } from 'svelte'
   import MButton from './ui/MButton.svelte'
   import MHint from './ui/MHint.svelte'
+  import MInfo from './ui/MInfo.svelte'
 
   let { file, onText, onQueued }: { file: string; onText: (text: string) => void; onQueued: () => void } = $props()
   let mode = $state<'idle' | 'rec' | 'busy'>('idle')
@@ -15,6 +20,7 @@
   let tick = 0
   let cancelled = false
   let alive = true
+  let starting = $state(false), retrying = $state('')
   let picker = $state<HTMLInputElement>()!
   let samples = $state<number[]>([])
   let audio: AudioContext | null = null, meter = 0
@@ -50,35 +56,45 @@
   onDestroy(() => { alive = false; clearInterval(tick); stopMeter(); if (rec?.state === 'recording') rec.stop() })
 
   async function start() {
+    if (starting) return
     msg = ''
-    if (!navigator.mediaDevices || typeof MediaRecorder === 'undefined') { msg = 'This browser cannot record. Use the Brainamon app.'; return }
-    let stream: MediaStream
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }) }
-    catch { msg = 'Microphone not allowed. Allow it in the phone settings for Brainamon.'; return }
-    if (!alive) { stream.getTracks().forEach(t => t.stop()); return }
-    chunks = []
-    cancelled = false
-    try { rec = new MediaRecorder(stream) }
-    catch (e) { stream.getTracks().forEach(t => t.stop()); msg = `Recording could not start: ${(e as Error).message}`; return }
-    rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data) }
-    rec.onstop = () => {
-      clearInterval(tick)
-      stopMeter()
-      stream.getTracks().forEach(t => t.stop())
-      if (!cancelled) void finish(new Blob(chunks, { type: rec?.mimeType || 'audio/webm' }))
-    }
-    rec.start()
-    samples = []
-    startMeter(stream)
-    secs = 0
-    tick = window.setInterval(() => secs++, 1000)
-    mode = 'rec'
+    if (!navigator.mediaDevices || typeof MediaRecorder === 'undefined') { msg = t('voice.record.unsupported'); return }
+    const done = beginLanguageWork(), release = () => done()
+    starting = true
+    let started = false
+    try {
+      let stream: MediaStream
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }) }
+      catch { msg = t('voice.record.denied'); return }
+      if (!alive) { stream.getTracks().forEach(t => t.stop()); return }
+      chunks = []
+      cancelled = false
+      try { rec = new MediaRecorder(stream) }
+      catch (e) { stream.getTracks().forEach(t => t.stop()); msg = t('voice.record.startFailed', { message: (e as Error).message }); return }
+      rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data) }
+      rec.onstop = () => {
+        clearInterval(tick)
+        stopMeter()
+        stream.getTracks().forEach(t => t.stop())
+        if (!cancelled) void finish(new Blob(chunks, { type: rec?.mimeType || 'audio/webm' })).finally(release)
+        else release()
+      }
+      try { rec.start() }
+      catch (e) { stream.getTracks().forEach(t => t.stop()); msg = t('voice.record.startFailed', { message: (e as Error).message }); return }
+      started = true
+      samples = []
+      startMeter(stream)
+      secs = 0
+      tick = window.setInterval(() => secs++, 1000)
+      mode = 'rec'
+    } finally { starting = false; if (!started) release() }
   }
   async function finish(blob: Blob) {
+    const done = beginLanguageWork()
     mode = 'busy'
     try {
-      if (blob.size > MAX_BYTES) { msg = 'Too long for one go: record in parts.'; return }
-      if (navigator.onLine === false) { await enqueue(file, blob); if (alive) onQueued(); msg = 'Saved on this phone. It becomes text when you are online.'; return }
+      if (blob.size > MAX_BYTES) { msg = t('voice.record.tooLong'); return }
+      if (navigator.onLine === false) { await enqueue(file, blob); if (alive) onQueued(); msg = t('voice.queue.waiting'); return }
       const text = await source.transcribe!(blob)
       if (text && alive) onText(text)
       else if (text) {
@@ -86,39 +102,51 @@
           const n = await source.myNote(file)
           await source.saveMyNote(n.file, n.title, n.category, appendVoice(n.body ?? '', text))
         } catch { await enqueue(file, blob) }
-      } else msg = 'No speech was heard.'
+      } else msg = t('voice.record.noSpeech')
     } catch (e) {
-      const m = (e as Error).message
+      const m = captureError(e)
       const kept = await enqueue(file, blob).then(() => true).catch(() => false)
       if (kept && alive) onQueued()
-      msg = !kept ? `${m} Recording could not be saved on this phone.`
-        : /^No signal|could not be reached/.test(m) ? 'Saved on this phone. It becomes text when you are online.' : `${m} Recording kept on this phone.`
-    } finally { mode = 'idle' }
+      if (!kept) retainVoice(file, blob)
+      msg = !kept ? t('voice.queue.notSaved', { message: m })
+        : (e as { code?: string }).code === 'network' ? t('voice.queue.waiting') : t('voice.queue.kept', { message: m })
+    } finally { mode = 'idle'; done() }
   }
   function stop() { if (rec?.state === 'recording') { mode = 'busy'; rec.stop() } }
-  function cancel() { cancelled = true; if (rec?.state === 'recording') rec.stop(); mode = 'idle'; msg = 'Recording discarded.' }
+  function cancel() { cancelled = true; if (rec?.state === 'recording') rec.stop(); mode = 'idle'; msg = t('voice.record.discarded') }
   async function picked(e: Event) {
     const input = e.currentTarget as HTMLInputElement, file = input.files?.[0]
     input.value = ''
     if (file) await finish(file)
   }
+  async function retry(id: string) {
+    retrying = id
+    try { if (await retryVoice(id) && alive) onQueued() }
+    finally { retrying = '' }
+  }
   const clock = $derived(`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`)
 </script>
 
-{#if source.canTranscribe?.()}
+{#if source.canTranscribe?.() || unsavedVoice.items.some(item => item.file === file)}
   <div class="m-voice" data-mode={mode}>
-    <MHint>Recording or choosing audio uploads it to OpenAI for transcription, through the PC in direct-PC mode. Provider charges apply separately; its terms and retention apply. Offline recordings may wait here and upload when connected.</MHint>
-    {#if mode === 'rec'}
-      <span class="m-voice-time" role="status"><i aria-hidden="true"></i> Recording {clock}</span>
-      <div class="m-voice-wave" aria-label="Microphone level"><span class="m-voice-wave-bars">{#each samples as s}<i style:height={`${Math.max(8, s * 100)}%`}></i>{/each}</span></div>
-      <div class="m-voice-acts"><MButton variant="pri" onclick={stop}>Stop and transcribe</MButton><MButton onclick={cancel}>Discard</MButton></div>
-    {:else if mode === 'busy'}
-      <span class="m-voice-time" role="status">Transcribing audio…</span>
-      <div class="m-voice-wave busy" aria-label="Transcribing"><span class="m-voice-wave-bars">{#each samples as s}<i style:height={`${Math.max(8, s * 100)}%`}></i>{/each}</span></div>
-    {:else}
-      <div class="m-voice-acts"><MButton variant="pri" onclick={start}>Record</MButton><MButton onclick={() => picker.click()}>Audio file</MButton></div>
+    {#if source.canTranscribe?.() && mode === 'rec'}
+      <span class="m-voice-time" role="status"><i aria-hidden="true"></i> {t('voice.record.clock', { clock })}</span>
+      <div class="m-voice-wave" aria-label={t('voice.record.level')}><span class="m-voice-wave-bars">{#each samples as s}<i style:height={`${Math.max(8, s * 100)}%`}></i>{/each}</span></div>
+      <div class="m-voice-acts"><MButton variant="pri" onclick={stop}>{t('voice.record.stop')}</MButton><MButton onclick={cancel}>{t('voice.record.discard')}</MButton></div>
+    {:else if source.canTranscribe?.() && mode === 'busy'}
+      <span class="m-voice-time" role="status">{t('voice.record.busy')}</span>
+      <div class="m-voice-wave busy" aria-label={t('voice.record.transcribing')}><span class="m-voice-wave-bars">{#each samples as s}<i style:height={`${Math.max(8, s * 100)}%`}></i>{/each}</span></div>
+    {:else if source.canTranscribe?.()}
+      <div class="m-voice-acts"><MButton variant="pri" onclick={start} disabled={starting}>{t('voice.record.start')}</MButton><MButton onclick={() => picker.click()} disabled={starting}>{t('voice.record.file')}</MButton><MInfo title={t('voice.record.info')}>
+        <p>{t('voice.record.upload')}</p>
+        <p>{t('voice.record.retention')}</p>
+      </MInfo></div>
     {/if}
     {#if msg}<MHint role="status">{msg}</MHint>{/if}
+    {#each unsavedVoice.items.filter(item => item.file === file) as item (item.id)}
+      <MHint tone="error" role="alert">{t('voice.unsaved')}</MHint>
+      <div class="m-voice-acts"><MButton size="sm" disabled={!!retrying} onclick={() => retry(item.id)}>{t('voice.retrySave')}</MButton><MButton size="sm" disabled={!!retrying} onclick={() => discardVoice(item.id)}>{t('voice.discard')}</MButton></div>
+    {/each}
   </div>
   <input bind:this={picker} type="file" accept="audio/*,video/mp4,video/webm" hidden onchange={picked} />
 {/if}

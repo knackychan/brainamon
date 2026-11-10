@@ -1,22 +1,40 @@
 <script lang="ts">
-  // 01 Library: search (keyword, Smart by meaning), collection chips, the card grid; a search can
-  // become a synthesized note (Notes > Synthesize).
+  // 01 Library: collection chips and the card grid; in search (#/search, the top bar's field in TopBar.svelte:
+  // keyword, Smart by meaning) the chips and Get started step aside, and a search can become a synthesized
+  // note (Notes > Synthesize). Under the chips one toolbar (plans/06-library-toolbar.md): the title, three round
+  // keys (Sort, the view switch, Tools) and one summary line (count, order, backup status).
   import Grid from '../Grid.svelte'
   import Processing from '../Processing.svelte'
+  import ToolsRing from '../ToolsRing.svelte'
+  import { hasRun } from '../tools-run.svelte'
   import GetStarted from '../GetStarted.svelte'
   import Sprite from '../Sprite.svelte'
   import { phoneEmpty } from '../../lib/onboarding'
+  import { t, type Key } from '../../lib/i18n/index.ts'
+  import { fmtNum } from '../../lib/i18n/format.ts'
   import { onb, openPairing } from '../onboard.svelte'
-  import { driveLinked, mirrorSource, phone, phoneStatus, refresh, setQuery, setSmart, solo, SORTS, type Sort } from '../state.svelte'
+  import { driveLinked, mirrorSource, phone, phoneStatus, refresh, solo, sorts, type Sort } from '../state.svelte'
   import { ACCESS_STATES } from '../mirror/phone-state'
   import MButton from '../ui/MButton.svelte'
-  import MHint from '../ui/MHint.svelte'
+  import MInfo from '../ui/MInfo.svelte'
+  import MKey from '../ui/MKey.svelte'
+  import ShellIcon from '../ShellIcon.svelte'
 
   let { scroller }: { scroller: HTMLElement | undefined } = $props()
-  let text = $state(phone.q)
-  const chips = $derived([{ key: 'all', label: 'All', n: phone.rows.length }, ...phone.cats.filter(c => c.count).map(c => ({ key: c.name, label: c.name, n: c.count }))])
-  const heading = $derived(phone.q.trim() ? 'Results' : phone.fav ? 'Favourites' : phone.cat === 'all' ? 'All items' : phone.cat)
+  const chips = $derived([{ key: 'all', label: t('library.all'), n: phone.rows.length }, ...phone.cats.filter(c => c.count).map(c => ({ key: c.name, label: c.name, n: c.count }))])
+  const heading = $derived(phone.q.trim() ? t('library.heading.results') : phone.fav ? t('library.heading.favourites') : phone.cat === 'all' ? t('library.heading.all') : phone.cat)
   let processRows = $state<import('../source/types').Row[] | null>(null)
+  let toolsKey: HTMLButtonElement | HTMLAnchorElement | HTMLLabelElement | undefined = $state()
+  // the view key shows the layout it switches to; Grid is three columns (a pinch still picks 2, 3 or 4)
+  const rowsView = $derived(phone.gallery === 'rows')
+  // the summary line: how many cards, in which order, and whether the library lives only on this phone
+  const ORDER: Record<Sort, Key> = { new: 'library.order.new', old: 'library.order.old', az: 'library.order.az', za: 'library.order.za' }
+  const counted = $derived(phone.loaded && phone.rows.length > 0)
+  const n = $derived(phone.visible.length)
+  const order = $derived(phone.rank && phone.q.trim() ? t('library.order.meaning') : t(ORDER[phone.sort]))
+  // Google Drive is an add-on: words on the summary line, never a block in the way of the cards
+  const phoneOnly = $derived(solo && counted && !phone.signIn && (phone.synced, phone.tokenAt, !driveLinked()))
+  function tools() { processRows = processRows ? null : [...phone.visible] }
   // the library with no card at all (spec P3): one line and one key
   const empty = $derived(phoneEmpty(onb.answer, !!mirrorSource && !solo))
   function emptyGo() {
@@ -28,50 +46,52 @@
   const libraryError = $derived(status && ACCESS_STATES.includes(status.id) ? status.text : phone.error)
 </script>
 
-<div class="m-lib-search">
-  <label class="m-fld"><span class="m-pr">~/library $</span><input type="search" placeholder="search titles, creators, tags" bind:value={text} oninput={() => setQuery(text)} enterkeyhint="search" autocomplete="off" /></label>
-  <button type="button" class="m-tg" aria-pressed={phone.smart} onclick={() => setSmart(!phone.smart)} title="Rank by meaning"><i></i>{phone.ranking ? '…' : 'Smart'}</button>
-</div>
-{#if phone.smart && phone.smartNote && phone.q.trim()}<MHint as="div" class="m-pad-x">{phone.smartNote}</MHint>{/if}
-<div class="m-chips" role="tablist" aria-label="Collections">
-  <button type="button" class="m-chip" class:on={phone.fav} onclick={() => { phone.fav = !phone.fav }}>★ Favs<small>{phone.favIds.size}</small></button>
+{#if !phone.route.search}
+<div class="m-chips" role="tablist" aria-label={t('library.collections')}>
+  <button type="button" class="m-chip" class:on={phone.fav} onclick={() => { phone.fav = !phone.fav }}>{t('library.favs')}<small>{phone.favIds.size}</small></button>
   {#each chips as c (c.key)}
     <button type="button" class="m-chip" class:on={!phone.fav && phone.cat === c.key} onclick={() => { phone.cat = c.key; phone.fav = false }}>{c.label}<small>{c.n}</small></button>
   {/each}
 </div>
-<div class="m-mathd">
-  <h3>{heading} <span class="m-jp" aria-hidden="true">ライブラリ</span></h3>
-  <span class="m-sp"></span>
-  <select class="m-sort" bind:value={phone.sort} aria-label="Sort">{#each SORTS as [k, label] (k)}<option value={k as Sort}>{label}</option>{/each}</select>
-  {#if phone.q.trim() && phone.visible.length}<MButton as="a" size="sm" href={`#/synth/${encodeURIComponent(phone.q.trim())}`}>Synthesize</MButton>{/if}
-  {#if phone.visible.length}<MButton size="sm" onclick={() => processRows = [...phone.visible]}>Process</MButton>{/if}
-  <span class="m-cnt">{phone.visible.length.toLocaleString('en')}</span>
-</div>
-{#if processRows}<Processing rows={processRows} close={() => processRows = null} />{/if}
-{#if phone.loaded}<GetStarted />{/if}
-<!-- Google Drive is an add-on: a line of text, never a block in the way of the cards -->
-{#if phone.signIn}
-  <MHint as="div" class="m-pad-x">Google Drive is not connected, so this is the phone's last copy. Connect it on More > Backup & phones to sync.</MHint>
-{:else if solo && phone.loaded && phone.rows.length > 0 && (phone.synced, phone.tokenAt, !driveLinked())}
-  <MHint as="div" class="m-pad-x">Saved on this phone. Back up to Google Drive on More > Backup & phones, or pair a PC for thumbnails and AI.</MHint>
 {/if}
+<div class="m-mathd">
+  <h3>{heading}</h3>
+  <span class="m-sp"></span>
+  {#if phone.q.trim() && phone.visible.length}<MButton as="a" size="sm" href={`#/synth/${encodeURIComponent(phone.q.trim())}`}>{t('library.synthesize')}</MButton>{/if}
+  <div class="m-lib-keys">
+    {#if phoneOnly}<MInfo class="m-key m-lib-phone" title={t('library.phoneOnly.title')}>{#snippet icon()}<ShellIcon name="phone" /><span class="m-phone-badge"><ShellIcon name="check" /></span>{/snippet}<p>{t('library.phoneOnly.body')}</p></MInfo>{/if}
+    <MKey as="label" class="m-lib-sort" title={t('library.sort.title')}><ShellIcon name="sort" /><select bind:value={phone.sort} aria-label={t('library.sort.title')}>{#each sorts() as [k, label] (k)}<option value={k as Sort}>{label}</option>{/each}</select></MKey>
+    <MKey class="m-lib-view" aria-label={rowsView ? t('library.view.grid') : t('library.view.rows')} title={rowsView ? t('library.view.grid') : t('library.view.rows')} onclick={() => phone.gallery = rowsView ? '3' : 'rows'}><ShellIcon name={rowsView ? 'lib' : 'rows'} /></MKey>
+    {#if phone.visible.length || processRows || hasRun()}<MKey bind:ref={toolsKey} class="m-lib-tools" aria-label={t('common.tools')} title={t('common.tools')} aria-haspopup="dialog" aria-describedby="m-tools-status" aria-expanded={!!processRows} tone={processRows ? 'dark' : 'plain'} onclick={tools}><ShellIcon name="tools" /><ToolsRing open={!!processRows} /></MKey><ToolsRing open={!!processRows} status />{/if}
+  </div>
+</div>
+{#if counted || phone.signIn}
+<!-- the status words and their (i) never break apart: with large phone text they move down together -->
+<div class="m-lib-sum">
+  {#if counted}{t('library.summary', { n, count: fmtNum(n, 'en'), order })}{' '}{/if}{#if phone.signIn}<span class="m-lib-tail">{counted ? '· ' : ''}{t('library.driveOff')}<MInfo title={t('library.driveSync.title')}><p>{t('library.driveSync.body')}</p></MInfo></span>{/if}
+</div>
+{/if}
+{#if phone.smart && phone.smartNote && phone.q.trim()}<div class="m-lib-sum" role="status">{phone.smartNote}</div>{/if}
+{#if processRows}<Processing rows={processRows} anchor={toolsKey} {heading} close={() => processRows = null} />{/if}
+{#if phone.loaded && !phone.route.search}<GetStarted />{/if}
 {#if phone.error && !phone.rows.length && !phone.signIn}
-  <div class="m-err">{libraryError}<br /><MButton size="sm" style="margin-top:8px" onclick={() => refresh()}>Try again</MButton></div>
+  <div class="m-err">{libraryError}<br /><MButton size="sm" style="margin-top:8px" onclick={() => refresh()}>{t('common.tryAgain')}</MButton></div>
 {:else if !phone.loaded && !phone.signIn}
   <div class="m-empty m-load" role="status" aria-live="polite">
-    Loading the library…
-    <div class="m-load-bar" role="progressbar" aria-label="Loading the library" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(phone.load.frac * 100)}><b style:width={`${phone.load.frac * 100}%`}></b></div>
-    <small>{phone.load.text || 'Starting'}</small>
+    {t('library.loading')}
+    <div class="m-load-bar" role="progressbar" aria-label={t('library.loadingLabel')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(phone.load.frac * 100)}><b style:width={`${phone.load.frac * 100}%`}></b></div>
+    <small>{phone.load.text || t('library.starting')}</small>
   </div>
 {:else if !phone.rows.length && !phone.q.trim()}
   <div class="m-ob-empty">
     <Sprite pose="point" />
-    <h3>Your library is empty</h3>
-    <p>{empty.line}</p>
-    <button type="button" class="m-btn dk m-ob-empty-go" onclick={emptyGo}>{empty.key}</button>
+    <h3>{t('library.empty.title')}</h3>
+    <!-- phoneEmpty() (lib/onboarding.ts, shared and pinned in English) decides which of the two; the phone reads catalog words -->
+    <p>{empty.pc ? t('library.empty.connectLine') : t('library.empty.shareLine')}</p>
+    <button type="button" class="m-btn dk m-ob-empty-go" onclick={emptyGo}>{empty.pc ? t('library.empty.connectKey') : t('library.empty.addKey')}</button>
   </div>
 {:else if !phone.visible.length}
-  <div class="m-empty">{phone.q.trim() ? 'Nothing matches.' : 'No cards here yet.'}</div>
+  <div class="m-empty">{phone.q.trim() ? t('library.noMatch') : t('library.noCards')}</div>
 {:else}
   <Grid rows={phone.visible} {scroller} />
 {/if}

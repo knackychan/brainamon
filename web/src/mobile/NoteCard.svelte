@@ -1,8 +1,8 @@
 <script lang="ts">
-  // A My notes row as a note card (projects/note-organic-ui/plans/08-note-cards.md): the Library item
-  // card's classic frame (design/card-designs/cards.css, read only) adapted for a note. The top of the
-  // note on dot paper is its art; its word count stands where an item shows its rank. np-cd- classes
-  // only (note.css), never the card engine's class names.
+  // A My notes row as note card A (projects/phone-notes-manager, spec section 4): a page of the notebook (dot
+  // paper, the keys' hard shadow) with the shelf as a coloured tab at its top, the title, then the note's 14-line
+  // head fading into the paper. np-cd- classes only (note.css), never the card engine's class names.
+  import { t } from '../lib/i18n/index.ts'
   import { esc } from '../lib/cards/card'
   import { blocksHTML, marksInline } from '../lib/note-format'
   import type { MyNote } from './source/types'
@@ -18,25 +18,11 @@
     .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1'))
   const page = $derived(n.head ? blocksHTML(esc(n.head), inline)
     : n.snippet && n.snippet !== '(no content)' ? `<p>${esc(n.snippet)}</p>`         // a list cached before plan 08
-    : '<p class="np-cd-empty">Empty note</p>')
-  const when = (s: string) => (s ? new Date(s).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '')
+    : `<p class="np-cd-empty">${esc(t('notes.card.empty'))}</p>`)
 </script>
 
-<button type="button" class="np-cd" style={`--t:var(--np-cd-${tint})`} aria-label={n.title || 'Untitled'} onclick={onopen}>
-  <span class="np-cd-win">
-    <span class="np-cd-hd">
-      <i class="np-cd-stage">Note</i>
-      <span class="np-cd-rank">{#if n.words != null}<b>{n.words}</b> {n.words === 1 ? 'word' : 'words'}{/if}</span>
-      <b class="np-cd-nm">{n.title || 'Untitled'}</b>
-    </span>
-    <span class="np-cd-page" aria-hidden="true">{@html page}</span>
-    <span class="np-cd-pn">
-      <span class="np-cd-stats">
-        <span><small>shelf</small><b>{n.category}</b></span>
-        <span><small>stamps</small><b>{n.stamps?.length ?? 0}</b></span>
-        <span><small>edited</small><b>{when(n.updated || n.created)}</b></span>
-      </span>
-      <span class="np-cd-ft"><i></i><span>{n.file}</span><span class="np-cd-bc"></span></span>
-    </span>
-  </span>
+<button type="button" class="np-cd" style={`--t:var(--np-cd-${tint})`} aria-label={n.title || t('notes.editor.untitled')} onclick={onopen}>
+  <span class="np-cd-tab">{n.category || 'General'}</span>
+  <b class="np-cd-nm">{n.title || t('notes.editor.untitled')}</b>
+  <span class="np-cd-page" aria-hidden="true">{@html page}</span>
 </button>

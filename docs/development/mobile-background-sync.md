@@ -8,7 +8,7 @@ No. The Android app syncs only while it is open on screen. There is no backgroun
 
 ## What exists
 
-- More > Sync > **Wi-Fi only** applies to phone Drive uploads, reads, vault sync and downloads. It reuses the existing Wi-Fi preference (on by default; an earlier choice is preserved). A disallowed or unknown network pauses transfers, keeps edits queued, and shows the reason under the app bar. Reconnecting to Wi-Fi/Ethernet or allowing mobile data resumes sync while the app is open. Native Android detection follows the app's default network; a browser that cannot identify Wi-Fi stays paused until the user allows that connection. This setting covers sync and downloads; direct Wiskit requests still use the connection the user is on.
+- Settings > Sync > **Wi-Fi only** applies to phone Drive uploads, reads, vault sync and downloads. It reuses the existing Wi-Fi preference (on by default; an earlier choice is preserved). A disallowed or unknown network pauses transfers, keeps edits queued, and shows the reason under the app bar. Reconnecting to Wi-Fi/Ethernet or allowing mobile data resumes sync while the app is open. Native Android detection follows the app's default network; a browser that cannot identify Wi-Fi stays paused until the user allows that connection. This setting covers sync and downloads; direct Wiskit requests still use the connection the user is on.
 
 - No foreground service, WorkManager job or WakeLock in `mobile-shell/android/app/src/main/`.
 - The only native threads are the AI-stream workers in `BrainamonPlugin.java`. They are shut down when the plugin is destroyed.

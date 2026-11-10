@@ -2,7 +2,7 @@ import { downloadRecovery } from '../../lib/recovery'
 import { isApp, vaultFs, vaultPick } from '../native'
 import { MirrorKey } from './crypto'
 
-export async function exportPhoneRecovery(pair: { k: string; f: string }) {
+export async function exportPhoneRecovery(pair: { k: string; f: string }, words?: (key: string, params?: Record<string, unknown>) => string) {
   const key = await MirrorKey.fromText(pair.k)
   if (key.fingerprint !== pair.f) throw new Error('The pairing key cannot be verified. Keep this phone paired and retry.')
   const file = { format: 'brainamon-phone-recovery', version: 1, key: pair.k, fingerprint: pair.f,
@@ -11,8 +11,8 @@ export async function exportPhoneRecovery(pair: { k: string; f: string }) {
   if (isApp) {
     const folder = await vaultPick()
     await vaultFs(folder.uri).write(filename, new TextEncoder().encode(JSON.stringify(file, null, 2)))
-    return `Recovery file saved in ${folder.name}. Keep a copy outside this phone.`
+    return (words?.('recovery.state.exportSaved', { folder: folder.name }) ?? `Recovery file saved in ${folder.name}. Keep a copy outside this phone.`)
   }
   downloadRecovery(file, filename)
-  return 'Recovery file downloaded. Keep it outside this phone and never share it.'
+  return (words?.('recovery.state.exportDownloaded') ?? 'Recovery file downloaded. Keep it outside this phone and never share it.')
 }

@@ -13,6 +13,7 @@ from unittest import mock
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
+from tests.phone_groups import open_group  # noqa: E402  (This phone is a group on Backup & phones, projects/phone-settings)
 
 
 @unittest.skipUnless(importlib.util.find_spec('playwright'), 'requires Playwright and Edge')
@@ -76,7 +77,8 @@ class PhoneBackupBrowser(unittest.TestCase):
                             args=['--disable-background-networking','--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost'])
                         try:
                             def context(key, connected, theme):
-                                ctx = browser.new_context(viewport={'width':390,'height':844}, color_scheme=theme)
+                                ctx = browser.new_context(viewport={'width':390,'height':844}, color_scheme=theme, locale='en-US')
+                                ctx.add_init_script("localStorage.setItem('bp-lang','en')")
                                 pair = {'v':2,'k':key.text(),'f':key.fingerprint,'c':'','e':'','ai':{},'at':0,'solo':True}
                                 if connected:
                                     pair['g'] = 'fixture@example.com'
@@ -101,18 +103,21 @@ class PhoneBackupBrowser(unittest.TestCase):
                               db.close()
                             }""")
                             page.reload()
-                            expect(page.get_by_text('All backed up', exact=True)).to_be_visible(timeout=15000)
+                            expect(page.get_by_text('1 item on this phone', exact=True)).to_be_visible(timeout=15000)
+                            open_group(page, 'This phone')
+                            expect(page.get_by_text('All backed up', exact=True)).to_be_visible()
                             expect(page.get_by_text('1 item on this phone', exact=True)).to_be_visible()
                             expect(page.get_by_text('This account also has a desktop library.', exact=False)).to_be_visible()
                             self.assertEqual(drive.files[desktop], original)
                             self.assertEqual(len(drive.files), 2)
                             output = ROOT / 'build/solo-backup-review'
                             output.mkdir(parents=True, exist_ok=True)
+                            open_group(page, 'Google account')
                             page.locator('#m-conn').screenshot(path=str(output / 'backup-light.png'))
                             page.get_by_role('button', name='Disconnect', exact=True).click()
                             page.get_by_role('button', name='Confirm disconnect', exact=True).click()
                             expect(page.get_by_role('button', name='Back up to Google Drive', exact=True)).to_be_visible()
-                            page.get_by_role('link', name='Recover a library…', exact=True).click()
+                            open_group(page, 'Recovery').get_by_role('link', name='Recover a library…', exact=True).click()
                             page.get_by_role('group', name='Unlock with').get_by_role('button', name='Code', exact=True).click()
                             page.get_by_role('textbox', name='Original recovery code').fill(phone_key.text())
                             page.get_by_role('button', name='Find backup', exact=True).click()
@@ -124,7 +129,7 @@ class PhoneBackupBrowser(unittest.TestCase):
                             source_ctx.close()
 
                             restore_ctx, page = context(mirror.MirrorKey.generate(), False, 'dark')
-                            page.get_by_role('link', name='Recover a library…', exact=True).click()
+                            open_group(page, 'Recovery').get_by_role('link', name='Recover a library…', exact=True).click()
                             page.get_by_role('group', name='Unlock with').get_by_role('button', name='Code', exact=True).click()
                             page.get_by_role('textbox', name='Original recovery code').fill(phone_key.text())
                             page.get_by_role('button', name='Find backup', exact=True).click()
@@ -134,6 +139,7 @@ class PhoneBackupBrowser(unittest.TestCase):
                             page.evaluate('(t)=>localStorage.setItem("bp-gtoken",JSON.stringify(t))', token)
                             page.reload()
                             expect(page.get_by_text('1 item on this phone', exact=True)).to_be_visible(timeout=15000)
+                            open_group(page, 'This phone')
                             expect(page.get_by_text('All backed up', exact=True)).to_be_visible()
                             restored = page.evaluate("""async () => {
                               const db=await new Promise(ok=>{const r=indexedDB.open('brainamon-phone',2);r.onsuccess=()=>ok(r.result)})

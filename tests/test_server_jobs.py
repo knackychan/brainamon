@@ -88,6 +88,70 @@ class JobsTest(unittest.TestCase):
         self.assertEqual(states[self.fail_id], 'error')
         self.assertTrue(any(e['title'] == 'Describe item failed' for e in self.c.get('/api/console').json()))
 
+    def test_describe_distinguishes_skipped_failed_and_described(self):
+        def seed(db):
+            bare = db.add_item({'url': 'https://youtu.be/bare', 'description': 'https://youtu.be/bare'})
+            sentinel = db.add_item({'url': 'https://youtu.be/sentinel', 'description': 'Caption for sentinel'})
+            db.update_item(sentinel, {'ai_desc': 'Keep existing', 'processed': True})
+            return bare, sentinel
+        bare, sentinel = self.c.app.state.writer.call(seed)
+        def model(*args, **kwargs):
+            if 'Caption for sentinel' in kwargs['prompt']:
+                return 'NO_CONTENT'
+            return _fake_vision(*args, **kwargs)
+        with mock.patch.object(ai_client, 'complete_vision', side_effect=model) as ai:
+            r = self.c.post('/api/jobs', json={'kind': 'describe', 'ids': [bare, sentinel, self.ids[1], self.fail_id], 'force': True}, headers=W)
+            self.assertEqual(r.status_code, 200, r.text)
+            last = self._wait_idle()
+        self.assertEqual((last['done'], last['skipped'], last['err']), (1, 2, 1))
+        self.assertEqual(ai.call_count, 3)
+        rows = self.c.app.state.writer.call(lambda db: [db.get_item(bare), db.get_item(sentinel)])
+        self.assertFalse(rows[0]['ai_desc'])
+        self.assertEqual(rows[1]['ai_desc'], 'Keep existing')
+        progress = self.c.get('/api/jobs/progress').json()['items']
+        self.assertEqual({x['id']: x['state'] for x in progress}[bare], 'skipped')
+        self.assertIn('Nothing to describe yet', next(x['step'] for x in progress if x['id'] == bare))
+
+    def test_empty_item_skips_even_without_an_ai_key(self):
+        bare = self.c.app.state.writer.call(lambda db: db.add_item({'url': 'https://youtu.be/empty', 'description': 'https://youtu.be/empty'}))
+        with mock.patch.dict(os.environ, {'ANTHROPIC_API_KEY': ''}), mock.patch.object(ai_client, 'complete_vision') as ai:
+            r = self.c.post('/api/jobs', json={'kind': 'describe', 'ids': [bare]}, headers=W)
+            self.assertEqual(r.status_code, 200, r.text)
+            last = self._wait_idle()
+        self.assertEqual((last['done'], last['skipped'], last['err']), (0, 1, 0))
+        ai.assert_not_called()
+
+    def test_existing_sentinel_is_not_done_or_overwritten(self):
+        def seed(db):
+            item = db.add_item({'url': 'https://youtu.be/marker', 'description': 'https://youtu.be/marker'})
+            db.update_item(item, {'ai_desc': ' NO_CONTENT ', 'processed': True})
+            return item
+        item = self.c.app.state.writer.call(seed)
+        preview = self.c.post('/api/jobs/preview', json={'kind': 'describe', 'ids': [item]}, headers=W).json()
+        self.assertEqual(preview['count'], 1)
+        row = next(r for r in self.c.get('/api/items').json()['items'] if r['id'] == item)
+        self.assertFalse(row['ai'])
+        self.assertTrue(row['nd'] & 2)
+        self.assertNotEqual(row['desc'], ' NO_CONTENT ')
+        self.assertNotEqual(row['title'].strip().upper(), 'NO_CONTENT')
+        self.c.post('/api/jobs', json={'kind': 'describe', 'ids': [item]}, headers=W)
+        last = self._wait_idle()
+        self.assertEqual((last['done'], last['skipped'], last['err']), (0, 1, 0))
+        self.assertEqual(self.c.app.state.writer.call(lambda db: db.get_item(item)['ai_desc']), ' NO_CONTENT ')
+
+    def test_describe_reads_saved_report_and_transcript_files(self):
+        item = self.c.app.state.writer.call(lambda db: db.add_item({'url': 'https://youtu.be/files'}))
+        folder = self.data / 'items' / str(item)
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / 'report.md').write_text('Specific report', encoding='utf-8')
+        (folder / 'transcript.txt').write_text('Specific transcript', encoding='utf-8')
+        with mock.patch.object(ai_client, 'complete_vision', return_value='Real description') as ai:
+            self.c.post('/api/jobs', json={'kind': 'describe', 'ids': [item]}, headers=W)
+            last = self._wait_idle()
+        self.assertEqual((last['done'], last['skipped'], last['err']), (1, 0, 0))
+        self.assertIn('Specific report', ai.call_args.kwargs['prompt'])
+        self.assertIn('Specific transcript', ai.call_args.kwargs['prompt'])
+
     def test_one_job_at_a_time_and_stop(self):
         slow = mock.patch.object(ai_client, 'complete_vision',
                                  lambda *a, **k: (time.sleep(0.3), 'x')[1])
@@ -112,8 +176,11 @@ class JobsTest(unittest.TestCase):
         self.assertEqual(self.c.post('/api/jobs', json={'kind': 'nope', 'ids': [1]}, headers=W).status_code, 400)
         with mock.patch.dict(os.environ, {'ANTHROPIC_API_KEY': ''}):
             nokey = self.c.post('/api/jobs', json={'kind': 'describe', 'ids': self.ids}, headers=W)
-        self.assertEqual(nokey.status_code, 400)
-        self.assertIn('API key', nokey.json()['detail'])
+            self.assertEqual(nokey.status_code, 200)
+            last = self._wait_idle()
+        self.assertEqual(last['err'], 3)
+        self.assertIn('API key', last['detail'])
+        self.assertIn('API key', self.c.get('/api/jobs/progress').json()['items'][0]['error'])
         self.assertIsNone(self.c.get('/api/jobs').json()['current'])    # the line is free again
 
 

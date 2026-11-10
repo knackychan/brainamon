@@ -1,4 +1,4 @@
-// 8x8 pixel glyphs: PX from design/web-look/os.js, IC from design/web-look/v6/parts/a-data.js
+// 8x8 pixel glyphs: PX from archive/2026-11-09/design/web-look/os.js, IC from archive/2026-11-09/design/web-look/v6/parts/a-data.js
 // (copied, not edited). One <path> of horizontal runs per glyph (the V6 pxSVG), so an icon is 1 node.
 export const PX: Record<string, string[]> = {
   all: ['##.##.##', '##.##.##', '........', '##.##.##', '##.##.##', '........', '##.##.##', '##.##.##'],

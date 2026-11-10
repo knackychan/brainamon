@@ -17,13 +17,15 @@
 //   {op: 'chat_delete', slug, turns, at}  a chat deleted (turns: how many the phone saw)
 //   {op: 'delete', uid, pc, at}           an item deleted (pc: on the PC too, else hidden on the phone)
 //   {op: 'answer', md, ids, file, at}       Save as note (file: the name the phone shows until the PC's)
-//   {op: 'synth', topic, sources, body, file, at}
+//   {op: 'synth', topic, sources, uids, body, file, at}   uids: one per source, '' for a PC item (server/intake.py _source_ids)
 //   {op: 'synth_queue', topic, ids, at}     more sources than the phone folds: the PC runs it
-import { changes as db, journal, kv, updateCanvasChange, type ChangeEntry } from '../store'
+import { changes as db, journal, kv, queueCanvas, updateCanvasChange, type ChangeEntry } from '../store'
 import type { Row } from '../source/types'
 import { normalizeCanvas } from '../ai/canvas.ts'
+import { NO_CONTENT } from '../ai/describe.ts'
 import { clearResend, resendPending, type ResendPair } from './resend'
 import { requeueWaiting } from './pairing'
+import { beginLanguageWork, registerLanguageCheck } from '../language-switch.ts'
 
 export type { ChangeEntry }
 
@@ -34,14 +36,27 @@ export interface Delivery { stream: string; next: number; acked: number; wanted?
 export interface Acks { delivery?: number; published?: number; receipts?: Record<string, { seq: number; want?: number }> }
 const hex = (n: number) => [...crypto.getRandomValues(new Uint8Array(n))].map(b => b.toString(16).padStart(2, '0')).join('')
 const settled = (e: ChangeEntry) => e.op === 'canvas' && !!e.canvasLocal && e.canvasLocal.status !== 'pending'
+const CARD_TEXT = 200        // the card's description snippet, as the PC's mirror rows (library/mirror.py SNIPPET)
 
 // Stable envelope: format, device, at. Keep equal to library/mirror.py.
 export const CHANGE_FORMAT = 1
 
-const SINGLE = new Set(['link', 'answer', 'synth', 'synth_queue', 'note_append', 'category_batch', 'canvas'])
+const SINGLE = new Set(['link', 'answer', 'synth', 'synth_queue', 'note_append', 'note_category', 'category_batch', 'canvas'])
 
 export class Changes {
   list: ChangeEntry[] = []
+  private volatile = new Set<number>()
+  private volatileMeta = new Set<string>()
+  private volatileDrops = new Set<number>()
+  private pendingDeletes = new Set<number>()
+  constructor() {
+    registerLanguageCheck(() => this.volatile.size || this.volatileMeta.size || this.volatileDrops.size || this.pendingDeletes.size || this.list.some(entry => entry.id === undefined)
+      ? 'settings.language.unsavedJournal' : null)
+  }
+  private async discard(id: number) {
+    if (await db.delConfirmed(id)) { this.pendingDeletes.delete(id); this.volatile.delete(id) }
+    else { this.pendingDeletes.add(id); throw Object.assign(new Error('Phone storage could not remove the queued change. Retry the deletion.'), { displayKey: 'common.error.queuedRemove' }) }
+  }
   private loaded: Promise<void> | null = null
   private busy: Promise<number> | null = null
   private floor = 0          // the latest file time the PC applied (prune)
@@ -65,6 +80,17 @@ export class Changes {
     return this.loaded
   }
   async reload() { this.loaded = null; await this.load() }
+
+  async commitCanvas(entry: ChangeEntry, review?: { key: string; token: string }): Promise<ChangeEntry> {
+    return this.serial(async () => {
+      await this.load()
+      const stored = await queueCanvas(entry, review)
+      const current = this.list.find(e => e.id === stored.id)
+      if (current) return current
+      this.list.push(stored)
+      return stored
+    })
+  }
 
   get pending() { return this.list.length }
   get unsent() { return this.list.filter(e => e.state !== 'sent').length }
@@ -91,7 +117,8 @@ export class Changes {
 
   // flush, prune, resend and canvas results take turns: none sees another's half-saved journal
   private serial<T>(f: () => Promise<T>): Promise<T> {
-    const run = this.chain.then(f, f).finally(() => this.changed())
+    const done = beginLanguageWork()
+    const run = this.chain.then(f, f).finally(() => { this.changed(); done() })
     this.chain = run.catch(() => undefined)
     return run
   }
@@ -100,8 +127,19 @@ export class Changes {
   private async commit(entries: ChangeEntry[], change: (e: ChangeEntry) => void, drop: ChangeEntry[] = [], set: Record<string, unknown> = {}) {
     const was = entries.map(e => ({ ...e }))
     entries.forEach(change)
-    try { await journal(entries, drop.map(e => e.id ?? 0).filter(Boolean), set) }
-    catch (err) {
+    const ids = drop.map(e => e.id ?? 0).filter(Boolean)
+    try {
+      const durable = await journal(entries, ids, set)
+      if (durable === false) {
+        for (const e of entries) if (e.id !== undefined) this.volatile.add(e.id)
+        for (const id of ids) this.volatileDrops.add(id)
+        for (const key of Object.keys(set)) this.volatileMeta.add(key)
+      } else {
+        for (const e of entries) if (e.id !== undefined) this.volatile.delete(e.id)
+        for (const id of ids) this.volatileDrops.delete(id)
+        for (const key of Object.keys(set)) this.volatileMeta.delete(key)
+      }
+    } catch (err) {
       entries.forEach((e, i) => { for (const k of Object.keys(e)) delete (e as unknown as Record<string, unknown>)[k]; Object.assign(e, was[i]) })
       throw err
     }
@@ -126,66 +164,123 @@ export class Changes {
   }
 
   async add(e: Omit<ChangeEntry, 'state' | 'at'> & { at?: number }): Promise<ChangeEntry> {
-    await this.load()
-    const { same, entry } = this.prepare(e)
-    if (same) { Object.assign(same, entry); await db.put(same); this.changed(); return same }
-    entry.id = await db.add(entry)
-    this.list.push(entry)
-    this.changed()
-    return entry
+    return this.serial(async () => {
+      await this.load()
+      const { same, entry } = this.prepare(e)
+      if (same && e.op === 'note' && this.list.slice(this.list.indexOf(same) + 1).some(x => x.op === 'note_category')) {
+        // A later save belongs after the rename; keep one full save with its original PC revision.
+        delete entry.id
+        let saved = entry
+        if (same.id === undefined) saved.id = await db.add(saved)
+        else [saved] = await db.addBatch([saved], [same.id])
+        if (same.id !== undefined) this.volatile.delete(same.id)
+        this.list = this.list.filter(x => x !== same)
+        this.list.push(saved)
+        return saved
+      }
+      if (same) {
+        Object.assign(same, entry)
+        const previous = same.id
+        const id = previous === undefined ? await db.add(same) : await db.put(same)
+        if (id === undefined && previous !== undefined) this.volatile.add(previous)
+        else if (id !== undefined) { same.id = id; if (previous !== undefined) this.volatile.delete(previous) }
+        return same
+      }
+      entry.id = await db.add(entry)
+      this.list.push(entry)
+      return entry
+    })
+  }
+
+  // Undo validates after earlier edits and publishes only after a durable save; a failed save leaves its token usable.
+  async commitUndo(prepare: () => Promise<Omit<ChangeEntry, 'state' | 'at'>>): Promise<void> {
+    return this.serial(async () => {
+      await this.load()
+      const entry = await prepare()
+      const [saved] = await db.addBatch([{ ...entry, at: Date.now(), state: 'queued' }])
+      this.list.push(saved)
+    })
+  }
+
+  // Imports are fresh link/detail pairs: commit all of them before exposing any new row.
+  async addBatch(entries: (Omit<ChangeEntry, 'state' | 'at'> & { at?: number })[]): Promise<ChangeEntry[]> {
+    return this.serial(async () => {
+      await this.load()
+      const saved = await db.addBatch(entries.map(e => ({ ...e, state: 'queued', at: e.at ?? Date.now() })))
+      this.list.push(...saved)
+      return saved
+    })
   }
 
   async saveChat(e: Omit<ChangeEntry, 'state' | 'at'>, signal?: AbortSignal): Promise<ChangeEntry> {
-    await this.load()
-    signal?.throwIfAborted()
-    const rows = await db.forChat(signal)
-    const { same, entry } = this.prepare(e, rows)
-    entry.id = await db.saveChat(entry, signal)
-    if (same && this.list.some(x => x.id === same.id)) this.list = this.list.map(x => x.id === same.id ? entry : x)
-    else this.list.push(entry)
-    this.changed()
-    return entry
+    const done = beginLanguageWork()
+    try {
+      await this.load()
+      signal?.throwIfAborted()
+      const rows = await db.forChat(signal)
+      const { same, entry } = this.prepare(e, rows)
+      entry.id = await db.saveChat(entry, signal)
+      if (same && this.list.some(x => x.id === same.id)) this.list = this.list.map(x => x.id === same.id ? entry : x)
+      else this.list.push(entry)
+      this.changed()
+      return entry
+    } finally { done() }
   }
 
   // a chat deleted before its turns went: they never go
   async dropQueuedChat(slug: string) {
-    await this.load()
-    const out = this.list.filter(x => x.op === 'chat' && x.slug === slug && x.state === 'queued')
-    for (const e of out) if (e.id) await db.del(e.id)
-    this.list = this.list.filter(e => !out.includes(e))
-    this.changed()
+    const done = beginLanguageWork()
+    try {
+      await this.load()
+      const out = this.list.filter(x => x.op === 'chat' && x.slug === slug && x.state === 'queued')
+      for (const e of out) if (e.id) await this.discard(e.id)
+      this.list = this.list.filter(e => !out.includes(e))
+      this.changed()
+    } finally { done() }
   }
 
   // a note deleted before its queued edits went: they never go (the delete stands)
   async dropQueuedNote(file: string) {
-    await this.load()
-    const out = this.list.filter(x => (x.op === 'note' || x.op === 'note_append') && x.file === file && x.state === 'queued')
-    for (const e of out) if (e.id) await db.del(e.id)
-    this.list = this.list.filter(e => !out.includes(e))
-    this.changed()
+    const done = beginLanguageWork()
+    try {
+      await this.load()
+      const out = this.list.filter(x => (x.op === 'note' || x.op === 'note_append') && x.file === file && x.state === 'queued')
+      for (const e of out) if (e.id) await this.discard(e.id)
+      this.list = this.list.filter(e => !out.includes(e))
+      this.changed()
+    } finally { done() }
   }
 
   // a link deleted before it went: it never goes, and nothing else about it either
   async dropQueuedLink(uid: string): Promise<boolean> {
-    await this.load()
-    const out = this.list.filter(x => x.uid === uid && x.state === 'queued')
-    if (!out.some(x => x.op === 'link')) return false
-    for (const e of out) if (e.id) await db.del(e.id)
-    this.list = this.list.filter(e => !out.includes(e))
-    this.changed()
-    return true
+    const done = beginLanguageWork()
+    try {
+      await this.load()
+      const out = this.list.filter(x => x.uid === uid && x.state === 'queued')
+      if (!out.some(x => x.op === 'link')) return false
+      for (const e of out) if (e.id) await this.discard(e.id)
+      this.list = this.list.filter(e => !out.includes(e))
+      this.changed()
+      return true
+    } finally { done() }
   }
 
   // a link still waiting to go: its note and category ride along with it
   async amendLink(uid: string, f: { note?: string; category?: string }): Promise<boolean> {
-    await this.load()
-    const l = this.list.find(x => x.op === 'link' && x.uid === uid && x.state === 'queued')
-    if (!l) return false
-    if (f.note !== undefined) l.note = f.note
-    if (f.category !== undefined) l.category = f.category
-    await db.put(l)
-    this.changed()
-    return true
+    const done = beginLanguageWork()
+    try {
+      await this.load()
+      const l = this.list.find(x => x.op === 'link' && x.uid === uid && x.state === 'queued')
+      if (!l) return false
+      if (f.note !== undefined) l.note = f.note
+      if (f.category !== undefined) l.category = f.category
+      const previous = l.id
+      const id = previous === undefined ? await db.add(l) : await db.put(l)
+      if (id === undefined && previous !== undefined) this.volatile.add(previous)
+      else if (id !== undefined) { l.id = id; if (previous !== undefined) this.volatile.delete(previous) }
+      this.changed()
+      return true
+    } finally { done() }
   }
 
   // seal every queued change into one file and upload it; `send` does the Drive part. A batch is
@@ -196,30 +291,36 @@ export class Changes {
   // `numbered` (paired with a PC): each batch also takes the next number of this phone's stream, saved with it, and
   // batches go whole, lowest number first; one sent again keeps its number and time (server/delivery.py).
   async flush(send: (doc: unknown) => Promise<string>, device: string, allowCanvas = true, numbered = false): Promise<number> {
-    this.busy ??= this.flushAll(send, device, allowCanvas, numbered).finally(() => { this.busy = null; this.changed() })
+    if (!this.busy) {
+      const done = beginLanguageWork()
+      this.busy = this.flushAll(send, device, allowCanvas, numbered).finally(() => { this.busy = null; this.changed(); done() })
+    }
     return this.busy
   }
 
   private async flushAll(send: (doc: unknown) => Promise<string>, device: string, allowCanvas: boolean, numbered: boolean): Promise<number> {
     await this.load()
-    if (numbered && requeueWaiting()) throw new Error('This phone has not prepared its saved changes for this PC. Reopen Brainamon to retry.')
+    if (numbered && requeueWaiting()) throw Object.assign(new Error('This phone has not prepared its saved changes for this PC. Reopen Brainamon to retry.'), { displayKey: 'common.error.journalPrepare' })
     if (numbered) return this.flushNumbered(send, device, allowCanvas)
     let n = 0
     for (;;) {
-      let out = this.list.filter(e => e.state === 'sending')
-      if (out.some(e => e.op === 'canvas') && !allowCanvas) return n
-      if (!out.length) {
-        out = this.list.filter(e => e.state === 'queued' && (allowCanvas || e.op !== 'canvas') && (!e.canvasLocal || e.canvasLocal.status === 'pending'))
-        if (!out.length) return n
+      const out = await this.serial(async () => {
+        let batch = this.list.filter(e => e.state === 'sending')
+        if (batch.some(e => e.op === 'canvas') && !allowCanvas) return []
+        if (batch.length) return batch
+        batch = this.list.filter(e => e.state === 'queued' && (allowCanvas || e.op !== 'canvas') && !settled(e))
+        if (!batch.length) return []
         // later than anything sent before, even if the phone's clock went back since: the PC skips
         // a time it already applied
         const at = Math.max(Date.now(), this.floor + 1, ...this.list.map(e => (e.sentAt ?? 0) + 1))
-        for (const e of out) { e.state = 'sending'; e.sentAt = at; await db.put(e) }
-      }
+        await this.commit(batch, e => { e.state = 'sending'; e.sentAt = at })
+        return batch
+      })
+      if (!out.length) return n
       const at = out[0].sentAt ?? 0
-      const doc = { format: CHANGE_FORMAT, device, at, changes: out.map(({ id: _id, state: _s, sentAt: _a, chg: _c, canvasLocal: _l, ...c }) => c) }
+      const doc = { format: CHANGE_FORMAT, device, at, changes: out.map(({ id: _id, state: _s, sentAt: _a, chg: _c, canvasLocal: _l, plain: _p, ...c }) => c) }
       const chg = await send(doc)
-      for (const e of out) { e.state = 'sent'; e.chg = chg; await db.put(e) }
+      await this.serial(() => this.commit(out.filter(e => this.list.includes(e) && e.state === 'sending' && e.sentAt === at), e => { e.state = 'sent'; e.chg = chg }))
       n += out.length
     }
   }
@@ -227,25 +328,26 @@ export class Changes {
   private async flushNumbered(send: (doc: unknown) => Promise<string>, device: string, allowCanvas: boolean): Promise<number> {
     let n = 0
     for (;;) {
-      const went = await this.serial(async () => {
+      const batch = await this.serial(async () => {
         await this.number()
         let out = this.batches()[0]
         if (!out) {
           const queued = this.list.filter(e => e.state === 'queued' && (allowCanvas || e.op !== 'canvas') && !settled(e))
-          if (!queued.length) return -1
+          if (!queued.length) return null
           out = await this.freeze(queued)
         }
-        if (out.some(e => e.op === 'canvas') && !allowCanvas) return -1
+        if (out.some(e => e.op === 'canvas') && !allowCanvas) return null
         const d = this.stream(), first = out[0]
         const doc = { format: CHANGE_FORMAT, device, at: first.sentAt ?? 0, stream: first.stream, seq: first.seq,
           acked: first.stream === d.stream ? d.acked : 0, ...(first.legacy ? { legacy: true } : {}),
-          changes: out.map(({ id: _id, state: _s, sentAt: _a, chg: _c, canvasLocal: _l, stream: _t, seq: _q, legacy: _g, resend: _r, ...c }) => c) }
-        const chg = await send(doc)
-        await this.commit(out, e => { e.state = 'sent'; e.chg = chg })
-        return out.length
+          changes: out.map(({ id: _id, state: _s, sentAt: _a, chg: _c, canvasLocal: _l, stream: _t, seq: _q, legacy: _g, resend: _r, plain: _p, ...c }) => c) }
+        return { out, doc }
       })
-      if (went < 0) return n
-      n += went
+      if (!batch) return n
+      const chg = await send(batch.doc)
+      await this.serial(() => this.commit(batch.out.filter(e => this.list.includes(e) && e.state === 'sending'
+        && e.sentAt === batch.doc.at && e.stream === batch.doc.stream && e.seq === batch.doc.seq), e => { e.state = 'sent'; e.chg = chg }))
+      n += batch.out.length
     }
   }
 
@@ -283,8 +385,8 @@ export class Changes {
   // receipt covers its number, and a `want` sends that batch again (once per manifest). `pair` with a resend marker
   // (pairing again): every edit still here goes again with its number and time, then the marker goes (true).
   async prune(applied: number, acks?: Acks | null, pair?: ResendPair | null): Promise<boolean> {
-    await this.load()
     return this.serial(async () => {
+      await this.load()
       this.floor = Math.max(this.floor, applied)
       const rec = (acks?.delivery ?? 0) >= 2 ? acks?.receipts ?? {} : null
       const done = this.list.filter(e => e.op !== 'canvas' && e.state !== 'queued' &&
@@ -346,8 +448,8 @@ export class Changes {
   known(): Set<string> { return new Set(this.list.map(e => e.chg ?? '').filter(Boolean)) }
 
   async acceptBackup(snapshot: ChangeEntry[], name: string, at: number) {
-    await this.load()
     return this.serial(async () => {
+      await this.load()
       const same = this.list.filter(e => snapshot.some(old => old.id === e.id && JSON.stringify(old) === JSON.stringify(e)))
       await this.commit(same, e => { e.state = 'sent'; e.chg = name; e.sentAt = at })
       this.changed()
@@ -357,45 +459,48 @@ export class Changes {
   // change files read back from Drive (another phone on the same recovery code, or this phone after
   // a reset), oldest first; they count as sent, so they never go up again
   async merge(docs: { name: string; doc: { at?: number; changes?: Omit<ChangeEntry, 'id' | 'state'>[] } }[]): Promise<number> {
-    await this.load()
-    let n = 0
-    const ops = new Map(this.list.filter(e => e.op === 'canvas' && e.op_id).map(e => [e.op_id!, JSON.stringify([e.canvas_id, e.at, e.proposal, e.refs, e.sizes])]))
-    for (const { name, doc } of [...docs].sort((a, b) => (a.doc.at ?? 0) - (b.doc.at ?? 0) || a.name.localeCompare(b.name))) {
-      for (const c of doc.changes ?? []) {
-        if (!c || typeof c !== 'object' || !c.op) continue
-        if (c.op === 'canvas') {
-          try {
-            if (Object.keys(c).sort().join(',') !== 'at,canvas_id,op,op_id,proposal,refs,sizes') throw new Error('Invalid canvas operation fields.')
-            const p = normalizeCanvas(c.proposal)
-            if (p.elements.some(e => e.kind === 'frame')) throw new Error('Raw frames are unavailable in a phone canvas operation.')
-            if (!/^[0-9a-f]{32}$/.test(c.op_id || '') || !/^[A-Za-z0-9_-]{1,64}$/.test(c.canvas_id || '') ||
-              c.canvas_id === 'index' || !Number.isSafeInteger(c.at) || c.at! < 0 || !c.refs || !c.sizes ||
-              Array.isArray(c.refs) || Array.isArray(c.sizes) || typeof c.refs !== 'object' || typeof c.sizes !== 'object' ||
-              (p.canvas_id ? p.canvas_id !== c.canvas_id : !/^[0-9a-f]{32}$/.test(c.canvas_id || ''))) throw new Error('Invalid canvas operation.')
-            const refs = c.refs!, sizes = c.sizes!
-            const used = new Set(p.elements.filter(e => e.kind === 'thumbnail').map(e => String(e.item_id)))
-            const uids = new Set(Object.values(refs))
-            if (Object.keys(refs).length !== used.size || Object.keys(sizes).length !== uids.size ||
-              Object.keys(sizes).some(uid => !uids.has(uid)) ||
-              [...used].some(k => !/^[0-9a-f]{32}$/.test(refs[k] || '') || !Array.isArray(sizes[refs[k]]) ||
-                sizes[refs[k]].length !== 2 || sizes[refs[k]].some(v => !Number.isSafeInteger(v) || v <= 0 || v > 100000)))
-              throw new Error('Invalid canvas references.')
-            const wire = JSON.stringify([c.canvas_id, c.at, c.proposal, c.refs, c.sizes])
-            if (ops.has(c.op_id!)) {
-              if (ops.get(c.op_id!) !== wire) this.mergeErrors.push(`Canvas operation ${c.op_id} changed in a backup file.`)
-              continue
-            }
-            ops.set(c.op_id!, wire)
-          } catch (e) { this.mergeErrors.push((e as Error).message); continue }
+    const done = beginLanguageWork()
+    try {
+      await this.load()
+      let n = 0
+      const ops = new Map(this.list.filter(e => e.op === 'canvas' && e.op_id).map(e => [e.op_id!, JSON.stringify([e.canvas_id, e.at, e.proposal, e.refs, e.sizes])]))
+      for (const { name, doc } of [...docs].sort((a, b) => (a.doc.at ?? 0) - (b.doc.at ?? 0) || a.name.localeCompare(b.name))) {
+        for (const c of doc.changes ?? []) {
+          if (!c || typeof c !== 'object' || !c.op) continue
+          if (c.op === 'canvas') {
+            try {
+              if (Object.keys(c).sort().join(',') !== 'at,canvas_id,op,op_id,proposal,refs,sizes') throw new Error('Invalid canvas operation fields.')
+              const p = normalizeCanvas(c.proposal)
+              if (p.elements.some(e => e.kind === 'frame')) throw new Error('Raw frames are unavailable in a phone canvas operation.')
+              if (!/^[0-9a-f]{32}$/.test(c.op_id || '') || !/^[A-Za-z0-9_-]{1,64}$/.test(c.canvas_id || '') ||
+                c.canvas_id === 'index' || !Number.isSafeInteger(c.at) || c.at! < 0 || !c.refs || !c.sizes ||
+                Array.isArray(c.refs) || Array.isArray(c.sizes) || typeof c.refs !== 'object' || typeof c.sizes !== 'object' ||
+                (p.canvas_id ? p.canvas_id !== c.canvas_id : !/^[0-9a-f]{32}$/.test(c.canvas_id || ''))) throw new Error('Invalid canvas operation.')
+              const refs = c.refs!, sizes = c.sizes!
+              const used = new Set(p.elements.filter(e => e.kind === 'thumbnail').map(e => String(e.item_id)))
+              const uids = new Set(Object.values(refs))
+              if (Object.keys(refs).length !== used.size || Object.keys(sizes).length !== uids.size ||
+                Object.keys(sizes).some(uid => !uids.has(uid)) ||
+                [...used].some(k => !/^[0-9a-f]{32}$/.test(refs[k] || '') || !Array.isArray(sizes[refs[k]]) ||
+                  sizes[refs[k]].length !== 2 || sizes[refs[k]].some(v => !Number.isSafeInteger(v) || v <= 0 || v > 100000)))
+                throw new Error('Invalid canvas references.')
+              const wire = JSON.stringify([c.canvas_id, c.at, c.proposal, c.refs, c.sizes])
+              if (ops.has(c.op_id!)) {
+                if (ops.get(c.op_id!) !== wire) this.mergeErrors.push(`Canvas operation ${c.op_id} changed in a backup file.`)
+                continue
+              }
+              ops.set(c.op_id!, wire)
+            } catch (e) { this.mergeErrors.push((e as Error).message); continue }
+          }
+          const entry = { ...c, at: c.at ?? doc.at ?? 0, state: 'sent', sentAt: doc.at ?? 0, chg: name } as ChangeEntry
+          entry.id = await db.add(entry)
+          this.list.push(entry)
+          n++
         }
-        const entry = { ...c, at: c.at ?? doc.at ?? 0, state: 'sent', sentAt: doc.at ?? 0, chg: name } as ChangeEntry
-        entry.id = await db.add(entry)
-        this.list.push(entry)
-        n++
       }
-    }
-    this.changed()
-    return n
+      this.changed()
+      return n
+    } finally { done() }
   }
 
   // a phone used without a PC is now paired with one: everything goes again, sealed with the PC's key
@@ -403,8 +508,8 @@ export class Changes {
   // earlier pairing would make the PC wait for a batch the phone no longer holds. The entries and the stream are saved
   // in one write; storage that fails leaves both as they were, and the caller sees the error.
   async requeue() {
-    await this.load()
     return this.serial(async () => {
+      await this.load()
       const fresh: Delivery = { stream: hex(16), next: 1, acked: 0 }
       await this.commit(this.list.filter(e => !settled(e)), e => {
         e.state = 'queued'; delete e.sentAt; delete e.chg; delete e.stream; delete e.seq; delete e.legacy; delete e.resend
@@ -420,21 +525,24 @@ export class Changes {
   // the mirror's rows with what the phone did on top
   overlay(rows: Row[]): Row[] {
     if (!this.list.length && !this.hidden.size) return rows
-    const byUid = new Map<string, Row>(), urls = new Set<string>()
-    let out = rows.map(r => { const c = { ...r }; byUid.set((r as Row & { uid?: string }).uid ?? '', c); urls.add(r.url); return c })
-    const added: Row[] = []
+    const byUid = new Map<string, Row>(), urls = new Set<string>(), own = new Map<Row, string>()   // own: a card's own text, without an AI description
+    let out = rows.map(r => { const c = { ...r }; byUid.set((r as Row & { uid?: string }).uid ?? '', c); urls.add(r.url); own.set(c, r.desc); return c })
+    const added: Row[] = [], described = new Set<Row>()     // described: a row whose card text is an AI description
     for (const e of this.list) {
       if (e.op === 'link' && e.url && !urls.has(e.url)) {
         const r = {
           id: Changes.linkId(e), uid: e.uid, title: '', creator: '', type: 'Reel', cat: e.category || 'INTERESTING', tags: e.tags || '',
           desc: e.note || '', url: e.url, src: srcOf(e.url), thumb: false, ai: false, an: false, nd: 0, fav: false, created: e.at, tv: 0,
         } as Row
-        urls.add(e.url); added.push(r); byUid.set(e.uid ?? '', r)
+        urls.add(e.url); added.push(r); byUid.set(e.uid ?? '', r); own.set(r, r.desc)
       } else if (e.op === 'details') {
         const r = byUid.get(e.uid ?? '')
         if (r && added.includes(r)) {        // only a link saved on the phone: the PC's rows have their own
           r.title = (e.title || (e.desc ?? '').split('\n')[0]).slice(0, 90)
           if (e.creator) r.creator = e.creator
+          // the card prints what the PC's row would: the caption, unless an AI description came first
+          if (e.desc) own.set(r, e.desc.slice(0, CARD_TEXT))
+          if (e.desc && !described.has(r)) r.desc = e.desc.slice(0, CARD_TEXT)
           if (e.thumb) { r.thumb = true; r.tv = e.at }
         }
       } else if (e.op === 'fav') {
@@ -444,7 +552,11 @@ export class Changes {
         if (r && e.fields) {
           if (e.fields.tags !== undefined) r.tags = e.fields.tags
           if (e.fields.category !== undefined) r.cat = e.fields.category
-          if (e.fields.ai_desc) r.ai = true
+          if (e.fields.ai_desc?.trim() === NO_CONTENT) { r.ai = false; r.desc = ''; described.delete(r) }
+          else if (e.fields.ai_desc?.trim()) { r.ai = true; r.desc = e.fields.ai_desc.slice(0, CARD_TEXT); described.add(r) }
+          // an emptied description (Tools' Undo, projects/phone-processing-flow): the card prints its own text again. A mirrored
+          // row's text may already be the AI description (the PC applied it), so the change carries the real one (`plain`).
+          else if (e.fields.ai_desc !== undefined) { r.ai = false; r.desc = e.plain ?? own.get(r) ?? ''; described.delete(r) }
         }
       } else if (e.op === 'category_batch') {
         for (const x of e.entries ?? []) { const r = byUid.get(x.uid); if (r) r.cat = x.category }

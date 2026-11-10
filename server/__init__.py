@@ -1,6 +1,6 @@
 """CM-OS V6 backend: a FastAPI app over the existing Qt-free modules (db, search, ...).
 
-Bound to 127.0.0.1 only (server/settings.py HOST). See projects/desktop-cmos/PLAN.md.
+Bound to 127.0.0.1 only (server/settings.py HOST). See archive/2026-11-09/projects/desktop-cmos/PLAN.md.
 """
 import os
 

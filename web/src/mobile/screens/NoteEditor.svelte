@@ -1,4 +1,9 @@
 <script lang="ts">
+  import { captureError } from '../capture-words.ts'
+  import { t } from '../../lib/i18n/index.ts'
+  import { fmtDate } from '../../lib/i18n/format.ts'
+  import { datedSection, inkName, markerName } from '../notes-words.ts'
+  import MPicker from '../ui/MPicker.svelte'
   // The phone's My Notes editor (projects/note-organic-ui/plans/07-phone-editor.md): the round 2 dot
   // paper as a full-bleed sheet, reusing the desktop's Markdown adapter (note-editor.ts) and format
   // (note-format.ts) so there is no second serializer. Unsupported Markdown falls back to a raw
@@ -11,14 +16,21 @@
   import Voice from '../Voice.svelte'
   import NoteStamps from './NoteStamps.svelte'
   import MButton from '../ui/MButton.svelte'
+  import MKey from '../ui/MKey.svelte'
+  import ShellIcon from '../ShellIcon.svelte'
+  import MDialog from '../ui/MDialog.svelte'
+  import { cleanCategory, otherNamed } from '../../lib/note-category'
 
   let { file, title = $bindable(''), category = $bindable(''), categories, body, stamps, revision, updated,
-    status, savedAt, focusTitle = $bindable(false), onbody, onstamps, onvoice, onqueued, onobsidian, ondelete, onedit }: {
+    status, savedAt, focusTitle = $bindable(false), onbody, onstamps, onvoice, onqueued, onobsidian, ondelete, onedit, onback,
+    count, renameBlocked, onrename }: {
     file: string; title?: string; category?: string; categories: string[]; body: string; stamps: Stamp[]; revision: number; updated: string
     status: 'saved' | 'pending' | 'saving' | 'error'; savedAt: string; focusTitle?: boolean
     onbody: (body: string) => void; onstamps: (stamps: Stamp[]) => void
     onvoice: (text: string) => void; onqueued: () => void
-    onobsidian: () => void; ondelete: () => void; onedit: () => void
+    onobsidian: () => void; ondelete: () => void; onedit: () => void; onback: () => void
+    // categories (spec 2026-11-07 section 3): notes in a category, why Rename is off ('' when on), the rename
+    count: (category: string) => number; renameBlocked: string; onrename: (from: string, to: string) => Promise<void>
   } = $props()
 
   let editor = $state<HTMLDivElement>()!
@@ -59,13 +71,34 @@
     divider: 'M3 10h.01M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01',
     clear: 'm11.2 3.6 5.2 5.2-7 7H5.6l-2-2a1.4 1.4 0 0 1 0-2zM7.8 7l5.2 5.2M10 15.8h7',
   }
-  const BLOCKS: [string, string][] = [['h1', 'Title'], ['h2', 'Heading'], ['h3', 'Subheading'], ['p', 'Text'], ['quote', 'Quote']]
+  const BLOCKS: [string, string][] = [['h1', t('notes.editor.title')], ['h2', t('notes.editor.heading')], ['h3', t('notes.editor.subheading')], ['p', t('notes.editor.textStyle')], ['quote', t('notes.editor.quote')]]
 
-  const when = (s: string) => (s ? new Date(s).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '')
+  const when = (s: string) => (s ? fmtDate(s, { weekday: 'short', day: 'numeric', month: 'short' }, 'en-GB') : '')
   const words = $derived(localBody.trim() ? localBody.trim().split(/\s+/).length : 0)
-  const metaLine = $derived(`${when(updated)} · ${words} word${words === 1 ? '' : 's'} · ${stamps.length} stamp${stamps.length === 1 ? '' : 's'}`)
-  const lamp = $derived({ saved: `Saved ${savedAt}`, pending: 'Editing…', saving: 'Saving…', error: 'Save failed' }[status])
+  const metaLine = $derived(`${when(updated)} · ${t('notes.editor.words', { n: words })} · ${t('notes.editor.stamps', { n: stamps.length })}`)
+  const lamp = $derived({ saved: t('notes.save.saved', { time: savedAt }), pending: t('notes.save.pending'), saving: t('notes.save.saving'), error: t('notes.save.error') }[status])
 
+  // New category / Rename: one name dialog; a name another category already has (ignoring case) asks first
+  let naming = $state<'new' | 'rename'>('new'), nameOpen = $state(false), nameText = $state(''), nameErr = $state('')
+  let merge = $state<{ to: string; count: number } | null>(null)
+  function ask(kind: 'new' | 'rename') {
+    naming = kind; nameText = kind === 'rename' ? category : ''; nameErr = ''; merge = null; nameOpen = true
+  }
+  function submitName() {
+    if (merge) { const to = merge.to; nameOpen = false; merge = null; void onrename(category, to); return }
+    let name: string
+    try { name = cleanCategory(nameText) } catch (e) { nameErr = captureError(e); return }
+    if (naming === 'new') {
+      const to = otherNamed(categories, name, '') ?? name
+      nameOpen = false
+      if (to !== category) { category = to; onedit() }
+      return
+    }
+    const other = otherNamed(categories, name, category)
+    if (other) { merge = { to: other, count: count(category) }; return }
+    nameOpen = false
+    if (name !== category) void onrename(category, name)
+  }
   function snapshot(): Snapshot { return { body: localBody, stamps: stamps.map(s => ({ ...s })), selection: saved ? structuredClone(saved) : null } }
   function reset() {
     const result = parseMarkdown(localBody)
@@ -101,7 +134,7 @@
       const next = serializeMarkdown(readDOM(editor))
       error = ''; emit(next, kind); selectionChanged()
     } catch (e) {
-      error = (e as Error).message
+      error = captureError(e)
       const last = parseMarkdown(localBody)
       if (last.ok) { writeDOM(editor, last.blocks); restoreSelection(editor, saved) }
     }
@@ -281,9 +314,7 @@
     host.append(t); setTimeout(() => t.remove(), 3600)
   }
   function titled() {
-    const stamp = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
-    const trimmed = localBody.replace(/\s+$/, '')
-    const next = (trimmed ? trimmed + '\n\n' : '') + `## ${stamp}\n\n`
+    const next = datedSection(localBody)
     const result = parseMarkdown(next)
     if (result.ok && editor) writeDOM(editor, result.blocks)
     emit(next, 'dated')
@@ -304,36 +335,44 @@
 </script>
 
 {#snippet icon(name: string)}<svg viewBox="0 0 20 20" aria-hidden="true"><path d={icons[name]} /></svg>{/snippet}
+{#snippet catFooter(close: () => void)}
+  <button type="button" onclick={() => { close(); ask('new') }}>{t('notes.editor.newCategory')}</button>
+  {#if category && category !== 'General'}
+    <button type="button" disabled={!!renameBlocked} onclick={() => { close(); ask('rename') }}>{t('notes.editor.renameMenu', { category })}</button>
+    {#if renameBlocked}<p class="m-hint">{t('notes.error.detail', { detail: renameBlocked })}</p>{/if}
+  {/if}
+{/snippet}
 
-<section class="np" aria-label="Note">
+<section class="np" aria-label={t('notes.editor.note')}>
   <div class="np-head">
-    <label class="np-pill"><span class="sr">Category</span>
-      <select bind:value={category} onchange={onedit}>{#each categories as c (c)}<option value={c}>{c}</option>{/each}</select>
-    </label>
-    <small class="np-led" data-s={status} aria-live="polite"><i></i><span>{lamp}</span></small>
+    <MKey aria-label={t('common.back')} title={t('common.back')} onclick={onback}><ShellIcon name="back" /></MKey>
+    <MPicker label={t('notes.category')} value={category} options={[...new Set([...categories, ...(category ? [category] : [])])].map(c => [c, c])} onchange={value => { category = value; onedit() }} footer={catFooter}>
+      <span class="m-ws np-tag" data-s={status}><small class="np-led" data-s={status} aria-live="polite"><i></i><span class="m-sr">{lamp}</span></small><span class="np-tag-name">{category || t('notes.editor.note')}</span><ShellIcon name="down" /></span>
+    </MPicker>
     <span class="m-sp"></span>
-    <button type="button" class="np-ic" aria-label="Undo" disabled={cursor === 0} onclick={() => undo(-1)}>{@render icon('undo')}</button>
-    <button type="button" class="np-ic" aria-label="Redo" disabled={cursor >= historyLength - 1} onclick={() => undo(1)}>{@render icon('redo')}</button>
-    <button type="button" class="np-ic" aria-label="Note actions" aria-haspopup="dialog" aria-expanded={menu} onclick={() => more(!menu)}>
-      <svg viewBox="0 0 20 20"><circle cx="4.5" cy="10" r="1.4" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1.4" fill="currentColor" stroke="none"/><circle cx="15.5" cy="10" r="1.4" fill="currentColor" stroke="none"/></svg>
-    </button>
+    <span class="np-undo">
+      <button type="button" class="np-ic" aria-label={t('notes.editor.undo')} disabled={cursor === 0} onclick={() => undo(-1)}>{@render icon('undo')}</button>
+      <i aria-hidden="true"></i>
+      <button type="button" class="np-ic" aria-label={t('notes.editor.redo')} disabled={cursor >= historyLength - 1} onclick={() => undo(1)}>{@render icon('redo')}</button>
+    </span>
+    <MKey aria-label={t('notes.editor.actions')} title={t('notes.editor.actions')} aria-haspopup="dialog" aria-expanded={menu} onclick={() => more(!menu)}><ShellIcon name="more" /></MKey>
   </div>
 
   <div class="np-page" bind:this={page}>
     <div class="np-col">
-      <label class="sr" for="nt-title">Title</label>
-      <textarea class="np-title" id="nt-title" bind:this={titleEl} rows="1" autocomplete="off" enterkeyhint="next" placeholder="Untitled" bind:value={title} oninput={onedit} onkeydown={e => { if (e.key === 'Enter') { e.preventDefault(); editor?.focus() } }}></textarea>
+      <label class="sr" for="nt-title">{t('notes.editor.title')}</label>
+      <textarea class="np-title" id="nt-title" bind:this={titleEl} rows="1" autocomplete="off" enterkeyhint="next" placeholder={t('notes.editor.untitled')} bind:value={title} oninput={onedit} onkeydown={e => { if (e.key === 'Enter') { e.preventDefault(); editor?.focus() } }}></textarea>
       <p class="np-meta">{metaLine}</p>
       {#if parsed.ok}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div class="np-body" id="nt-body" bind:this={editor} contenteditable="true" tabindex="0" role="textbox" aria-multiline="true" aria-label="Note text" spellcheck="true"
+        <div class="np-body" data-placeholder={t('notes.editor.start')} id="nt-body" bind:this={editor} contenteditable="true" tabindex="0" role="textbox" aria-multiline="true" aria-label={t('notes.editor.body')} spellcheck="true"
           onbeforeinput={beforeInput} oninput={e => { if (e instanceof InputEvent) input(e) }} onpaste={paste} onkeydown={keys} onclick={task}
           ondrop={e => e.preventDefault()} oncompositionstart={() => { composing = true; beforeMutation() }}
           oncompositionend={() => { composing = false; collect('composition') }}></div>
       {:else}
-        <label class="sr" for="nt-body">Note text (Markdown)</label>
+        <label class="sr" for="nt-body">{t('notes.editor.markdown')}</label>
         <textarea class="np-source" id="nt-body" spellcheck="true" value={localBody} oninput={e => { beforeMutation(); emit(e.currentTarget.value, 'typing') }}></textarea>
-        {#if reason}<p class="np-hint">{reason}</p>{/if}
+        {#if reason}<p class="np-hint">{t('notes.editor.unsupported')}</p>{/if}
       {/if}
     </div>
     {#if page && editor && parsed.ok}
@@ -343,7 +382,7 @@
   </div>
 </section>
 
-{#if error}<p class="np-hint" role="alert" style="margin:0 24px">{error}</p>{/if}
+{#if error}<p class="np-hint" role="alert" style="margin:0 24px">{t('notes.error.detail', { detail: error })}</p>{/if}
 
 <!-- the formatting dock: above the tab bar, on the keyboard while typing -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -352,35 +391,35 @@
     {#if strip === 'style'}
       {#each BLOCKS as [t, label]}<button type="button" class="np-chipb {t === 'quote' ? 'q' : t}" aria-pressed={blockStyle === t} onclick={() => block(t)}>{label}</button>{/each}
       <span class="np-sep"></span>
-      <button type="button" class="np-chipb ic" aria-label="Dotted divider" onclick={() => run('hr')}>{@render icon('divider')}</button>
-      <button type="button" class="np-chipb ic" aria-label="Clear formatting" onclick={() => run('clear')}>{@render icon('clear')}</button>
+      <button type="button" class="np-chipb ic" aria-label={t('notes.editor.divider')} onclick={() => run('hr')}>{@render icon('divider')}</button>
+      <button type="button" class="np-chipb ic" aria-label={t('notes.editor.clear')} onclick={() => run('clear')}>{@render icon('clear')}</button>
     {:else if strip === 'ink'}
-      <span class="np-cap">{selected != null ? 'Stamp' : 'Ink'}</span>
-      {#each INKS as c}<button type="button" class="np-sw" aria-label={`${c} ink`} aria-pressed={selected != null ? stamps[selected]?.c === c : ink === c} style={`--c:var(--ink-${c})`} onclick={() => setInk(c)}><i></i></button>{/each}
+      <span class="np-cap">{selected != null ? t('notes.editor.stamp') : t('notes.editor.ink')}</span>
+      {#each INKS as c}<button type="button" class="np-sw" aria-label={inkName(c)} aria-pressed={selected != null ? stamps[selected]?.c === c : ink === c} style={`--c:var(--ink-${c})`} onclick={() => setInk(c)}><i></i></button>{/each}
     {:else if strip === 'mark'}
-      <span class="np-cap">Marker</span>
-      {#each [...MARKS, 'none'] as c}<button type="button" class="np-sw mk{c === 'none' ? ' none' : ''}" aria-label={c === 'none' ? 'No marker' : `${c} marker`} aria-pressed={c !== 'none' && mark === c} style={`--c:var(--mk-${c})`} onclick={() => setMark(c)}><i></i></button>{/each}
+      <span class="np-cap">{t('notes.editor.marker')}</span>
+      {#each [...MARKS, 'none'] as c}<button type="button" class="np-sw mk{c === 'none' ? ' none' : ''}" aria-label={c === 'none' ? t('notes.editor.noMarker') : markerName(c)} aria-pressed={c !== 'none' && mark === c} style={`--c:var(--mk-${c})`} onclick={() => setMark(c)}><i></i></button>{/each}
     {/if}
   </div>
-  <div class="np-bar" role="toolbar" aria-label="Formatting">
+  <div class="np-bar" role="toolbar" aria-label={t('notes.editor.formatting')}>
     <div class="np-bar-sc">
-      <button type="button" class="nb aa" aria-label="Text style" aria-expanded={strip === 'style'} aria-controls="np-strip" onclick={() => strip = strip === 'style' ? null : 'style'}>Aa</button>
+      <button type="button" class="nb aa" aria-label={t('notes.editor.style')} aria-expanded={strip === 'style'} aria-controls="np-strip" onclick={() => strip = strip === 'style' ? null : 'style'}>Aa</button>
       <span class="np-sep"></span>
-      <button type="button" class="nb b" aria-label="Bold" aria-pressed={active.includes('b')} onclick={() => run('bold')}>B</button>
-      <button type="button" class="nb i" aria-label="Italic" aria-pressed={active.includes('i')} onclick={() => run('italic')}>I</button>
-      <button type="button" class="nb u" aria-label="Underline" aria-pressed={active.includes('u')} onclick={() => run('underline')}>U</button>
-      <button type="button" class="nb s" aria-label="Strikethrough" aria-pressed={active.includes('s')} onclick={() => run('strikeThrough')}>S</button>
+      <button type="button" class="nb b" aria-label={t('notes.editor.bold')} aria-pressed={active.includes('b')} onclick={() => run('bold')}>B</button>
+      <button type="button" class="nb i" aria-label={t('notes.editor.italic')} aria-pressed={active.includes('i')} onclick={() => run('italic')}>I</button>
+      <button type="button" class="nb u" aria-label={t('notes.editor.underline')} aria-pressed={active.includes('u')} onclick={() => run('underline')}>U</button>
+      <button type="button" class="nb s" aria-label={t('notes.editor.strike')} aria-pressed={active.includes('s')} onclick={() => run('strikeThrough')}>S</button>
       <span class="np-sep"></span>
-      <button type="button" class="nb np-inkbtn" aria-label="Ink colour" aria-expanded={strip === 'ink'} aria-controls="np-strip" style={`--c:var(--ink-${ink})`} onclick={() => strip = strip === 'ink' ? null : 'ink'}><span class="np-a">A</span></button>
-      <button type="button" class="nb np-mkbtn" aria-label="Highlighter" aria-expanded={strip === 'mark'} aria-controls="np-strip" style={`--c:var(--mk-${mark})`} onclick={() => strip = strip === 'mark' ? null : 'mark'}>{@render icon('marker')}<i></i></button>
+      <button type="button" class="nb np-inkbtn" aria-label={t('notes.editor.inkColour')} aria-expanded={strip === 'ink'} aria-controls="np-strip" style={`--c:var(--ink-${ink})`} onclick={() => strip = strip === 'ink' ? null : 'ink'}><span class="np-a">A</span></button>
+      <button type="button" class="nb np-mkbtn" aria-label={t('notes.editor.highlighter')} aria-expanded={strip === 'mark'} aria-controls="np-strip" style={`--c:var(--mk-${mark})`} onclick={() => strip = strip === 'mark' ? null : 'mark'}>{@render icon('marker')}<i></i></button>
       <span class="np-sep"></span>
-      <button type="button" class="nb" aria-label="Checklist" aria-pressed={blockStyle === 'task'} onclick={() => run('check')}><svg viewBox="0 0 20 20" aria-hidden="true"><path d={icons.check} /></svg></button>
-      <button type="button" class="nb" aria-label="Bulleted list" aria-pressed={blockStyle === 'bullet'} onclick={() => run('ul')}><svg viewBox="0 0 20 20" aria-hidden="true"><path d={icons.ul} /><circle cx="4" cy="5.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="4" cy="10" r="1.1" fill="currentColor" stroke="none"/><circle cx="4" cy="14.5" r="1.1" fill="currentColor" stroke="none"/></svg></button>
-      <button type="button" class="nb" aria-label="Numbered list" aria-pressed={blockStyle === 'number'} onclick={() => run('ol')}><svg viewBox="0 0 20 20" aria-hidden="true"><path d={icons.ol} /></svg></button>
+      <button type="button" class="nb" aria-label={t('notes.editor.checklist')} aria-pressed={blockStyle === 'task'} onclick={() => run('check')}><svg viewBox="0 0 20 20" aria-hidden="true"><path d={icons.check} /></svg></button>
+      <button type="button" class="nb" aria-label={t('notes.editor.bullets')} aria-pressed={blockStyle === 'bullet'} onclick={() => run('ul')}><svg viewBox="0 0 20 20" aria-hidden="true"><path d={icons.ul} /><circle cx="4" cy="5.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="4" cy="10" r="1.1" fill="currentColor" stroke="none"/><circle cx="4" cy="14.5" r="1.1" fill="currentColor" stroke="none"/></svg></button>
+      <button type="button" class="nb" aria-label={t('notes.editor.numbers')} aria-pressed={blockStyle === 'number'} onclick={() => run('ol')}><svg viewBox="0 0 20 20" aria-hidden="true"><path d={icons.ol} /></svg></button>
     </div>
     <div class="np-bar-fix">
-      <button type="button" class="nb st" aria-label="Stamps" aria-haspopup="dialog" aria-expanded={tray} onclick={() => { document.activeElement && (document.activeElement as HTMLElement).blur(); tray = true; strip = null }}>{@render icon('stamps')}</button>
-      <button type="button" class="nb done" aria-label="Hide keyboard" onclick={() => { document.activeElement && (document.activeElement as HTMLElement).blur(); strip = null }}>{@render icon('done')}</button>
+      <button type="button" class="nb st" aria-label={t('notes.stamps.title')} aria-haspopup="dialog" aria-expanded={tray} onclick={() => { document.activeElement && (document.activeElement as HTMLElement).blur(); tray = true; strip = null }}>{@render icon('stamps')}</button>
+      <button type="button" class="nb done" aria-label={t('notes.editor.hideKeyboard')} onclick={() => { document.activeElement && (document.activeElement as HTMLElement).blur(); strip = null }}>{@render icon('done')}</button>
     </div>
   </div>
 </div>
@@ -392,18 +431,33 @@
 
 {#if menu}
   <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
-  <section class="m-sheet np-sheet np-more" role="dialog" aria-label="Note actions">
+  <section class="m-sheet np-sheet np-more" role="dialog" aria-label={t('notes.editor.actions')}>
     <i class="np-grab" aria-hidden="true"></i>
-    <div class="np-sh-hd"><h3>{title || 'Untitled'}</h3><button type="button" class="np-x" aria-label="Close" onclick={() => more(false)}><svg viewBox="0 0 14 14"><path d="m3 3 8 8M11 3l-8 8"/></svg></button></div>
+    <div class="np-sh-hd"><h3>{title || t('notes.editor.untitled')}</h3><button type="button" class="np-x" aria-label={t('common.close')} onclick={() => more(false)}><svg viewBox="0 0 14 14"><path d="m3 3 8 8M11 3l-8 8"/></svg></button></div>
+    <p class="np-sh-led" data-s={status}>{lamp}</p>
     <div class="np-acts">
       <Voice file={file} onText={onvoice} onQueued={onqueued} />
-      <MButton onclick={() => { menu = false; titled() }}>+ Dated section</MButton>
-      <MButton onclick={() => { menu = false; toast('Summarize runs on the PC: open the note there.') }}>Summarize</MButton>
-      <MButton onclick={() => { menu = false; toast('Reformat runs on the PC: open the note there.') }}>Reformat</MButton>
+      <MButton onclick={() => { menu = false; titled() }}>{t('notes.editor.dated')}</MButton>
+      <MButton onclick={() => { menu = false; toast(t('notes.editor.summarizePc')) }}>{t('notes.editor.summarize')}</MButton>
+      <MButton onclick={() => { menu = false; toast(t('notes.editor.reformatPc')) }}>{t('notes.editor.reformat')}</MButton>
       <MButton onclick={() => { menu = false; onobsidian() }}>Obsidian</MButton>
-      <MButton class="np-del" onclick={() => { menu = false; ondelete() }}>Delete</MButton>
+      <MButton class="np-del" onclick={() => { menu = false; ondelete() }}>{t('common.delete')}</MButton>
     </div>
   </section>
 {/if}
 
 <div class="np-toasts" id="np-toasts" aria-live="polite"></div>
+
+<MDialog bind:open={nameOpen} title={merge ? t('notes.editor.moveQuestion') : naming === 'rename' ? t('notes.editor.renameTitle', { category }) : t('notes.editor.newCategoryTitle')}>
+  {#if merge}
+    <p>{t('notes.editor.merge', { category: merge.to, n: merge.count })}</p>
+  {:else}
+    <label class="m-fld"><input bind:value={nameText} aria-label={t('notes.editor.categoryName')} maxlength="80" autocomplete="off" enterkeyhint="done"
+      onkeydown={e => { if (e.key === 'Enter') { e.preventDefault(); submitName() } }} /></label>
+    {#if nameErr}<p class="m-hint err" role="alert">{t('notes.error.detail', { detail: nameErr })}</p>{/if}
+  {/if}
+  {#snippet actions()}
+    <MButton onclick={() => { if (merge) merge = null; else nameOpen = false }}>{merge ? t('notes.editor.no') : t('common.cancel')}</MButton>
+    <MButton variant="dk" onclick={submitName}>{merge ? t('notes.editor.move') : naming === 'rename' ? t('notes.editor.rename') : t('common.add')}</MButton>
+  {/snippet}
+</MDialog>

@@ -1,7 +1,9 @@
 <script lang="ts">
-  // The first box of More for a phone paired with a PC or used without one (docs/superpowers/plans/
-  // 2026-10-31-phone-backup-phones.md P2): the one PhoneState as its dot, its sentence and at most one key. The heading
-  // opens More > Backup & phones, which says the rest; the heading and the key are separate targets.
+  import { t } from '../lib/i18n/index.ts'
+  // The top of Settings for a phone paired with a PC or used without one (projects/phone-settings, spec section 2.1;
+  // first in docs/superpowers/plans/2026-10-31-phone-backup-phones.md P2): the one PhoneState as the hero, its kicker
+  // the link to Settings > Backup & phones, which says the rest, its sentence as the title and at most one key, the
+  // pill. The kicker and the key are separate targets; the detail never shows here.
   import { actionBusy, actionLabel, runPhoneAction } from './actions'
   import { phoneStatus } from './state.svelte'
   import MBox from './ui/MBox.svelte'
@@ -13,9 +15,8 @@
 
 {#if st}
   <MBox id="m-status">
-    <h3><a class="m-status-head" href="#/backup">Backup &amp; phones<span class="m-sp"></span><span aria-hidden="true">›</span></a></h3>
-    <MStatus tone={st.tone} text={st.text}>
-      {#if st.action}{@const a = st.action}<MButton size="sm" variant={a.primary ? 'pri' : 'default'} disabled={actionBusy(a.id)} onclick={() => runPhoneAction(a.id)}>{actionLabel(a)}</MButton>{/if}
+    <MStatus look="hero" kicker={t('backup.group.title')} href="#/backup" tone={st.tone} text={st.text}>
+      {#if st.action}{@const a = st.action}<MButton shape="pill" variant={a.primary ? 'pri' : 'default'} disabled={actionBusy(a.id)} onclick={() => runPhoneAction(a.id)}>{actionLabel(a)}</MButton>{/if}
     </MStatus>
   </MBox>
 {/if}

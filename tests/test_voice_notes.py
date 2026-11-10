@@ -5,6 +5,7 @@ Run from the project root:  py -m unittest tests.test_voice_notes -v
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from tests.auth_client import TestClient
@@ -25,7 +26,37 @@ class VoiceCoreTest(unittest.TestCase):
                          'Intro\n\n## Voice note - 2026-10-12 09:30\n\nhi\n')
 
     def test_model_id_comes_from_ai_client(self):
-        self.assertEqual(ai_client.phone_settings('anthropic', ai_client.CLAUDE_MODEL)['transcription_model'], ai_client.WHISPER_MODEL)
+        self.assertEqual(ai_client.phone_settings('anthropic', ai_client.CLAUDE_MODEL)['transcription_model'], ai_client.TRANSCRIPTION_MODEL)
+
+    def test_file_transcription_request_and_text_results(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'voice.mp3'
+            path.write_bytes(b'synthetic audio')
+            for response, expected in ((SimpleNamespace(text=' hello ', languages=[]), 'hello'),
+                                       ({'text': ' bonjour ', 'languages': [{'code': 'fr'}]}, 'bonjour'),
+                                       ({'text': '', 'languages': []}, ''), (' legacy text ', 'legacy text')):
+                with self.subTest(response=response):
+                    client = mock.Mock()
+                    def create(**kwargs):
+                        self.assertEqual(set(kwargs), {'model', 'file', 'response_format'})
+                        self.assertEqual(kwargs['model'], 'gpt-transcribe')
+                        self.assertEqual(kwargs['response_format'], 'json')
+                        self.assertEqual(kwargs['file'].read(), b'synthetic audio')
+                        return response
+                    client.audio.transcriptions.create.side_effect = create
+                    self.assertEqual(ai_client.transcribe_file(path, client=client), expected)
+                    self.assertTrue(client.audio.transcriptions.create.call_args.kwargs['file'].closed)
+
+    def test_provider_error_propagates_without_a_format_retry(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'voice.mp3'
+            path.write_bytes(b'synthetic audio')
+            client = mock.Mock()
+            client.audio.transcriptions.create.side_effect = RuntimeError('provider unavailable')
+            with self.assertRaisesRegex(RuntimeError, 'provider unavailable'):
+                ai_client.transcribe_file(path, client=client)
+            self.assertEqual(client.audio.transcriptions.create.call_count, 1)
+            self.assertTrue(client.audio.transcriptions.create.call_args.kwargs['file'].closed)
 
 
 class VoiceRouteTest(unittest.TestCase):

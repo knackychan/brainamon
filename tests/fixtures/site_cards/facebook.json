@@ -1,0 +1,58 @@
+{
+  "_about": "Made-up Facebook links, card lines and run items for tests/test_phone_sites.py. No personal data.",
+  "links": [
+    ["https://www.facebook.com/reel/1234567890/", "https://www.facebook.com/reel/1234567890/", "fb:1234567890"],
+    ["https://www.facebook.com/reel/1234567890", "https://www.facebook.com/reel/1234567890/", "fb:1234567890"],
+    ["https://m.facebook.com/reel/1234567890/?s=yWDuG2&fs=e&mibextid=abc", "https://www.facebook.com/reel/1234567890/", "fb:1234567890"],
+    ["http://web.facebook.com/reel/1234567890/", "https://www.facebook.com/reel/1234567890/", "fb:1234567890"],
+    ["https://www.facebook.com/watch/?v=9876543210&ref=sharing", "https://www.facebook.com/watch/?v=9876543210", "fb:9876543210"],
+    ["https://www.facebook.com/watch/9876543210/", "https://www.facebook.com/watch/?v=9876543210", "fb:9876543210"],
+    ["https://www.facebook.com/SomePage/videos/9876543210/", "https://www.facebook.com/watch/?v=9876543210", "fb:9876543210"],
+    ["https://www.facebook.com/SomePage/videos/a-made-up-title/9876543210/", "https://www.facebook.com/watch/?v=9876543210", "fb:9876543210"],
+    ["https://www.facebook.com/videos/9876543210", "https://www.facebook.com/watch/?v=9876543210", "fb:9876543210"],
+    ["https://www.facebook.com/share/r/1AbCdEfGhI/", "", ""],
+    ["https://www.facebook.com/SomePage/posts/pfbid0abc", "", ""],
+    ["https://www.facebook.com/saved/", "", ""],
+    ["https://fb.watch/abcDEF123/", "", ""],
+    ["https://www.facebook.com.example.net/reel/1234567890/", "", ""],
+    ["https://l.facebook.com/l.php?u=https%3A%2F%2Fexample.com%2F", "", ""],
+    ["javascript:alert(1)", "", ""],
+    ["not a link", "", ""]
+  ],
+  "calls": [
+    ["caption", [["Reels · Sam Example", "12K views", "Saved from Sam Example's reel", "Add to collection", "How to fold a paper boat in 30 seconds"], "Sam Example"], "How to fold a paper boat in 30 seconds"],
+    ["caption", [["Sam Example", "See more", "Morning stretch routine"], "Sam Example"], "Morning stretch routine"],
+    ["caption", [["3d", "1.2K likes", "Sam Example's reel", "Quick pasta for two"], ""], "Quick pasta for two"],
+    ["caption", [["Video · Pat Sample", "Short"], "Pat Sample"], ""],
+    ["isMeta", ["45 comments", ""], true],
+    ["isMeta", ["A long walk by the sea", ""], false],
+    ["onSaved", [{"pathname": "/saved/"}], true],
+    ["onSaved", [{"pathname": "/saved/collections/"}], false],
+    ["open", [null], "https://www.facebook.com/saved/"]
+  ],
+  "items": {
+    "raw": [
+      {"url": "https://www.facebook.com/reel/1234567890/", "kind": "Reel", "caption": "Paper boat", "creator": "Sam Example", "pic": "https://scontent-xx1-1.xx.fbcdn.net/v/t15/abc.jpg?oh=00_A&oe=6700"},
+      {"url": "https://www.facebook.com/watch/?v=9876543210", "kind": "Video", "caption": "", "creator": "", "pic": "http://scontent.xx.fbcdn.net/a.jpg"},
+      {"url": "https://www.facebook.com/reel/1234567890", "kind": "Reel", "caption": "", "creator": "", "pic": ""},
+      {"url": "https://evil.example/reel/1234567890/", "kind": "Reel", "caption": "", "creator": "", "pic": ""},
+      {"url": "https://www.facebook.com/reel/1234567891/", "kind": "Story", "caption": "", "creator": "", "pic": ""},
+      {"url": "https://www.facebook.com/reel/1234567892/", "kind": "Reel", "caption": "", "creator": "", "pic": "https://127.0.0.1/x.jpg"},
+      {"url": "https://www.facebook.com/reel/1234567893/", "kind": "Reel", "caption": "", "creator": "", "pic": "https://user@scontent.fbcdn.net/x.jpg"},
+      {"url": "https://www.facebook.com/reel/1234567894/", "kind": "Reel", "caption": "", "creator": "", "pic": "https://scontent.fbcdn.net:8443/x.jpg"},
+      {"url": "https://www.facebook.com/reel/1234567895/", "kind": "Reel", "caption": "", "creator": "", "pic": "https://fbcdn.net.evil.example/x.jpg"},
+      "not an item",
+      {"url": "https://www.facebook.com/reel/1234567890/", "kind": "Reel", "caption": "again", "creator": "", "pic": ""}
+    ],
+    "posts": [
+      "https://www.facebook.com/reel/1234567890/",
+      "https://www.facebook.com/watch/?v=9876543210",
+      "https://www.facebook.com/reel/1234567892/",
+      "https://www.facebook.com/reel/1234567893/",
+      "https://www.facebook.com/reel/1234567894/",
+      "https://www.facebook.com/reel/1234567895/"
+    ],
+    "pics": [["https://www.facebook.com/reel/1234567890/", "https://scontent-xx1-1.xx.fbcdn.net/v/t15/abc.jpg?oh=00_A&oe=6700"]],
+    "dropped": 4
+  }
+}

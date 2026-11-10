@@ -32,7 +32,7 @@
   const HELP: [string, string][] = [
     ['Save your first link', 'Open File > Add to Brainamon, paste a link, choose Library, then Save. Find it in the Library. No AI key or extra tool is needed.'],
     ['Write a note', 'Open File > Add to Brainamon, type your text, choose Note, then Save. Notes live in My Notes; choose Library when you want a link in your saved-item library.'],
-    ['Import many saves (optional)', 'File > Import accepts scraper CSV or Brainamon JSON exports. Import Instagram Saved ZIP/JSON on the phone through More > Import. File > Scrapers is an advanced bulk-import tool: it copies a script for the browser console on Facebook, Instagram or YouTube, then watches Downloads for the resulting CSV.'],
+    ['Import many saves (optional)', 'File > Import accepts scraper CSV or Brainamon JSON exports. Import Instagram Saved ZIP/JSON on the phone through Add > Import saved posts. File > Scrapers is an advanced bulk-import tool: it copies a script for the browser console on Facebook, Instagram or YouTube, then watches Downloads for the resulting CSV.'],
     ['Choose a processing step', 'Select items and choose Process items in the selection tray, or open Process > Process items. With no selection, it uses the visible items. The chooser suggests a next step and shows how many items need each action. Completed items are skipped unless you explicitly include them. Review one step at a time; video analysis is optional. Click an item’s processing status in List view to review just that item.'],
     ...PROCESS_ACTIONS.map(a => [a.label, `${a.description} ${a.cost}`] as [string, string]),
     ['Link previews', 'New links fetch their preview automatically. Some Fetch link info and video requests need optional saved login access. The public Capture preview does not use those cookies; blocked previews do not remove saved links. Fetch link info uses a missing thumbnail as its signal; to refresh the caption of a link that already has a thumbnail, choose Include completed items.'],
@@ -62,7 +62,7 @@
         <span class="frow"><Button size="sm" onclick={() => openAdd()}>Add to Brainamon…</Button><Button size="sm" onclick={openImport}>Import…</Button><Button size="sm" onclick={openScrapers}>Scrapers…</Button></span>
       </div>
       <div class="brow" style="grid-template-columns:70px minmax(0,1fr) auto;cursor:default">
-        <b>Optional</b><span>{s.has_key ? 'An AI key is set.' : 'Add a provider key only when you want AI features. Wiskit and Describe use the model you choose; transcription may need OpenAI or local Whisper.'}</span>
+        <b>Optional</b><span>{s.has_key ? 'An AI key is set.' : 'Add a provider key only when you want AI features. Wiskit and Describe use the model you choose; audio transcription uses OpenAI.'}</span>
         <Button size="sm" onclick={() => openSettings('keys')}>API keys…</Button>
       </div>
     </div>

@@ -1,7 +1,7 @@
 <script lang="ts">
   // Scrapers (Qt ui/scraper_dialog.py, V6 winScrapers): the manual DevTools scrapers (copy the
   // script, open the page, watch Downloads, import the CSV when it lands) and the Playwright
-  // scrapers (Facebook, Instagram, Reddit). Closing the window stops the watcher and a running one.
+  // scrapers (Facebook, Instagram, Reddit, Threads). Closing the window stops the watcher and a running one.
   import { onMount, tick } from 'svelte'
   import { api } from '../lib/api'
   import { live, on } from '../lib/events.svelte'
@@ -114,6 +114,7 @@
   }
 
   async function startPw(platform: string) {
+    if (platform === 'threads' && unsave) { toast('Turn off Unsave before starting the Threads scraper.', 'w'); return }
     if (!(await confirmUnsave())) return
     if (pwRunning) { out('A Playwright scraper is already running.', 'a'); return }
     try {
@@ -172,14 +173,14 @@
     <div class="fg">
       <Field label="Stop at title" for="s-stop"><input class="inp" id="s-stop" bind:value={stopAt} placeholder="First already-saved title; import only newer items" autocomplete="off" /></Field>
       {#if auto}<Field label="Instagram username" for="s-iguser"><input class="inp" id="s-iguser" bind:value={igUser} placeholder="Optional: found from the page if empty" autocomplete="off" /></Field>{/if}
-      <span></span><label class="chk"><input type="checkbox" bind:checked={unsave} />Unsave each item after scraping ({auto ? 'Facebook, Instagram and Reddit' : 'Facebook only'}; modifies your account)</label>
+      <span></span><label class="chk"><input type="checkbox" bind:checked={unsave} />Unsave each item after scraping ({auto ? 'Facebook, Instagram and Reddit; turn off for Threads' : 'Facebook only'}; modifies your account)</label>
     </div>
     {#if auto}
-      <Hint>This separate browser does not have your usual browser’s saved passwords. For Facebook and Instagram, finish sign-in, 2FA or CAPTCHA without the helper refreshing the page. Follow Activity below if Saved does not open. Stop Playwright cancels; imports have a two-hour limit.</Hint>
+      <Hint>This separate browser does not have your usual browser’s saved passwords. Finish sign-in, 2FA or CAPTCHA in the browser. Follow Activity below if Saved does not open. Stop Playwright cancels; imports have a two-hour limit.</Hint>
       <label class="chk"><input type="checkbox" bind:checked={remember} />Remember this login on this PC (protected Windows storage)</label>
-      <Hint>Check Remember before starting to reuse this site’s login on later imports. The site may ask you to sign in again when it expires. To use your usual browser’s existing login, choose Manual. Unsave changes your account only after the CSV is written.</Hint>
+      <Hint>Check Remember before starting to reuse this site’s login on later imports. The site may ask you to sign in again when it expires. Manual scripts use your usual browser’s login and are available for Facebook, Instagram and Reddit. Unsave changes your account only after the CSV is written.</Hint>
       <ImportSetup section="browser" onready={ready => runtimeReady = ready} />
-      {#if site === 'youtube'}<Hint>Use the playlist-link form above for YouTube, or the Manual tab for your signed-in browser. These browser helpers support Facebook, Instagram and Reddit.</Hint>{/if}
+      {#if site === 'youtube'}<Hint>Use the playlist-link form above for YouTube, or the Manual tab for your signed-in browser. These browser helpers support Facebook, Instagram, Reddit and Threads.</Hint>{/if}
       <div class="setup-actions">{#each playwright as pw (pw.key)}<button class="wkey" type="button" disabled={!runtimeReady || pwRunning} onclick={() => startPw(pw.key)}>Start {pw.label} scraper</button>{/each}</div>
     {:else}
       <Hint>Copy a script, paste it in your browser’s developer console, and leave the page open. Brainamon watches Downloads and imports the CSV when it arrives. No Playwright installation is needed.</Hint>

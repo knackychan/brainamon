@@ -2,21 +2,30 @@
   import privacy from '../../../mobile-shell/store/privacy-policy.md?raw'
   import license from '../../../LICENSE?raw'
   import notices from '../../../THIRD_PARTY_NOTICES.md?raw'
+  import { t } from '../lib/i18n/index.ts'
+
+  let { policy = privacy, policyLang = 'en' }: { policy?: string; policyLang?: 'en' | 'fr' | 'zh-Hant-TW' } = $props()
 </script>
 
 <div class="legal-documents">
-  <p>Contact Frederic TOMAS: <a href="mailto:me@fredtomas.com">me@fredtomas.com</a></p>
+  <p>{t('legal.label.contact')} <a href="mailto:me@fredtomas.com">me@fredtomas.com</a></p>
   <details>
-    <summary>Privacy policy</summary>
-    <pre>{privacy}</pre>
+    <summary>{t('legal.label.privacy')}</summary>
+    <pre lang={policyLang}>{policy}</pre>
+    {#if policyLang !== 'en'}
+      <details>
+        <summary>{t('legal.label.original')}</summary>
+        <pre lang="en">{privacy}</pre>
+      </details>
+    {/if}
   </details>
   <details>
-    <summary>Software license</summary>
-    <pre>{license}</pre>
+    <summary>{t('legal.label.license')}</summary>
+    <pre lang="en">{license}</pre>
   </details>
   <details>
-    <summary>Third-party notices</summary>
-    <pre>{notices}</pre>
+    <summary>{t('legal.label.notices')}</summary>
+    <pre lang="en">{notices}</pre>
   </details>
 </div>
 

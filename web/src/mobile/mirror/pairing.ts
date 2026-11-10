@@ -126,7 +126,7 @@ export function forgetKeys(p: Pairing) {
 // the AI keys the PC left in Drive for this pairing: opened with the link's one-time key, kept with
 // the pairing, then deleted from Drive. Returns a note for the More screen, or ''. Not found yet:
 // tried again at the next refresh until the PC's expiry, then given up.
-export async function takeKeys(p: Pairing, drive: Drive): Promise<string> {
+export async function takeKeys(p: Pairing, drive: Drive, words?: PairWords): Promise<string> {
   if (!p.t) return ''
   const revision = () => {
     const raw = secrets.get(PAIR)
@@ -139,48 +139,49 @@ export async function takeKeys(p: Pairing, drive: Drive): Promise<string> {
   }
   const original = revision()
   const owns = () => revision() === original
-  const done = (note: string) => { if (!owns()) return 'Pairing changed; the previous key transfer was cancelled.'; delete p.t; delete p.tx; savePairing(p); return note }
+  const done = (note: string) => { if (!owns()) return (words?.('settings.pair.transferChanged') ?? 'Pairing changed; the previous key transfer was cancelled.'); delete p.t; delete p.tx; savePairing(p); return note }
   const expired = () => typeof p.tx !== 'number' || !Number.isFinite(p.tx) || p.tx <= Date.now() / 1000
-  const expiryNote = 'The AI keys from the pairing code expired before this phone collected them. Pair again from the PC with a key ticked.'
+  const expiryNote = (words?.('settings.pair.transferExpired') ?? 'The AI keys from the pairing code expired before this phone collected them. Pair again from the PC with a key ticked.')
   if (expired()) return done(expiryNote)
   const one = await MirrorKey.fromText(p.t)
-  if (!owns()) return 'Pairing changed; the previous key transfer was cancelled.'
+  if (!owns()) return (words?.('settings.pair.transferChanged') ?? 'Pairing changed; the previous key transfer was cancelled.')
   const f = await drive.find(await pairDropName(one, p.tx ?? 0))
-  if (!owns()) return 'Pairing changed; the previous key transfer was cancelled.'
+  if (!owns()) return (words?.('settings.pair.transferChanged') ?? 'Pairing changed; the previous key transfer was cancelled.')
   if (!f) {
-    return p.tx && Date.now() / 1000 > p.tx ? done('The AI keys from the pairing code expired before this phone collected them. Pair again from the PC with a key ticked.') : ''
+    return p.tx && Date.now() / 1000 > p.tx ? done((words?.('settings.pair.transferExpired') ?? 'The AI keys from the pairing code expired before this phone collected them. Pair again from the PC with a key ticked.')) : ''
   }
   const got = await one.openJSON<{ ai?: Record<string, unknown> }>(PAIR_LOGICAL, await drive.get(f.id))
-  if (!owns()) return 'Pairing changed; the previous key transfer was cancelled.'
+  if (!owns()) return (words?.('settings.pair.transferChanged') ?? 'Pairing changed; the previous key transfer was cancelled.')
   if (expired()) return done(expiryNote)
   const ai: Record<string, string> = {}
   for (const [k, v] of Object.entries(got.ai ?? {})) if (typeof v === 'string' && v) ai[k] = v
   if (expired()) return done(expiryNote)
   p.ai = { ...(p.ai || {}), ...ai }
-  const note = done(Object.keys(ai).length ? 'AI keys received.' : '')
-  try { await drive.remove(f.id) } catch { return note + ' Remote deletion could not be confirmed; copied transfers cannot be revoked.' }
+  const note = done(Object.keys(ai).length ? (words?.('settings.pair.transferReceived') ?? 'AI keys received.') : '')
+  try { await drive.remove(f.id) } catch { return note + (words?.('settings.pair.transferDeletion') ?? ' Remote deletion could not be confirmed; copied transfers cannot be revoked.') }
   return note
 }
 
 // what the page was opened with: a pairing link, or Google coming back. Runs before the router
 // reads location.hash. Returns a note for the More screen, or ''.
-export async function takeFromUrl(): Promise<string> {
+export async function takeFromUrl(words?: PairWords): Promise<string> {
   const h = location.hash
   if (h.startsWith('#pair=')) {
     history.replaceState(null, '', location.pathname + '#/backup')     // More when the code is refused (state.svelte.ts backupHere)
-    const note = await acceptCode(h.slice(6))
-    return note
+    let display = ''
+    const note = await acceptCode(h.slice(6), words, value => { display = value })
+    return display || note
   }
   const q = new URLSearchParams(h.startsWith('#/') ? '' : h.slice(1))
   if (q.has('state') && (q.has('access_token') || q.has('error'))) {
     const want = ss.get(OAUTH)
     let back = '#/lib', note = ''
     try { back = JSON.parse(want || '{}').back || back } catch { /* default */ }
-    if (!want || q.get('state') !== JSON.parse(want).state) note = 'The Google sign-in did not match this page; try again.'
+    if (!want || q.get('state') !== JSON.parse(want).state) note = (words?.('settings.pair.oauthMismatch') ?? 'The Google sign-in did not match this page; try again.')
     else if (q.get('access_token')) {
       secrets.set(TOKEN, JSON.stringify({ access: q.get('access_token'), exp: Date.now() + (+(q.get('expires_in') || 3600) - 60) * 1000 }))
       ss.del(TRIED)
-    } else note = q.get('error') === 'access_denied' ? 'Google Drive was not connected.' : ''
+    } else note = q.get('error') === 'access_denied' ? (words?.('settings.pair.oauthNotConnected') ?? 'Google Drive was not connected.') : ''
     ss.del(OAUTH)
     history.replaceState(null, '', location.pathname + back)
     await secretsSaved()
@@ -190,7 +191,9 @@ export async function takeFromUrl(): Promise<string> {
 }
 
 // keep a pairing code (the part after #pair=); a note for the More screen
-async function acceptCode(code: string): Promise<string> {
+type PairWords = (key: string, params?: Record<string, unknown>) => string
+async function acceptCode(code: string, words?: PairWords, onNote?: (display: string) => void): Promise<string> {
+  const note = (key: string, params: Record<string, unknown>, english: string) => { if (words) onNote?.(words(key, params)); return english }
   try {
     const p = b64json<Pairing>(code)
     if (code.length > 12000 || !valid(p)) throw new Error('invalid pairing')
@@ -205,7 +208,7 @@ async function acceptCode(code: string): Promise<string> {
     const old = pairing()
     const quarantined = secrets.get(PAIR)
     if (!old && quarantined) {
-      if (!globalThis.confirm('Replace the quarantined pairing? Existing offline content stays on this phone.')) return 'Pairing cancelled.'
+      if (!globalThis.confirm((words?.('settings.pair.quarantine') ?? 'Replace the quarantined pairing? Existing offline content stays on this phone.'))) return note('settings.pair.cancelled', {}, 'Pairing cancelled.')
       secrets.set('bp-pair-quarantine', quarantined)
     }
     // the same account: the same Google account, OAuth client, project and Drive endpoint; the same library besides: a
@@ -213,7 +216,7 @@ async function acceptCode(code: string): Promise<string> {
     const fold = (s?: string) => (s ?? '').toLowerCase()
     const sameAccount = !!old && (['e', 'c', 'p', 'd'] as const).every(k => fold(old[k]) === fold(p[k]))
     const same = !!old && !old.solo && sameAccount && (old.l === p.l || old.k === p.k)
-    if ((old?.solo || old && !same) && !globalThis.confirm(old.solo ? 'Send this phone’s library to this PC? Only continue if you trust this PC and its pairing code.' : 'Replace this phone’s paired PC and account?')) return 'Pairing cancelled.'
+    if ((old?.solo || old && !same) && !globalThis.confirm(old.solo ? (words?.('settings.pair.trustPc') ?? 'Send this phone’s library to this PC? Only continue if you trust this PC and its pairing code.') : (words?.('settings.pair.replacePc') ?? 'Replace this phone’s paired PC and account?'))) return note('settings.pair.cancelled', {}, 'Pairing cancelled.')
     verified.set(p.k, p.f)
     // a phone used without a PC sends its whole library to the PC it now pairs with (MirrorSource.ready)
     if (old?.solo) localStorage.setItem(REQUEUE, '1')  // refuse pairing if its retained library cannot be queued
@@ -225,10 +228,10 @@ async function acceptCode(code: string): Promise<string> {
       ...(old?.k === p.k && old.l === p.l && old.accessVersion === 2 ? { accessVersion: 2 } : {}) }))
     if (!same) { secrets.set(TOKEN, null); ss.del(OAUTH) }
     ss.set('bp-pair-setup', '1')
-    if (same && (old.f !== p.f || old.l !== p.l) && old.g) return `Paired again. Kept your Google sign-in (${old.g}).`
-    return same ? 'Paired again with the same PC.' : 'Paired with your PC.'
+    if (same && (old.f !== p.f || old.l !== p.l) && old.g) return note('settings.pair.keptAccount', { account: old.g }, `Paired again. Kept your Google sign-in (${old.g}).`)
+    return same ? note('settings.pair.samePc', {}, 'Paired again with the same PC.') : note('settings.pair.paired', {}, 'Paired with your PC.')
   } catch {
-    return 'That pairing code could not be read. Show the QR on the PC again.'
+    return note('settings.pair.unreadable', {}, 'That pairing code could not be read. Show the QR on the PC again.')
   }
 }
 
@@ -279,9 +282,9 @@ export function takeRequeue(): boolean {
 }
 
 // a pairing link scanned or pasted in the app: '' when it is not one, else the note
-export async function acceptLink(text: string): Promise<string> {
+export async function acceptLink(text: string, words?: PairWords, onNote?: (display: string) => void): Promise<string> {
   const i = text.indexOf('#pair=')
-  return i < 0 ? '' : acceptCode(text.slice(i + 6).trim())
+  return i < 0 ? '' : acceptCode(text.slice(i + 6).trim(), words, onNote)
 }
 
 // the Google token, whichever account it is for

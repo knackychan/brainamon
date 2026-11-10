@@ -40,32 +40,32 @@ export function projectOf(clientId: string): string {
   return m ? m[1] : ''
 }
 
-export function diagnoseNoLibrary(f: NoLibraryFacts): NoLibraryWhy {
-  const as = f.signedAs ? `Signed in as ${f.signedAs}. ` : ''
+export function diagnoseNoLibrary(f: NoLibraryFacts, words?: (key: string, params?: Record<string, unknown>) => string): NoLibraryWhy {
+  const as = f.signedAs ? (words?.('backup.diagnose.account', { account: f.signedAs }) ?? `Signed in as ${f.signedAs}. `) : ''
   if (!f.listed) {
-    return { cause: 'unknown', title: 'Could not look in Google Drive', changeAccount: true, pairAgain: true,
-      message: `${as}No library in Google Drive for this pairing, and its folder could not be listed${f.problem ? ` (${f.problem})` : ''}. Try Sync again; if it stays, Change account or pair again.` }
+    return { cause: 'unknown', title: (words?.('backup.diagnose.unknown.title') ?? 'Could not look in Google Drive'), changeAccount: true, pairAgain: true,
+      message: (words?.('backup.diagnose.unknown.message', { signedAs: as, phoneProject: f.phoneProject, pcProject: f.pcProject, pcAccount: f.pcAccount, problem: f.problem ? ` (${f.problem})` : '' }) ?? `${as}No library in Google Drive for this pairing, and its folder could not be listed${f.problem ? ` (${f.problem})` : ''}. Try Sync again; if it stays, Change account or pair again.`) }
   }
   if (f.ours) {
-    return { cause: 'uploading', title: 'The PC is still uploading', changeAccount: false, pairAgain: false,
-      message: `${as}The PC has started its first upload to this account and has not finished. Sync again in a few minutes (PC: Settings > Backup & phones shows the progress).` }
+    return { cause: 'uploading', title: (words?.('backup.diagnose.uploading.title') ?? 'The PC is still uploading'), changeAccount: false, pairAgain: false,
+      message: (words?.('backup.diagnose.uploading.message', { signedAs: as, phoneProject: f.phoneProject, pcProject: f.pcProject, pcAccount: f.pcAccount, problem: f.problem ? ` (${f.problem})` : '' }) ?? `${as}The PC has started its first upload to this account and has not finished. Sync again in a few minutes (PC: Settings > Backup & phones shows the progress).`) }
   }
   if (f.listed.some(isLibraryName)) {
-    return { cause: 'key', title: "This phone's key is not the PC's", changeAccount: false, pairAgain: true,
-      message: `${as}Google Drive holds a library, but not one this phone's key opens: the PC made a new key (Remove all phones or Reset backup), or this phone was paired before that. Pair again with the new code from your PC (Settings > Backup & phones > Add a phone).` }
+    return { cause: 'key', title: (words?.('backup.diagnose.key.title') ?? "This phone's key is not the PC's"), changeAccount: false, pairAgain: true,
+      message: (words?.('backup.diagnose.key.message', { signedAs: as, phoneProject: f.phoneProject, pcProject: f.pcProject, pcAccount: f.pcAccount, problem: f.problem ? ` (${f.problem})` : '' }) ?? `${as}Google Drive holds a library, but not one this phone's key opens: the PC made a new key (Remove all phones or Reset backup), or this phone was paired before that. Pair again with the new code from your PC (Settings > Backup & phones > Add a phone).`) }
   }
   if (f.listed.some(isVaultName)) {
-    return { cause: 'mirror-off', title: 'The PC is not uploading the library', changeAccount: false, pairAgain: false,
-      message: `${as}The PC keeps the Obsidian vault in this Drive but is not backing up the library. On the PC open Settings > Backup & phones and click Turn on backup.` }
+    return { cause: 'mirror-off', title: (words?.('backup.diagnose.mirror-off.title') ?? 'The PC is not uploading the library'), changeAccount: false, pairAgain: false,
+      message: (words?.('backup.diagnose.mirror-off.message', { signedAs: as, phoneProject: f.phoneProject, pcProject: f.pcProject, pcAccount: f.pcAccount, problem: f.problem ? ` (${f.problem})` : '' }) ?? `${as}The PC keeps the Obsidian vault in this Drive but is not backing up the library. On the PC open Settings > Backup & phones and click Turn on backup.`) }
   }
   if (f.pcProject && f.phoneProject && f.pcProject !== f.phoneProject) {
-    return { cause: 'project', title: "Another Google Cloud project than the PC's", changeAccount: false, pairAgain: false,
-      message: `${as}This phone's Google sign-in app is in another Google Cloud project (${f.phoneProject}) than your PC's (${f.pcProject}), and each project has its own hidden folder. Register the phone's Android sign-in in the PC's project (mobile-shell/README.md), then Sync.` }
+    return { cause: 'project', title: (words?.('backup.diagnose.project.title') ?? "Another Google Cloud project than the PC's"), changeAccount: false, pairAgain: false,
+      message: (words?.('backup.diagnose.project.message', { signedAs: as, phoneProject: f.phoneProject, pcProject: f.pcProject, pcAccount: f.pcAccount, problem: f.problem ? ` (${f.problem})` : '' }) ?? `${as}This phone's Google sign-in app is in another Google Cloud project (${f.phoneProject}) than your PC's (${f.pcProject}), and each project has its own hidden folder. Register the phone's Android sign-in in the PC's project (mobile-shell/README.md), then Sync.`) }
   }
   if (!f.pcAccount) {
-    return { cause: 'account', title: 'The account could not be checked', changeAccount: true, pairAgain: true,
-      message: `${as}The folder is empty, and the PC did not say which account it backs up to, so this one could not be checked. On the PC open Settings > Backup & phones and read Google account: if it is another account, Change account here; then pair again so the phone learns it.` }
+    return { cause: 'account', title: (words?.('backup.diagnose.account.title') ?? 'The account could not be checked'), changeAccount: true, pairAgain: true,
+      message: (words?.('backup.diagnose.account.message', { signedAs: as, phoneProject: f.phoneProject, pcProject: f.pcProject, pcAccount: f.pcAccount, problem: f.problem ? ` (${f.problem})` : '' }) ?? `${as}The folder is empty, and the PC did not say which account it backs up to, so this one could not be checked. On the PC open Settings > Backup & phones and read Google account: if it is another account, Change account here; then pair again so the phone learns it.`) }
   }
-  return { cause: 'empty', title: 'Nothing uploaded to this account', changeAccount: false, pairAgain: false,
-    message: `${as}That is the account your PC backs up to (${f.pcAccount}), but its hidden folder is empty. Either the PC has not backed up yet (PC: Settings > Backup & phones > Turn on backup), or this phone's Google sign-in app is in another Google Cloud project than the PC's.` }
+  return { cause: 'empty', title: (words?.('backup.diagnose.empty.title') ?? 'Nothing uploaded to this account'), changeAccount: false, pairAgain: false,
+    message: (words?.('backup.diagnose.empty.message', { signedAs: as, phoneProject: f.phoneProject, pcProject: f.pcProject, pcAccount: f.pcAccount, problem: f.problem ? ` (${f.problem})` : '' }) ?? `${as}That is the account your PC backs up to (${f.pcAccount}), but its hidden folder is empty. Either the PC has not backed up yet (PC: Settings > Backup & phones > Turn on backup), or this phone's Google sign-in app is in another Google Cloud project than the PC's.`) }
 }

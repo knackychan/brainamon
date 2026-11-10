@@ -684,6 +684,8 @@ class PhoneGalleryBrowser(unittest.TestCase):
                 for name, selector in (('item-final', '.phones > div .ph'), ('item-keep-delete', '.option[data-choice="d1"] .ph'),
                                        ('item-strip', '.option[data-choice="b"] .ph'), ('item-meta', '.option[data-choice="m2"] .mini'),
                                        ('item-corner-2', '.option[data-choice="k2"] .mini, .option[data-choice="k2"] .strip')):
+                    if not (mockups / f'{name}.html').is_file():
+                        continue        # the approved mockups live in the private project folder, which a public checkout does not have
                     html = '\n'.join(line for line in (mockups / f'{name}.html').read_text(encoding='utf-8').splitlines()
                                      if not line.startswith('<link'))
                     reference.set_content(f'<base href="{base}/"><style>{fonts.replace("Archivo Variable", "Archivo")}</style>' + html)

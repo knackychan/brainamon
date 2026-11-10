@@ -54,6 +54,8 @@ def capture(page, language='en', drift=False):
 @unittest.skipUnless(importlib.util.find_spec('playwright') and (ROOT / 'web/node_modules/vite/bin/vite.js').is_file(),
                      'requires installed Playwright/Edge and web dependencies')
 class PhoneAiLanguageTest(unittest.TestCase):
+    @unittest.skipUnless((ROOT / 'projects/phone-languages/plans/07-ai-language.md').is_file(),
+                         'the project plan lives in the private project folder, which a public checkout does not have')
     def test_fixed_instruction_table_is_the_complete_plan_copy(self):
         plan = (ROOT / 'projects/phone-languages/plans/07-ai-language.md').read_text(encoding='utf-8')
         expected = {'fr': {}, 'zh-Hant': {}}

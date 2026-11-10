@@ -6,11 +6,15 @@ import unittest
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('phone_review', ROOT/'projects/phone-languages/review.py')
-review = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(review)
+TOOL = ROOT/'projects/phone-languages/review.py'
+review = None
+if TOOL.is_file():
+    spec = importlib.util.spec_from_file_location('phone_review', TOOL)
+    review = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(review)
 
 
+@unittest.skipUnless(review, 'the review packet tool lives in the private project folder, which a public checkout does not have')
 class PhoneReviewTest(unittest.TestCase):
     def test_all_branches_and_hostile_text_are_escaped_and_missing_screenshots_honest(self):
         hostile = '<script>alert("x")</script><a:bad>{name}</a>'

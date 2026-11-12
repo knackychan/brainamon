@@ -2,6 +2,8 @@ import type { messages as English } from '../en/imports.ts'
 import type { Localized } from '../en/index.ts'
 
 export const messages = {
+  "imports.unsave.label": "Retirer les publications collectées des favoris",
+  "imports.unsave.help": "Désactivé par défaut. Retire les nouvelles publications des favoris après enregistrement des résultats sur ce téléphone. Vérifiez puis importez les résultats. Les publications déjà dans votre bibliothèque restent en favoris.",
   "imports.title": "Importer les favoris",
   "imports.intro": "Les publications enregistrées sur ces sites deviennent des cartes dans votre bibliothèque.",
   "imports.platforms": "Plateformes à développer",
@@ -33,7 +35,8 @@ export const messages = {
   "imports.file.importing": "Import du fichier…",
   "imports.how.title": "Fonctionnement de l’import",
   "imports.how.export": "Demander un export ouvre la page officielle. Envoyez la demande sur la plateforme et revenez quand le fichier est prêt.",
-  "imports.how.scan": "Fichier importe les favoris Instagram en ZIP / JSON. Parcourir lit les publications et reels Instagram, les reels et vidéos Facebook, et les publications Threads si le navigateur du site est disponible. Pour TikTok, il ouvre seulement la page de connexion.",
+  "imports.how.scan": "Fichier importe les favoris Instagram en ZIP / JSON. Parcourir lit les publications et reels Instagram, les reels et vidéos Facebook, et les publications Threads si le navigateur du site est disponible. TikTok sera bientôt disponible.",
+  "imports.tiktok.comingSoon": "Bientôt disponible",
   "imports.result.added": {"one": "{n} lien ajouté", "other": "{n} liens ajoutés"},
   "imports.result.duplicates": {"one": "{n} déjà dans la bibliothèque", "other": "{n} déjà dans la bibliothèque"},
   "imports.result.skipped": {"one": "{n} entrée sans lien ignorée", "other": "{n} entrées sans lien ignorées"},

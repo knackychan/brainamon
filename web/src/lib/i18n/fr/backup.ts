@@ -2,6 +2,7 @@ import type { messages as English } from '../en/backup.ts'
 import type { Localized } from '../en/index.ts'
 
 export const messages = {
+  "backup.vault.verified": "Dernière vérification : {done}/{total} fichiers du PC",
 
 
 
@@ -255,7 +256,7 @@ export const messages = {
   "backup.state.keyScan": "Scannez le nouveau code sur le PC : Paramètres > Sauvegarde et téléphones > Ajouter un téléphone.",
   "backup.state.keyLink": "Ouvrez le nouveau lien d’association du PC : Paramètres > Sauvegarde et téléphones > Ajouter un téléphone.",
   "backup.state.backupOff": "Votre PC ne sauvegarde pas la bibliothèque.",
-  "backup.state.backupOffHelp": "Sur le PC : Paramètres > Sauvegarde et téléphones > Activer la sauvegarde.",
+  "backup.state.backupOffHelp": "Sur le PC : Settings > Backup & phones > Turn on backup ou Resume backup.",
   "backup.state.noLibrary": "Pas encore de bibliothèque dans Google Drive.",
   "backup.state.connecting": "Connexion à Google Drive…",
   "backup.state.checking": "Vérification de Google Drive…",
@@ -325,7 +326,7 @@ export const messages = {
   "backup.pair.withPc": "Associer un PC",
   "backup.warning.pair": "Scannez le code du PC (Paramètres > Sauvegarde et téléphones > Ajouter un téléphone). Tout ce qui est enregistré ici va sur le PC.",
   "backup.action.removeLocal": "Retirer de ce téléphone",
-  "backup.warning.removeLocal": "Retire la copie locale du téléphone. Les copies indépendantes restent là où vous les avez enregistrées.",
+  "backup.warning.removeLocal": "Supprime la bibliothèque, les copies hors ligne, les modifications en attente et les brouillons de capture de ce téléphone. Les copies indépendantes restent à leur emplacement.",
   "backup.warning.lostKey": "Une clé perdue ne peut pas déchiffrer l’ancien contenu. Gardez la bibliothèque locale et remplacez une sauvegarde choisie, ou supprimez cette sauvegarde et déconnectez-la.",
   "backup.help.choices": "Seules les sauvegardes de téléphones autonomes apparaissent ici. L’ID court les distingue ; les noms chiffrés ne permettent pas de savoir quel téléphone les a créées. Les fichiers de récupération et copies indépendantes restent à leur emplacement.",
   "backup.warning.taskSync": "Le contenu local et les modifications en attente restent ici. Les autres sauvegardes restent dans Drive. La synchronisation normale attend la fin de cette tâche.",

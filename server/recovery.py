@@ -11,7 +11,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
-from core import app_paths, entitlements, private_storage, sync_license
+from core import app_console, app_paths, entitlements, private_storage, sync_license
 from library import drive_client, mirror, recovery as R, restore, update_folder, vault_sync
 from library.export_targets import ExportStopped
 from server import cloud_errors, intents
@@ -102,6 +102,8 @@ class RecoveryService:
         self.journal = sync.cloud_dir / 'recovery-activation.json'
         self.lock = threading.RLock()
         self.mutation = threading.RLock()   # held by reconnect(); conflicting local cloud changes try it without waiting (gate)
+        self._gate_state_lock = threading.Lock()
+        self._gate_depth = 0
         self.reconnecting = False           # SyncService._start_control stays off while it is set
         self.cancel = threading.Event()
         self.thread = None
@@ -158,6 +160,15 @@ class RecoveryService:
             raise R.RecoveryError('Google did not confirm the account. Reconnect before continuing.')
         return email.casefold()
 
+    def _activation_pending(self):
+        try:
+            private_storage.read(self.journal, readonly=True)
+            return True
+        except FileNotFoundError:
+            return False
+        except Exception:
+            return True
+
     def status(self):
         # Protected files are atomically replaced. Never wait on the lock held through network work.
         # Polling never migrates, re-secures or rewrites protected files.
@@ -174,7 +185,7 @@ class RecoveryService:
                 # the key was replaced when phones were removed and the new recovery file is not saved and read back yet (D1)
                 'file_outdated': bool(replaced), 'replaced_at': replaced.get('replaced_at', 0) if replaced else 0,
                 'rotation_pending': bool(pending), 'restored': bool(state and state.get('restored')),
-                'restart_required': bool(state and state.get('restored') and state.get('target') != str(self.sync.data_dir.resolve())),
+                'restart_required': bool(self._activation_pending() or (state and state.get('restored') and state.get('target') != str(self.sync.data_dir.resolve()))),
                 'verified_at': state.get('verified_at', 0) if state else 0,
                 'saved_at': state.get('saved_at', 0) if state else 0,       # the kit was written to a file (R6), checked or not
                 'setup_at': state['record']['header']['created'] if state else 0,       # s: when the passphrase was set (R5, R7)
@@ -215,24 +226,40 @@ class RecoveryService:
     @contextlib.contextmanager
     def gate(self):
         """A local cloud change that must not race reconnect: never waits, refuses while reconnect runs."""
-        if not self.mutation.acquire(blocking=False):
-            activity = self.sync.st.get('recovery_activity') or {}
-            if activity.get('state') == 'running':
-                raise Busy(activity['step'] + ' Wait for this step to finish, then retry.')
-            raise Busy()
+        with self._gate_state_lock:
+            if not self.mutation.acquire(blocking=False):
+                activity = self.sync.st.get('recovery_activity') or {}
+                if activity.get('state') == 'running':
+                    raise Busy(activity['step'] + ' Wait for this step to finish, then retry.')
+                raise Busy()
+            self._gate_depth += 1
+            if self._gate_depth == 1:
+                self._gate_status(True)
         try:
             yield
         finally:
-            self.mutation.release()
+            with self._gate_state_lock:
+                self._gate_depth -= 1
+                self.mutation.release()
+                if not self._gate_depth:
+                    self._gate_status(False)
+
+    def _gate_status(self, active):
+        try:
+            self.sync._set(recovery_gate_active=active)
+        except Exception:
+            app_console.emit('log', 'Cloud readiness status could not be published.', level='warning')
 
     @contextlib.contextmanager
-    def activity(self, action, step):
+    def activity(self, action, step, *, step_count=None):
         """One foreground cloud change, with status that survives closing Settings."""
         with self.gate():
             if not self.lock.acquire(blocking=False):
                 raise Busy()
-            self.sync._set(recovery_activity={'action': action, 'state': 'running', 'step': step,
-                                              'started': int(time.time() * 1000)})
+            status = {'action': action, 'state': 'running', 'step': step, 'started': int(time.time() * 1000)}
+            if step_count is not None:
+                status.update(step_index=1, step_count=step_count)
+            self.sync._set(recovery_activity=status)
             try:
                 yield
             except Exception as e:
@@ -247,10 +274,13 @@ class RecoveryService:
             finally:
                 self.lock.release()
 
-    def progress(self, step):
+    def progress(self, step, *, step_index=None):
         activity = self.sync.st.get('recovery_activity')
         if activity and activity['state'] == 'running':
-            self.sync._set(recovery_activity={**activity, 'step': step})
+            status = {**activity, 'step': step}
+            if step_index is not None:
+                status['step_index'] = step_index
+            self.sync._set(recovery_activity=status)
 
     def forget_reconnect(self):
         """The account changed: the preview's Reconnect answer is stale (restore re-checks the account itself)."""
@@ -695,7 +725,7 @@ class RecoveryService:
     def save_kit(self, path):
         with self.lock:
             value = self.export_kit()
-            target = restore.destination(path, (self.sync.data_dir, self.sync.cloud_dir, app_paths.LOCAL))
+            target = restore.destination(path, (self.sync.data_dir, self.sync.cloud_dir, app_paths.LOCAL), kind='file')
             raw = R.dump(value)
             with target.open('xb') as stream:
                 stream.write(raw)
@@ -970,7 +1000,7 @@ class RecoveryService:
         R.password_bytes(password)
         # An activity record (F14): the progress and any failure stay readable after Settings closes. It holds the
         # mutation gate, so conflicting local cloud changes refuse at once as before.
-        with self.activity('reconnect', 'Checking this library against Google Drive…'):
+        with self.activity('reconnect', 'Checking this library against Google Drive…', step_count=4):
             self.reconnecting = True
             try:
                 with self.lock:
@@ -1004,7 +1034,7 @@ class RecoveryService:
         key, snap = session['key'], session['snapshot']
         # Read-only token: a refresh stays in memory, so nothing is saved before the refusal checks pass.
         client = self._client(readonly=True)
-        self.progress('Checking the Google account and that this folder matches the latest upload…')
+        self.progress('Checking the Google account and that this folder matches the latest upload…', step_index=2)
         account = self._account(client)
         if account != session['account']:
             raise ReconnectRefused('account_changed')
@@ -1019,7 +1049,7 @@ class RecoveryService:
                                       'data': str(sync.data_dir)}))
         record, secret = R.create(key, password, account, library=identity['library'])
         library, generation, device = record['header']['library'], record['header']['generation'], secrets.token_hex(16)
-        self.progress('Saving the new recovery setup and uploader record in Google Drive…')
+        self.progress('Saving the new recovery setup and uploader record in Google Drive…', step_index=3)
         try:
             raw = R.dump(record)
             fid = client.upload(R.name(record), data=raw)
@@ -1042,7 +1072,7 @@ class RecoveryService:
             # Drive may already have changed: never claim a rollback, never undo another PC's uploader record.
             self._interrupted(session)
             raise R.RecoveryError(HANDOVER if str(e) == HANDOVER else INTERRUPTED) from None
-        self.progress('Keeping this folder with the recovered key…')
+        self.progress('Keeping this folder with the recovered key…', step_index=4)
         try:
             key.save(sync.key_path)
             self._save({'record': record, 'secret': R.encode(secret), 'device': device, 'account': account,
@@ -1053,7 +1083,7 @@ class RecoveryService:
         # No fallible work after the local commit: uploads, vault sync and license control stay stopped.
         self.session = None
         self.job = {'state': 'idle', 'done': 0, 'total': 0, 'error': '', 'destination': ''}
-        sync._set(state='off', error='')
+        sync._set(state='off', error='', key_missing=False)
         return R.kit(record, R.encode(secret))
 
 
@@ -1116,7 +1146,7 @@ class RecoveryService:
             return self.status()
 
     def activate(self):
-        with self.lock:
+        with self.gate(), self.lock:
             self._idle()
             self._stop_writers()
             s = self.session
@@ -1148,7 +1178,16 @@ class RecoveryService:
                     record['removal'] = {'new': fresh.text(), 'record': sealed, 'secret': R.encode(secret)}
                 s['password'] = ''
             private_storage.write(self.journal, R.dump(record))
-            self.finish_activation()
+            try:
+                self.sync.clear_pause()
+            except Exception:
+                app_console.emit('log', 'Activation was saved; pause settings will be cleared during the restart.', level='warning')
+            try:
+                self.finish_activation()
+            except Exception:
+                app_console.emit('log', 'Activation was saved and will continue during the restart.', level='warning')
+                self.job.update(error='Activation was saved. Restart Brainamon to finish.')
+                return {'restart': True, 'destination': str(s['target']), 'pending': True}
             self.job.update(state='activated')
             return {'restart': True, 'destination': str(s['target'])}
 
@@ -1400,7 +1439,7 @@ class RecoveryService:
         """Restart now: the newer backup must still be the one downloaded (else its new changes are fetched first); then the
         journal is written and the swap runs at the next start. Uploads stay off until then (the guard reads the journal)."""
         sync = self.sync
-        with self.lock:
+        with self.gate(), self.lock:
             it = sync.intents.find(intents.UPDATE)
             if not it or it['stage'] != 'downloaded':
                 raise R.RecoveryError('The update is not downloaded yet.')
@@ -1415,8 +1454,15 @@ class RecoveryService:
             private_storage.write(self.journal, R.dump({
                 'kind': 'update', 'activation': secrets.token_hex(16), 'target': str(data), 'stage': p['stage'],
                 'before': str(update_folder.before_folder(data)), 'step': 'prepared'}))
-            sync.intents.update(intents.UPDATE, stage='swap')
-            sync._emit()
+            try:
+                sync.clear_pause()
+            except Exception:
+                app_console.emit('log', 'Update was saved; pause settings will be cleared during the restart.', level='warning')
+            try:
+                sync.intents.update(intents.UPDATE, stage='swap')
+                sync._emit()
+            except Exception:
+                app_console.emit('log', 'Update was saved and will continue during the restart.', level='warning')
             return {'restart': True, 'destination': str(data)}
 
     def _finish_update(self, j):

@@ -15,7 +15,7 @@ export const messages = {
   "shell.sync.readDriveStep": "讀取雲端硬碟鏡像",
   "shell.sync.libraryStep": "更新資料庫",
   "shell.sync.readPcStep": "讀取電腦",
-  "shell.sync.setupFirst": "請先在更多中設定 Brainamon：與電腦配對，或以不使用電腦方式使用。",
+  "shell.sync.setupFirst": "請先在設定中設定 Brainamon：與電腦配對，或以不使用電腦方式使用。",
   "shell.sync.offlineCopy": "離線：手機會保留副本，直到恢復連線。",
   "shell.sync.connectQueue": "請在備份與手機中連結 Google 雲端硬碟，以傳送佇列中的變更。",
   "shell.sync.waitingSignIn": "等待 Google 登入",

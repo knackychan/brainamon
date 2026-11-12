@@ -4,6 +4,8 @@ import json
 import re
 import unittest
 
+from tests.phone_pages import open_group
+
 from tests.test_mobile_info_browser import PAIR, ROOT, mobile_browser, synthetic_phone
 from tests import test_phone_note_page_browser
 
@@ -127,10 +129,10 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
                 category:await kv.get('wiskit-category-proposal:' + f), canvas:await kv.get('wiskit-canvas-proposal:' + f), onboard:await kv.get('onboard')}
             }"""
             before = page.evaluate(snapshot)
-            page.locator('.m-group').filter(has=page.locator('.m-group-words b', has_text='Look')).locator('.m-group-row').click()
+            open_group(page, 'Look')
             with page.expect_navigation(wait_until='domcontentloaded'):
                 page.get_by_role('group', name='Language', exact=True).get_by_role('button', name='FR', exact=True).click()
-            expect(page.locator('#m-status')).to_be_visible()
+            expect(page.locator('.m-page-keys')).to_be_visible()
             self.assertEqual(page.evaluate(snapshot), before)
             self.assertEqual(errors, [])
 
@@ -171,7 +173,7 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
                     with self.subTest(language=language, theme=theme), synthetic_phone(browser, base, 320, 720, theme, language=language) as (page, errors):
                         page.route('**/api/**', lambda route: route.abort())
                         page.goto(base + '/mobile.html#/more', wait_until='domcontentloaded')
-                        page.locator('.m-group').filter(has=page.locator('.m-group-words b', has_text=WORDS05[language]['look'])).locator('.m-group-row').click()
+                        open_group(page, WORDS05[language]['look'])
                         group = page.get_by_role('group', name=label, exact=True)
                         expect(group).to_be_visible()
                         for button in group.get_by_role('button').all():
@@ -188,7 +190,7 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
             page.route('**/api/**', lambda route: route.abort())
             page.goto(base + '/mobile.html#/more', wait_until='domcontentloaded')
             page.wait_for_function("async () => { const {phone} = await import('/src/mobile/state.svelte.ts'); return phone.tried && !phone.refreshing }")
-            page.locator('.m-group').filter(has=page.locator('.m-group-words b', has_text='Storage')).locator('.m-group-row').click()
+            open_group(page, 'Storage')
             page.evaluate("""async () => {
               const { items } = await import('/src/mobile/store.ts')
               const all = items.all
@@ -197,7 +199,7 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
             page.get_by_role('button', name='Clear', exact=True).click()
             page.get_by_role('button', name='Sure? Clear', exact=True).click()
             page.wait_for_function('()=>!!window.__finishClear')
-            page.locator('.m-group').filter(has=page.locator('.m-group-words b', has_text='Look')).locator('.m-group-row').click()
+            open_group(page, 'Look')
             page.get_by_role('group', name='Language', exact=True).get_by_role('button', name='FR', exact=True).click()
             expect(page.get_by_role('alert')).to_contain_text('Finish or save your work')
             self.assertEqual(page.evaluate("localStorage.getItem('bp-lang')"), 'en')
@@ -213,8 +215,7 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
             page.goto(base + '/mobile.html#/more', wait_until='domcontentloaded')
             page.wait_for_function("async () => { const {phone} = await import('/src/mobile/state.svelte.ts'); return phone.tried && !phone.refreshing }")
             page.evaluate("async () => (await import('/src/mobile/capture.svelte.ts')).shareIn('Synthetic preserved draft')")
-            look = page.locator('.m-group').filter(has=page.locator('.m-group-words b', has_text='Look')).locator('.m-group-row')
-            look.click()
+            open_group(page, 'Look')
             group = page.get_by_role('group', name='Language', exact=True)
             expect(group).to_be_visible()
             page.evaluate('window.__noReload = true')
@@ -224,12 +225,12 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
             for choice, stored, html_lang, group_name in [('FR', 'fr', 'fr', 'Langue'), ('繁中', 'zh-Hant', 'zh-Hant-TW', '語言'), ('自動', 'auto', 'en', 'Language')]:
                 with page.expect_navigation(wait_until='domcontentloaded'):
                     group.get_by_role('button', name=choice, exact=True).click()
-                expect(page.locator('#m-status')).to_be_visible()
+                expect(page.locator('.m-page-keys')).to_be_visible()
                 self.assertEqual(page.evaluate("localStorage.getItem('bp-lang')"), stored)
                 self.assertEqual(page.locator('html').get_attribute('lang'), html_lang)
                 self.assertTrue(page.evaluate("async () => (await (await import('/src/mobile/store.ts')).drafts.all()).some(d => d.text === 'Synthetic preserved draft')"))
                 title = {'en': 'Look', 'fr': 'Style', 'zh-Hant-TW': '外觀'}[html_lang]
-                page.locator('.m-group').filter(has=page.locator('.m-group-words b', has_text=title)).locator('.m-group-row').click()
+                open_group(page, title)
                 group = page.get_by_role('group', name=group_name, exact=True)
                 expect(group).to_be_visible()
                 self.assertFalse(page.evaluate('document.documentElement.scrollWidth > innerWidth'))
@@ -242,7 +243,7 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
             page.route('**/api/**', lambda route: route.abort())
             page.goto(base + '/mobile.html#/more', wait_until='domcontentloaded')
             page.wait_for_function("async () => { const {phone} = await import('/src/mobile/state.svelte.ts'); return phone.tried && !phone.refreshing }")
-            page.locator('.m-group').filter(has=page.locator('.m-group-words b', has_text='Look')).locator('.m-group-row').click()
+            open_group(page, 'Look')
             group = page.get_by_role('group', name='Language', exact=True)
             page.evaluate("""async () => {
               const { registerLanguageCheck } = await import('/src/mobile/language-switch.ts')
@@ -274,7 +275,7 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
             page.route('**/api/**', lambda route: route.abort())
             page.goto(base + '/mobile.html#/more', wait_until='domcontentloaded')
             page.wait_for_function("async () => { const {phone} = await import('/src/mobile/state.svelte.ts'); return phone.tried && !phone.refreshing }")
-            page.locator('.m-group').filter(has=page.locator('.m-group-words b', has_text='Look')).locator('.m-group-row').click()
+            open_group(page, 'Look')
             group = page.get_by_role('group', name='Language', exact=True)
             page.evaluate("""async () => {
               const { registerLanguageCheck } = await import('/src/mobile/language-switch.ts')
@@ -655,7 +656,7 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
         with mobile_browser() as (browser, base), synthetic_phone(browser, base, 390, 844, 'light') as (page, errors):
             page.route('**/api/**', lambda route: route.abort())
             page.goto(base + '/mobile.html#/more', wait_until='domcontentloaded')
-            page.locator('#m-ai .m-group-row').click()
+            open_group(page, page.evaluate("async()=>{const {t}=await import('/src/lib/i18n/index.ts');return t('settings.group.ai')}"))
             key = page.get_by_label('OpenAI API key', exact=True)
             expect(key).to_be_visible()
             key.fill('synthetic-unsaved-key')
@@ -668,11 +669,11 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
             }""")
             self.assertEqual(result['result'], {'status': 'blocked', 'reason': 'settings.language.unsavedKeys'})
             self.assertEqual((result['before'], result['after']), (None, None))
-            page.locator('.m-group').filter(has=page.locator('.m-group-words b', has_text='Look')).locator('.m-group-row').click()
+            open_group(page, 'Look')
             page.get_by_role('group', name='Language', exact=True).get_by_role('button', name='FR', exact=True).click()
             expect(page.get_by_role('alert')).to_contain_text('Save or clear your key draft')
             self.assertEqual(page.evaluate("localStorage.getItem('bp-lang')"), 'en')
-            page.locator('#m-ai .m-group-row').click()
+            open_group(page, page.evaluate("async()=>{const {t}=await import('/src/lib/i18n/index.ts');return t('settings.group.ai')}"))
             expect(key).to_have_value('synthetic-unsaved-key')
             self.assertIsNone(page.evaluate("async () => (await import('/src/mobile/state.svelte.ts')).source.pair.ai.openai ?? null"))
             self.assertEqual(errors, [])
@@ -706,7 +707,7 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
         with mobile_browser() as (browser, base), synthetic_phone(browser, base, 390, 844, 'light') as (page, errors):
             page.route('**/api/**', lambda route: route.abort())
             page.goto(base + '/mobile.html#/backup', wait_until='domcontentloaded')
-            page.locator('#m-phone .m-group-row').click()
+            open_group(page, page.evaluate("async()=>{const {t}=await import('/src/lib/i18n/index.ts');return t('backup.group.thisPhone')}"))
             page.get_by_text('Paste the pairing link instead', exact=True).click()
             link = page.get_by_label('Pairing link', exact=True)
             expect(link).to_be_visible()
@@ -1496,7 +1497,7 @@ class PhoneLanguageBuiltAppBrowser(unittest.TestCase):
                     def language(name):
                         page.evaluate("location.hash = '#/more'")
                         look = {'en': 'Look', 'fr': 'Style', 'zh-Hant-TW': '外觀'}[page.locator('html').get_attribute('lang')]
-                        page.locator('.m-group').filter(has=page.locator('.m-group-words b', has_text=look)).locator('.m-group-row').click()
+                        open_group(page, look)
                         group = page.get_by_role('group', name=name, exact=True)
                         expect(group).to_be_visible()
                         # Mounted controls can precede startup's guarded refresh and cache writes.
@@ -2026,13 +2027,13 @@ class PhoneNotesCanvasWiskitProcessingScenes(unittest.TestCase):
                     }""")
                     page.locator('#nt-body p').last.fill('Exact edited français 中文')
                     page.evaluate('location.hash="#/more"')
-                    expect(page.locator('#m-status')).to_be_visible()
+                    expect(page.locator('.m-page-keys')).to_be_visible()
                     blocked=page.evaluate("""async current=>{
                       const {switchLanguage}=await import('/src/mobile/language-switch.ts')
                       return switchLanguage(current==='fr'?'zh-Hant':'fr',current,async()=>{},{setItem(){throw Error('must not write')}},()=>{throw Error('must not reload')})
                     }""",language)
                     self.assertEqual(blocked,{'status':'blocked','reason':'settings.language.unsavedNote'})
-                    page.locator('.m-group').filter(has=page.locator('.m-group-words b',has_text=WORDS05[language]['look'])).locator('.m-group-row').click()
+                    open_group(page, WORDS05[language]['look'])
                     label={'en':'Language','fr':'Langue','zh-Hant':'語言'}[language]
                     page.get_by_role('group',name=label,exact=True).get_by_role('button',name='EN' if language=='fr' else 'FR',exact=True).click()
                     expect(page.get_by_role('alert')).to_be_visible()
@@ -2075,7 +2076,7 @@ class PhoneNotesCanvasWiskitProcessingScenes(unittest.TestCase):
                     before=page.evaluate(snapshot)
                     with page.expect_navigation(wait_until='domcontentloaded'):
                         page.evaluate("""async language=>{const {switchLanguage}=await import('/src/mobile/language-switch.ts');void switchLanguage(language,'en',async()=>{},localStorage,()=>location.reload())}""",language)
-                    expect(page.locator('#m-status')).to_be_visible()
+                    expect(page.locator('.m-page-keys')).to_be_visible()
                     self.assertEqual(page.locator('html').get_attribute('lang'),{'fr':'fr','zh-Hant':'zh-Hant-TW'}[language])
                     self.assertEqual(page.evaluate(snapshot),before)
                     page.evaluate('location.hash="#/jv"')
@@ -2197,7 +2198,7 @@ class PhoneSettingsBackupRecoveryScenes(unittest.TestCase):
                         vault_group = self.group(page, 'Obsidian')
                         expect(vault_group.locator('input')).to_have_value('Original vault name')
                         self.shot(page, language, theme, 'native-vault-group')
-                        vault_group.locator('.m-group-head button.m-info').click()
+                        page.locator('.m-page-keys button.m-info').click()
                         self.shot(page, language, theme, 'native-vault-help')
                         page.keyboard.press('Escape')
                         result = page.evaluate("""async()=>{
@@ -2242,8 +2243,8 @@ class PhoneSettingsBackupRecoveryScenes(unittest.TestCase):
                             self.group(page, w[group])
                             self.shot(page, language, theme, 'paired-' + group)
                         phone = self.group(page, w['phone'])
-                        disclosure = phone.locator('details').first
-                        disclosure.locator('summary').click()
+                        disclosure = phone.locator('details:not(.m-more-foot)').first
+                        disclosure.locator('summary').first.click()
                         link = disclosure.locator('input')
                         link.fill('https://example.test/#pair=invalid')
                         pair_key = {'en': 'Pair', 'fr': 'Associer', 'zh-Hant': '配對'}[language]
@@ -2253,7 +2254,7 @@ class PhoneSettingsBackupRecoveryScenes(unittest.TestCase):
                         self.shot(page, language, theme, 'paired-invalid-link')
                         link.fill('')
                         page.evaluate("location.hash='#/more'")
-                        expect(page.locator('#m-status')).to_be_visible()
+                        expect(page.locator('.m-page-keys')).to_be_visible()
                         self.group(page, w['sync'])
                         self.shot(page, language, theme, 'paired-more-sync')
                         self.group(page, w['ai'])
@@ -2295,7 +2296,7 @@ class PhoneSettingsBackupRecoveryScenes(unittest.TestCase):
                 self.group(page, group)
                 with page.expect_navigation(wait_until='domcontentloaded'):
                     page.get_by_role('button', name=choice, exact=True).click()
-                expect(page.locator('#m-status')).to_be_visible()
+                expect(page.locator('.m-page-keys')).to_be_visible()
                 page.wait_for_function("async()=>{const {phone}=await import('/src/mobile/state.svelte.ts');return phone.tried&&!phone.refreshing}")
                 self.assertEqual(page.evaluate(snapshot), before)
             self.assertEqual(calls, [])
@@ -2322,7 +2323,7 @@ class PhoneSettingsBackupRecoveryScenes(unittest.TestCase):
                           location.hash='#/backup/manage'
                         }""", base)
                         panel = page.locator('#phone-backup-choices')
-                        expect(panel.locator('select')).to_be_visible()
+                        expect(panel.locator('.m-picker')).to_be_visible()
                         page.evaluate('(theme)=>document.documentElement.dataset.theme=theme', theme)
                         self.shot(page, language, theme, 'backup-choice')
                         panel.get_by_role('button', name=w['replace'], exact=True).click()
@@ -2366,13 +2367,7 @@ class PhoneSettingsBackupRecoveryScenes(unittest.TestCase):
         }""")
 
     def group(self, page, title):
-        from playwright.sync_api import expect
-        group = page.locator('.m-group').filter(has=page.locator('.m-group-words>b').filter(has_text=re.compile('^' + re.escape(title) + '$'))).first
-        row = group.locator('button.m-group-row').first
-        if row.get_attribute('aria-expanded') != 'true':
-            row.click()
-        expect(row).to_have_attribute('aria-expanded', 'true')
-        return group
+        return open_group(page, title)
 
     def shot(self, page, language, theme, name):
         check_scene(self, page, language, theme, name, sweep='05')
@@ -2392,7 +2387,7 @@ class PhoneSettingsBackupRecoveryScenes(unittest.TestCase):
                                 for label in labels:
                                     expect(group.locator('.m-keys3 b').get_by_text(label, exact=True)).to_be_visible()
                             self.shot(page, language, theme, 'more-' + name)
-                            info = group.locator('.m-group-head button.m-info')
+                            info = page.locator('.m-page-keys button.m-info')
                             if info.count():
                                 info.click()
                                 expect(page.get_by_role('dialog')).to_be_visible()
@@ -2493,7 +2488,7 @@ class PhoneSettingsBackupRecoveryScenes(unittest.TestCase):
                             files:[{id:'synthetic-a',name:'synthetic-a'},{id:'synthetic-b',name:'synthetic-b'}],removed:1,items:3000,uploaded:true,bytes:1610612736}
                         }""")
                         expect(page.get_by_role('button', name=w['resume'], exact=True)).to_be_visible()
-                        expect(page.locator('#phone-backup-choices .task-steps')).to_be_visible()
+                        expect(page.locator('#phone-backup-choices .m-steps')).to_be_visible()
                         self.shot(page, language, theme, 'backup-paused-task')
                         page.evaluate("""async()=>{const {backup}=await import('/src/mobile/backup.svelte.ts');const {nativeError}=await import('/src/mobile/settings-words.ts');backup.task.paused=false;backup.error=nativeError('backup',new Error('<img src=x onerror=alert(1)> original Drive detail'));}""")
                         expect(page.get_by_role('button', name=w['retry'], exact=True)).to_be_visible()
@@ -2543,7 +2538,7 @@ class PhoneSettingsBackupRecoveryScenes(unittest.TestCase):
                                 self.assertEqual(page.evaluate('window.__fixtureAction'), shown['action']['id'])
                             self.shot(page, language, theme, f'state-{i:02d}-{shown["id"]}')
                         page.evaluate("location.hash='#/more'")
-                        expect(page.locator('#m-status')).to_be_visible()
+                        expect(page.locator('.m-page-keys')).to_be_visible()
                         page.evaluate("""async()=>{
                           const {phone,source}=await import('/src/mobile/state.svelte.ts'),{vault}=await import('/src/mobile/vault/auto.svelte.ts')
                           source.syncVault=async()=>({state:'idle',reason:'',summary:'Original PC summary'})
@@ -2995,7 +2990,7 @@ class PhoneCaptureImportVoiceScenes(unittest.TestCase):
               return {outbox:await outbox.all(),voice:await Promise.all((await queued()).map(async q=>({...q,blob:await q.blob.text()})))}
             }"""
             before=page.evaluate(snapshot)
-            page.locator('.m-group').filter(has=page.locator('.m-group-words b',has_text='Look')).locator('.m-group-row').click()
+            open_group(page, 'Look')
             with page.expect_navigation(wait_until='domcontentloaded'):
                 page.get_by_role('group',name='Language',exact=True).get_by_role('button',name='FR',exact=True).click()
             expect(page.locator('#m-status')).to_be_visible()
@@ -3119,12 +3114,12 @@ class PhoneOnboardingSharedScenes(unittest.TestCase):
                         expect(page).to_have_url(base + '/mobile.html#/cap')
                         page.evaluate("location.hash='#/lib'")
                         gs.locator('button.m-gs-row').last.press('Enter')
-                        expect(page).to_have_url(base + '/mobile.html#/more')
+                        expect(page).to_have_url(base + '/mobile.html#/more/wiskit')
                         ai = page.locator('#m-ai')
-                        expect(ai.locator('.m-group-words>b')).to_have_text(WORDS05[language]['ai'])
-                        expect(ai.locator('.m-group-row')).to_have_attribute('aria-expanded', 'true')
-                        expect(ai.locator('.m-group-row')).to_be_focused()
-                        ai.locator('.m-group-head button.m-info').press('Enter')
+                        expect(page.locator('h1')).to_have_text(WORDS05[language]['ai'])
+                        expect(ai).to_be_visible()
+                        expect(ai).to_be_focused()
+                        page.locator('.m-page-keys button.m-info').press('Enter')
                         self.shot(page, language, theme, 'current-setup-help')
                         page.keyboard.press('Escape')
                         page.evaluate("""async()=>{
@@ -3272,7 +3267,7 @@ class PhoneAiLanguageScenes(unittest.TestCase):
                         with self.subTest(language=language, theme=theme, large=large), synthetic_phone(browser, base, width, height, theme, language=language) as (page, errors):
                             page.route('**/api/**', lambda route: route.abort())
                             page.goto(base + '/mobile.html#/more', wait_until='domcontentloaded')
-                            expect(page.locator('#m-status')).to_be_visible()
+                            expect(page.locator('.m-page-keys')).to_be_visible()
                             page.evaluate("async()=>{window.__phone07=(await import('/src/mobile/state.svelte.ts')).phone}")
                             page.wait_for_function('() => window.__phone07.tried && !window.__phone07.refreshing')
                             page.evaluate(r"""async ({theme,sample}) => {
@@ -3340,7 +3335,7 @@ class PhoneLegalScenes08(unittest.TestCase):
                             page.route('**/api/**', lambda route: route.abort())
                             page.add_init_script("localStorage.setItem('bp-sync-paused','on')")
                             page.goto(base + '/mobile.html#/more', wait_until='domcontentloaded')
-                            expect(page.locator('#m-status')).to_be_visible()
+                            expect(page.locator('.m-page-keys')).to_be_visible()
                             page.evaluate("async()=>window.__phone08=(await import('/src/mobile/state.svelte.ts')).phone")
                             page.wait_for_function('()=>window.__phone08.tried&&!window.__phone08.refreshing')
                             page.evaluate('(theme)=>document.documentElement.dataset.theme=theme', theme)
@@ -3484,7 +3479,7 @@ class PhoneLegalProduction08(unittest.TestCase):
                     assets=[]
                     page.on('response',lambda response:assets.append((response.url,response.from_service_worker)) if '/assets/' in response.url else None)
                     page.goto(self.base+'/mobile.html#/more',wait_until='domcontentloaded')
-                    expect(page.locator('#m-status')).to_be_visible()
+                    expect(page.locator('.m-page-keys')).to_be_visible()
                     for choice,language,html_lang,look,label in [('FR','fr','fr','Look','Language'),('繁中','zh-Hant','zh-Hant-TW','Style','Langue')]:
                         PhoneSettingsBackupRecoveryScenes.group(test,page,look)
                         group=page.get_by_role('group',name=label,exact=True)
@@ -3492,7 +3487,7 @@ class PhoneLegalProduction08(unittest.TestCase):
                         self.settle(page)
                         with page.expect_navigation(wait_until='domcontentloaded'):
                             group.get_by_role('button',name=choice,exact=True).click()
-                        expect(page.locator('#m-status')).to_be_visible()
+                        expect(page.locator('.m-page-keys')).to_be_visible()
                         expect(page.locator('html')).to_have_attribute('lang',html_lang)
                         test.assertEqual(page.evaluate("localStorage.getItem('bp-lang')"),language)
                         PhoneSettingsBackupRecoveryScenes.group(test,page,WORDS05[language]['about'])
@@ -3523,7 +3518,7 @@ class PhoneValidation09Scenes(unittest.TestCase):
                         page.route('**/api/**', lambda route: route.abort())
                         page.add_init_script("localStorage.setItem('bp-sync-paused','on')")
                         page.goto(base+'/mobile.html#/more', wait_until='domcontentloaded')
-                        expect(page.locator('#m-status')).to_be_visible()
+                        expect(page.locator('.m-page-keys')).to_be_visible()
                         page.evaluate("async()=>window.__phone09=(await import('/src/mobile/state.svelte.ts')).phone")
                         page.wait_for_function('()=>window.__phone09.tried&&!window.__phone09.refreshing')
                         page.evaluate("""async theme=>{
@@ -3554,7 +3549,7 @@ class PhoneValidation09Scenes(unittest.TestCase):
                         page.route('**/api/**',lambda route:route.abort())
                         page.add_init_script("localStorage.setItem('bp-sync-paused','on')")
                         page.goto(base+'/mobile.html#/more',wait_until='domcontentloaded')
-                        expect(page.locator('#m-status')).to_be_visible()
+                        expect(page.locator('.m-page-keys')).to_be_visible()
                         page.evaluate("async()=>window.__phone09=(await import('/src/mobile/state.svelte.ts')).phone")
                         page.wait_for_function('()=>window.__phone09.tried&&!window.__phone09.refreshing')
                         result=page.evaluate("""async theme=>{

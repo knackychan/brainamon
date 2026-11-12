@@ -94,9 +94,12 @@ class Api:
             return None
         if kind == 'folder':
             res = w.create_file_dialog(webview.FileDialog.FOLDER)
+        elif kind == 'recovery-save':
+            res = w.create_file_dialog(webview.FileDialog.SAVE, file_types=PICK_TYPES['json'],
+                                       save_filename=f'Brainamon-recovery-{time.time_ns() // 1_000_000}.json')
         else:
             res = w.create_file_dialog(webview.FileDialog.OPEN, file_types=PICK_TYPES.get(kind, ()))
-        return list(res) if res else None
+        return [res] if isinstance(res, str) and res else list(res) if res else None
 
 
 def _running(port: int) -> bool:

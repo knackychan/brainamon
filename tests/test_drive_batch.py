@@ -1,5 +1,7 @@
 """Batch deletion keeps confirmed identities, partial success, retries and stop boundaries."""
 import threading
+import tempfile
+from pathlib import Path
 import unittest
 from unittest import mock
 
@@ -18,6 +20,49 @@ def response(statuses):
 class DriveBatchTest(unittest.TestCase):
     def setUp(self):
         self.client = drive_client.DriveClient('synthetic', 'synthetic', {'refresh_token': 'synthetic'})
+
+    def test_fixture_read_waits_for_an_in_progress_replacement(self):
+        from server.dev_drive import FakeDrive
+        with tempfile.TemporaryDirectory() as folder:
+            drive = FakeDrive(Path(folder))
+            fid = drive.put('grant', b'old complete grant')
+            entered, finished = threading.Event(), threading.Event()
+            result = []
+            def read():
+                entered.set()
+                result.append(drive.get(fid))
+                finished.set()
+            with drive.lock:
+                path = Path(folder) / f'{fid}.bin'
+                path.write_bytes(b'')  # intermediate state of the fixture's existing put()
+                reader = threading.Thread(target=read)
+                reader.start()
+                self.assertTrue(entered.wait(1))
+                blocked = not finished.wait(.05)
+                path.write_bytes(b'new complete grant')
+            reader.join(1)
+            self.assertTrue(blocked)
+            self.assertEqual(result, [b'new complete grant'])
+
+    def test_local_fixture_parses_real_batch_and_keeps_unselected_files(self):
+        from server.dev_drive import serve
+        with tempfile.TemporaryDirectory() as folder:
+            server = serve(Path(folder), port=0)
+            base = f'http://127.0.0.1:{server.server_port}'
+            try:
+                with mock.patch.object(drive_client, 'API', base + '/drive/v3'), \
+                     mock.patch.object(drive_client, 'UPLOAD', base + '/upload/drive/v3'), \
+                     mock.patch.object(drive_client, 'BATCH', base + '/batch/drive/v3'):
+                    client = drive_client.DriveClient('synthetic', 'synthetic', {'access_token': 'synthetic', 'expires_at': 4e9})
+                    old = client.upload('old', data=b'old')
+                    kept = client.upload('independent', data=b'keep')
+                    progress = []
+                    client.delete_many([old, 'missing'], lambda done, total: progress.append((done, total)))
+                    self.assertEqual(progress, [(1, 2), (2, 2)])
+                    self.assertEqual([f['id'] for f in client.list()], [kept])
+            finally:
+                server.shutdown()
+                server.server_close()
 
     def test_250_deletions_use_three_requests_and_report_confirmed_successes(self):
         progress = []
@@ -42,6 +87,28 @@ class DriveBatchTest(unittest.TestCase):
             with self.assertRaises(drive_client.DriveError):
                 self.client.delete_many(['old1', 'old2'], lambda d, t: progress.append((d, t)))
         self.assertEqual(progress, [(1, 2)])
+
+    def test_confirmed_ids_are_checkpointed_per_response_before_a_failed_retry(self):
+        deleted = mock.Mock()
+        with mock.patch.object(self.client, '_call', return_value=response([204, 403, 404])), \
+                mock.patch.object(self.client, 'delete', side_effect=drive_client.DriveError('refused', 403)):
+            with self.assertRaises(drive_client.DriveError):
+                self.client.delete_many(['old1', 'old2', 'old3'], deleted=deleted)
+        deleted.assert_called_once_with(['old1', 'old3'])
+
+    def test_failed_batch_drains_other_confirmed_batches_into_checkpoints(self):
+        barrier = threading.Barrier(4, timeout=5)
+        deleted = []
+        def call(*args, **kwargs):
+            barrier.wait()
+            if b'/old0 HTTP' in args[2]:
+                raise drive_client.DriveError('synthetic failure')
+            return response([204] * 100)
+        with mock.patch.object(self.client, '_call', side_effect=call):
+            with self.assertRaises(drive_client.DriveError):
+                self.client.delete_many([f'old{n}' for n in range(501)], deleted=deleted.append)
+        self.assertEqual(len(deleted), 3)
+        self.assertEqual({fid for batch in deleted for fid in batch}, {f'old{n}' for n in range(100, 400)})
 
     def test_invalid_or_incomplete_responses_never_report_completion(self):
         for reply in [response([204]), (200, {'Content-Type': 'text/plain'}, b'not multipart')]:

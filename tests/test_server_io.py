@@ -13,7 +13,7 @@ from unittest import mock
 
 from tests.auth_client import TestClient
 
-from core import config
+from core import app_paths, config
 from core import site_sessions
 from library import owner_vault
 from library import video_analyzer
@@ -37,7 +37,8 @@ class IoServerTest(unittest.TestCase):
         self.a = db.add_item({'url': 'https://x/a', 'description': 'Hip airplane', 'tags': 'hips'})
         db.close()
         self.env = self.root / '.env'
-        for p in (mock.patch.object(ytdlp, 'registry_get', lambda name: ''),
+        for p in (mock.patch.object(app_paths, 'LOCAL', self.root / 'local'),
+                  mock.patch.object(ytdlp, 'registry_get', lambda name: ''),
                   mock.patch.object(site_sessions, 'ROOT', self.root / 'sessions'),     # not this PC's saved sign-ins
                   mock.patch.object(config, 'ENV_PATH', self.env),
                   mock.patch.dict(os.environ, {'ANTHROPIC_API_KEY': 'sk-ant-secret', 'OPENAI_API_KEY': ''})):
@@ -81,12 +82,19 @@ class IoServerTest(unittest.TestCase):
 
     def test_scrapers(self):
         r = self.c.get('/api/scrapers').json()
-        self.assertEqual({p['key'] for p in r['platforms']}, {'facebook', 'instagram', 'youtube', 'reddit'})
+        self.assertEqual({p['key'] for p in r['platforms']}, {'facebook', 'instagram', 'youtube', 'reddit', 'threads'})
         self.assertEqual([p['key'] for p in r['playwright']], ['facebook', 'instagram', 'reddit', 'threads'])
         self.assertEqual(self.c.post('/api/scrapers/playwright', json={'platform': 'nope'}, headers=W).status_code, 404)
         self.assertFalse(r['watching'])
         js = self.c.get('/api/scrapers/facebook.js?stop_at=Last%20one&unsave=true').text
         self.assertIn("const STOP_AT = 'Last one';", js)
+        js = self.c.get('/api/scrapers/threads.js?stop_at=Last%20thread').text
+        self.assertIn("const STOP_AT = 'Last thread';", js)
+        self.assertIn("id: 'threads'", js)
+        self.assertNotIn('// THREADS_SITE', js)
+        with mock.patch.object(io_routes.webbrowser, 'open') as opened:
+            self.assertEqual(self.c.post('/api/scrapers/threads/open', headers=W).status_code, 200)
+            opened.assert_called_once_with('https://www.threads.com/saved')
         self.assertEqual(self.c.get('/api/scrapers/nope.js').status_code, 404)
         downloads = self.root / 'Downloads'
         downloads.mkdir()
@@ -142,6 +150,7 @@ class IoServerTest(unittest.TestCase):
         self.assertEqual(self.c.get('/api/export/obsidian/coverage').json(), {'indexed': 0, 'total': 1, 'low': True})
         self.assertEqual(self.c.post('/api/export/obsidian', json={'vault': str(self.root / 'nope')}, headers=W).status_code, 400)
         self.assertEqual(self.c.post('/api/export/obsidian', json={'vault': str(vault)}, headers=W).status_code, 200)
+        self.assertEqual(self.c.app.state.sync.status()['vault']['folder'], str(vault))
         last = self.wait()
         self.assertEqual(last['err'], 0, last)
         self.assertTrue((vault / 'Content Manager').is_dir())
@@ -226,7 +235,8 @@ class RegistryMigrationTest(unittest.TestCase):
             db.set_setting('setup_dismissed', '1')  # existing installation opts into legacy migration
             db.close()
             reg = {'yt_dlp_cookies': r'C:\c.txt', 'scrape_watch_dir': r'C:\Downloads'}
-            with mock.patch.object(ytdlp, 'registry_get', lambda n: reg.get(n, '')):
+            with mock.patch.object(app_paths, 'LOCAL', data / 'local'), \
+                    mock.patch.object(ytdlp, 'registry_get', lambda n: reg.get(n, '')):
                 with TestClient(create_app(data_dir=data, cloud_dir=data / 'test-cloud', port=8765, web_dist=data / 'x', cards_dir=data / 'x'), base_url=BASE) as c:
                     self.assertEqual(c.get('/api/settings').json()['downloads']['yt_dlp_cookies'], r'C:\c.txt')
                     c.put('/api/settings', json={'downloads': {'yt_dlp_cookies': ''}}, headers=W)

@@ -26,6 +26,7 @@ import { pairedFacts, soloFacts } from './mirror/phone-facts'
 import { recoveryFact } from './mirror/recovery-fact'
 import { beginLanguageWork } from './language-switch.ts'
 import { t, type Key } from '../lib/i18n/index.ts'
+import { nativeSync, nativeSyncText } from './sync/native.svelte'
 import { fmtAgo as agoText, fmtNum, fmtSize } from '../lib/i18n/format.ts'
 
 // A paired phone reads the Google Drive mirror (Phase 4); otherwise the desktop over USB
@@ -52,7 +53,7 @@ export const devSolo = import.meta.env.DEV && !isApp && ['127.0.0.1', 'localhost
 export const recoverHere = solo || (!mirrorSource && (isApp || devSolo))
 
 export type Tab = 'lib' | 'cv' | 'cap' | 'jv' | 'notes' | 'more'
-export interface Route { tab: Tab; item?: number; canvas?: string | null; note?: string; mynote?: string; chats?: boolean; synth?: string; imp?: boolean; save?: boolean; backup?: boolean; recover?: boolean; add?: boolean; find?: boolean; search?: boolean }
+export interface Route { tab: Tab; item?: number; canvas?: string | null; note?: string; mynote?: string; chats?: boolean; synth?: string; imp?: boolean; save?: boolean; backup?: boolean; manage?: boolean; group?: string; recover?: boolean; add?: boolean; find?: boolean; search?: boolean }
 // the route names are catalog keys; the words are looked up when a screen shows them (never at import time)
 const TAB_NAME: Record<Tab, Key> = { lib: 'shell.route.library', cv: 'shell.route.canvas', cap: 'shell.route.add', jv: 'shell.route.wiskit', notes: 'shell.route.notes', more: 'shell.route.more' }
 export const tabName = (tab: Tab): string => t(TAB_NAME[tab])
@@ -69,9 +70,9 @@ export function parseRoute(hash: string): Route {
     case 'mynotes': return { tab: 'notes', mynote: p[1] || undefined }
     case 'synth': return { tab: 'notes', synth: p[1] ?? '' }
     case 'notes-search': return { tab: 'notes', find: true }
-    case 'more': return { tab: 'more' }
+    case 'more': return ['sync', 'wiskit', 'obsidian', 'storage', 'look', 'about'].includes(p[1]) ? { tab: 'more', group: p[1] } : { tab: 'more' }
     case 'import': return { tab: 'cap', imp: true }
-    case 'backup': return backupHere ? { tab: 'more', backup: true } : { tab: 'more' }
+    case 'backup': return backupHere ? { tab: 'more', backup: true, ...(p[1] === 'manage' ? { manage: true } : {}) } : { tab: 'more' }
     case 'recover': return recoverHere ? { tab: 'more', recover: true } : { tab: 'more' }
     default: return { tab: 'lib' }
   }
@@ -206,14 +207,19 @@ export async function boot() {
     if (location.hash.startsWith('#pair=')) { location.reload(); return }
     if (acceptHash(location.hash)) phone.route = parseRoute(location.hash)
   })
-  window.addEventListener('online', () => { phone.online = true; refresh() })
   window.addEventListener('offline', () => { phone.online = false })
+  let resumeTimer = 0
   const resume = () => {
-    if (!mirrorSource || syncPaused()) return
-    if (phone.refreshing || (phone.sync && !phone.sync.end)) { window.setTimeout(resume, 250); return }
-    phone.sync = null
-    void syncNow()
+    if (!mirrorSource || syncPaused() || resumeTimer) return
+    resumeTimer = window.setTimeout(() => {
+      resumeTimer = 0
+      if (syncPaused()) return
+      if (phone.refreshing || (phone.sync && !phone.sync.end)) { resume(); return }
+      phone.sync = null
+      void syncNow()
+    }, 250)
   }
+  window.addEventListener('online', () => { phone.online = true; if (mirrorSource) resume(); else void refresh() })
   window.addEventListener('brainamon-sync-resume', resume)
   // the phone's setting decides; the engine keeps its own copy (cm-card-motion), so set both ways
   if (phone.motionOff !== MOTION.off) setMotion(!phone.motionOff)
@@ -225,6 +231,12 @@ export async function boot() {
     phone.tints = tints ?? {}
     phone.synced = synced ?? 0
     phone.loaded = true
+  }
+  if (mirrorSource) {
+    try {
+      const local = await mirrorSource.localCopy()
+      if (local) { phone.rows = local.rows; applyCats(local.cats); phone.loaded = true }
+    } catch { /* the existing IndexedDB copy remains available */ }
   }
   // the journal counts follow every change to it, whichever screen or background work makes it, and the clock ticks
   if (mirrorSource) {
@@ -313,7 +325,7 @@ export function phoneFacts(words?: PhoneWords): PhoneFacts | null {
   if (m.solo) {
     void phone.recoveryAt; void phone.now
     return soloFacts({
-      pause: network.manualPause ? (words?.('backup.state.manualPause') ?? 'Sync paused by you.') : undefined,
+      pause: network.pausePending || network.pauseFailed ? syncPauseReason(words) : network.manualPause ? (words?.('backup.state.manualPause') ?? 'Sync paused by you.') : undefined,
       backupTask: backup.task || backup.busy ? {
         busy: backup.busy,
         text: backup.busy ? backup.task?.paused ? (words?.('backup.task.pausing') ?? 'Pausing backup task…') : backup.step : backup.task?.paused ? (words?.('backup.task.paused') ?? 'Backup task paused.') : (words?.('backup.task.waiting') ?? 'Backup task waiting to continue.'),
@@ -325,7 +337,7 @@ export function phoneFacts(words?: PhoneWords): PhoneFacts | null {
     })
   }
   return pairedFacts({
-    pause: network.manualPause ? (words?.('backup.state.manualPause') ?? 'Sync paused by you.') : undefined,
+    pause: network.pausePending || network.pauseFailed ? syncPauseReason(words) : network.manualPause ? (words?.('backup.state.manualPause') ?? 'Sync paused by you.') : undefined,
     app: isApp, online: network.online, paused: syncPaused(), refreshing: phone.refreshing, tried: phone.tried,
     token: !!token(m.pair), refused: phone.signIn, account: m.pair.g || '', pcAccount: m.pair.e || '',
     mismatch: phone.account?.check === 'mismatch' ? phone.account.got : '', access: network.licenseKind,
@@ -551,6 +563,7 @@ export function syncFill(run: SyncRun): number {
 // (its steps, with the changes sent first) or a refresh on its own (app start, Connect, back online)
 export function driveWork(): { text: string; pct: number | null } | null {
   if (backup.busy) return { text: backup.task?.paused ? t('shell.sync.pausingTask') : backup.step, pct: null }
+  if (nativeSync.supported && nativeSync.state === 'syncing') return nativeSync.phase === 'vault' ? null : { text: nativeSyncText(), pct: Math.min(99, Math.floor((nativeSync.progress ?? 0) * 100)) }
   const run = phone.sync && !phone.sync.end ? phone.sync : null
   if (!run && !phone.refreshing) return null
   const s = run?.steps.find(x => x.state === 'run')

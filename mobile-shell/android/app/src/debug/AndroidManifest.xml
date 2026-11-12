@@ -1,13 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application android:networkSecurityConfig="@xml/network_security_config">
-        <!-- The phone site reader's window (projects/phone-site-reader/plans/01-engine.md), Contributor build only.
-             Not exported. It handles its own size changes, so turning the phone does not reload the site. -->
-        <activity
-            android:name=".SiteActivity"
-            android:exported="false"
-            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|uiMode|density"
-            android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".SyncProviderProbe" android:exported="true" android:permission="android.permission.DUMP" />
+        <receiver android:name=".SyncProbeReceiver" android:exported="true" android:permission="android.permission.DUMP" />
+        <provider android:name=".SyncProbeDocuments" android:authorities="${applicationId}.syncfixture" android:exported="true" android:permission="android.permission.MANAGE_DOCUMENTS" android:grantUriPermissions="true">
+            <intent-filter><action android:name="android.content.action.DOCUMENTS_PROVIDER" /></intent-filter>
+        </provider>
     </application>
+    <instrumentation android:name="app.brainamon.mobile.SyncProbe" android:targetPackage="${applicationId}" android:label="Isolated sync checks" />
 </manifest>

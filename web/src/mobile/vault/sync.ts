@@ -15,12 +15,13 @@ export interface DriveLike {
   get(id: string): Promise<Uint8Array>
   remove(id: string): Promise<void>
   create(name: string, data: Uint8Array): Promise<string>
+  update?(id: string, data: Uint8Array): Promise<void>
 }
 export interface Fs {
   list(): Promise<{ path: string; size: number; mtime: number }[]>
   read(path: string): Promise<Uint8Array>
-  write(path: string, data: Uint8Array): Promise<void>
-  remove(path: string): Promise<void>
+  write(path: string, data: Uint8Array, expected?: string | null): Promise<void>
+  remove(path: string, expected?: string): Promise<void>
   has(path: string): Promise<boolean>
 }
 // fp: the mirror key's fingerprint. Content ids are keyed, so a state kept under another key (a new
@@ -30,11 +31,12 @@ export interface Fs {
 // legacy: leftover Content Manager/ copies the last round kept (never listed or sent; Remove old Brainamon pages)
 export interface VaultState { base: Map_; cache: Record<string, [number, number, string]>; cacheVersion?: number; fp?: string; vault?: string; manifest?: boolean; legacy?: number }
 const CACHE_VERSION = 1
+export interface FileCounts { done: number; total: number }
 export interface Env {
   drive: DriveLike; key: MirrorKey; fs: Fs; device: string; force: boolean; now?: Date
   load(): Promise<VaultState | undefined>; save(s: VaultState): Promise<void>
   // `overall`: how far the whole round is, 0..1 (the bar); done/total count the files of this step (total 0: no count)
-  progress?(step: string, done: number, total: number, overall?: number, display?: string): void
+  progress?(step: string, done: number, total: number, overall?: number, display?: string, files?: FileCounts): void
   words?: (key: string, params?: Record<string, unknown>) => string
   // Stop: looked at between files, never inside one (a file being written is finished first)
   signal?: { aborted: boolean }
@@ -93,13 +95,13 @@ async function scan(env: Env, cache: VaultState['cache'], lo: number, hi: number
   return { files, cache: fresh }
 }
 
-async function trash(fs: Fs, rel: string) {
+async function trash(fs: Fs, rel: string, expected?: string) {
   const slash = rel.lastIndexOf('/'), dir = slash >= 0 ? rel.slice(0, slash + 1) : '', name = rel.slice(slash + 1)
   const dot = name.lastIndexOf('.'), cut = dot > 0 && dot < name.length - 1 ? dot : name.length
   let dst = `.trash/${rel}`
   for (let n = 2; await fs.has(dst); n++) dst = `.trash/${dir}${name.slice(0, cut)} (${n})${name.slice(cut)}`
-  await fs.write(dst, await fs.read(rel))
-  await fs.remove(rel)
+  await fs.write(dst, await fs.read(rel), null)
+  await fs.remove(rel, expected)
 }
 
 // Settings > Obsidian > Remove old Brainamon pages (spec 1b decision 3): what is left of the classic
@@ -157,13 +159,15 @@ async function round(env: Env): Promise<Result> {
   if (fresh) st.cache = {}
   const base: Map_ = fresh ? Object.fromEntries(Object.entries(st.base).filter(([r]) => manifest && r.startsWith(ONE_WAY))) : st.base
   let { files: mine, cache } = await scan(env, st.cache, 0.08, 0.4)
+  const verified = (): FileCounts => ({ done: Object.entries(theirs).filter(([p, id]) => mine[p] === id).length, total: Object.keys(theirs).length })
+  let files = verified()
   // deletion records (decision 3): a copy that differs from the base is compared with the hash Brainamon last wrote
   const mineHash: Map_ = {}
   for (const rel of Object.keys(pcIndex.removed)) {
     lap(env)
     if (mine[rel] !== undefined && mine[rel] !== base[rel]) mineHash[rel] = await sha256(await fs.read(rel))
   }
-  env.progress?.('Comparing with the PC', 0, 0, 0.4, env.words?.('backup.vault.step.comparing'))
+  env.progress?.('Comparing with the PC', 0, 0, 0.4, env.words?.('backup.vault.step.comparing'), files)
   const plan = mergeVault(base, mine, theirs, 'phone', env.now ?? new Date(), { generated: pcIndex.generated, removed: pcIndex.removed, mineHash, fresh }, env.words)
   if (plan.brake && !env.force) return { state: 'brake', reason: plan.reason, summary: '' }
   const legacy = new Set(plan.legacy)
@@ -184,15 +188,15 @@ async function round(env: Env): Promise<Result> {
   }
   const pulls = Object.entries(plan.pull), moves = plan.trash.length
   const writePaths = [...pulls.map(([rel]) => rel), ...Object.values(copies)]
-  // Persist invalidation before any write so a restart cannot trust the replaced file's old hash.
-  if (writePaths.some(rel => Object.hasOwn(st.cache, rel))) {
-    const oldCache = { ...st.cache }
+  // Keep scan hints with the old base, invalidating replacements before any file is touched.
+  if (writePaths.some(rel => Object.hasOwn(st.cache, rel)) || JSON.stringify(cache) !== JSON.stringify(st.cache)) {
+    const oldCache = { ...cache }
     for (const rel of writePaths) delete oldCache[rel]
-    await env.save({ ...st, cache: oldCache })
+    await env.save({ ...st, cache: oldCache, cacheVersion: CACHE_VERSION })
   }
   let took = 0
   await each(env, pulls, async ([rel, id], i) => {
-    if (i === 0) env.progress?.("Taking the PC's changes", 0, pulls.length, 0.4, env.words?.('backup.vault.step.taking'))
+    if (i === 0) env.progress?.("Taking the PC's changes", 0, pulls.length, 0.4, env.words?.('backup.vault.step.taking'), files)
     const f = byName.get(blobName(id))
     if (!f) throw new Error(`${rel} is not in Drive yet`)
     const data = await key.open(blobLogical(id), await drive.get(f.id))
@@ -200,21 +204,23 @@ async function round(env: Env): Promise<Result> {
     const copy = copies[rel]
     if (copy) {
       if (await fs.has(copy)) throw new Error('A conflict copy appeared during sync. Retry to keep both edits.')
-      await fs.write(copy, await fs.read(rel))
+      await fs.write(copy, await fs.read(rel), null)
       delete cache[copy]
     }
-    await fs.write(rel, data)
+    await fs.write(rel, data, mine[rel] ?? null)
+    if (mine[rel] !== id && theirs[rel] === id) files = { ...files, done: files.done + 1 }
     delete cache[rel]                                             // providers may preserve size and mtime after replacement
     took++
-    env.progress?.("Taking the PC's changes", took, pulls.length, at(0.4, 0.6, took, pulls.length + moves), env.words?.('backup.vault.step.taking'))
+    env.progress?.("Taking the PC's changes", took, pulls.length, at(0.4, 0.6, took, pulls.length + moves), env.words?.('backup.vault.step.taking'), files)
   })
   for (const [i, rel] of plan.trash.entries()) {
     lap(env)
     env.progress?.('Moving deleted files to .trash', i, moves, at(0.4, 0.6, pulls.length + i, pulls.length + moves), env.words?.('backup.vault.step.trashing'))
-    await trash(fs, rel)
+    await trash(fs, rel, mine[rel])
   }
 
   ;({ files: mine, cache } = await scan(env, cache, 0.6, 0.75))
+  files = verified()
   // leftover Content Manager/ copies are never listed or sent (decision 3, legacy)
   const listed: Map_ = {}
   for (const [rel, id] of Object.entries(mine)) if (!legacy.has(rel)) listed[rel] = id
@@ -230,25 +236,29 @@ async function round(env: Env): Promise<Result> {
   const done = () => (env.words?.('backup.vault.summary', { pulled: pulls.length, trashed: plan.trash.length, conflicts: Object.keys(plan.conflicts).length, sent }) ?? `${pulls.length} pulled, ${plan.trash.length} moved to .trash, ${Object.keys(plan.conflicts).length} conflict copies, ${sent} sent`)
   try {
     await each(env, pending, async ([rel, id], i) => {
-      if (i === 0) env.progress?.('Sending to Drive', 0, pending.length, 0.75, env.words?.('backup.vault.step.sending'))
+      if (i === 0) env.progress?.('Sending to Drive', 0, pending.length, 0.75, env.words?.('backup.vault.step.sending'), files)
       const data = await fs.read(rel)
       if (await key.contentId(data) === id) {                       // files edited since the scan wait for the next round
         await drive.create(blobName(id), await key.seal(blobLogical(id), data))
         sent++
-      }
+      } else throw new Error('A vault file changed during sync. Its edits will go in the next round.')
       processed++
-      env.progress?.('Sending to Drive', processed, pending.length, at(0.75, 0.97, processed, pending.length), env.words?.('backup.vault.step.sending'))
+      env.progress?.('Sending to Drive', processed, pending.length, at(0.75, 0.97, processed, pending.length), env.words?.('backup.vault.step.sending'), files)
     })
   } catch (e) {
     if (!(e instanceof Stopped)) throw e
     await env.save(state())
     return { state: 'stopped', reason: (env.words?.('backup.vault.stoppedSending') ?? 'Stopped while sending; the rest goes next round.'), summary: done(), legacy: legacy.size }
   }
-  env.progress?.('Writing the file list', 0, 0, 0.97, env.words?.('backup.vault.step.writing'))
+  env.progress?.('Writing the file list', 0, 0, 0.97, env.words?.('backup.vault.step.writing'), files)
   const mineName = INDEX_PREFIX + await key.name('vault/index/' + env.device)
   const old = byName.get(mineName)
-  if (old) await drive.remove(old.id)
-  await drive.create(mineName, await key.seal(INDEX_LOGICAL, encodeIndex(listed, env.device, { caps: CAPS, vault: pcIndex.vault, kept })))
+  const index = await key.seal(INDEX_LOGICAL, encodeIndex(listed, env.device, { caps: CAPS, vault: pcIndex.vault, kept }))
+  if (old && drive.update) await drive.update(old.id, index)
+  else {
+    if (old) await drive.remove(old.id)
+    await drive.create(mineName, index)
+  }
   await env.save(state())
   const summary = pulls.length || plan.trash.length || sent ? done() : (env.words?.('backup.vault.inStep') ?? 'Already in step')
   return { state: 'idle', reason: '', summary, legacy: legacy.size }

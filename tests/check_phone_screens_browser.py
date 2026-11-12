@@ -21,7 +21,7 @@ from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from tests.phone_groups import open_group, row_line  # noqa: E402  (the group rows, projects/phone-settings)
+from tests.phone_pages import open_group, row_line  # noqa: E402  (the group rows, projects/phone-settings)
 ART = ROOT / 'local/ui-blocks/shots/phone-screens'
 RAW = bytes([9]) * 32
 KEY = base64.urlsafe_b64encode(RAW).decode().rstrip('=')
@@ -119,7 +119,7 @@ def main():
                         assert page.locator(moved).count() == 0, moved
                     tall(page, '#m-status')
                     shoot(page, 'more-connect')
-                    card.get_by_role('link', name='Backup & phones').click()
+                    page.locator('a[href="#/backup"]').click()
                     expect(page).to_have_url(base + '/mobile.html#/backup')
                     expect(page.locator('.m-page-keys .m-ws')).to_have_text('Backup')
                     status = page.locator('#m-backup-status')
@@ -127,7 +127,7 @@ def main():
                     expect(status.get_by_text('Choose sample@example.com, the account your PC backs up to.', exact=True)).to_be_visible()
                     assert page.get_by_role('button', name='Connect', exact=True).count() == 1     # the Status's key, not the row's too
                     expect(page.locator('#m-pair-setup').get_by_text('Finish connecting your PC', exact=True)).to_be_visible()
-                    ids = page.evaluate("() => [...document.querySelectorAll('.m-pad > .m-box')].map(e => e.id)")
+                    ids = page.evaluate("() => [...document.querySelectorAll('.m-pad > [id]')].map(e => e.id)")
                     assert ids == ['m-backup-status', 'm-pair-setup', 'm-conn', 'm-phone', 'm-recovery'], ids
                     expect(row_line(page, 'This phone')).to_have_text('Phone browser · all sent')
                     expect(open_group(page, 'This phone').get_by_text('Phone browser', exact=True)).to_be_visible()

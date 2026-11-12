@@ -8,11 +8,16 @@ import { phoneWords } from './settings-words'
 import { isApp } from './native'
 import { driveStatus, driveWork, fmtAgo, mirrorSource, phone, pics, solo, source } from './state.svelte'
 import { pcLine, pcProgress, vault } from './vault/auto.svelte'
-import { syncPaused, syncPauseReason } from './network.svelte'
+import { network, syncPaused, syncPauseReason } from './network.svelte'
 import { backup } from './backup.svelte'
+import { token } from './mirror/pairing'
+import { lampLabel } from './settings-words'
+import { syncLine } from './settings-lines'
+import { vaultLamp } from './settings-facts.svelte'
+import { nativeSync, nativeSyncText } from './sync/native.svelte'
 
 export type LaneKey = 'network' | 'drive' | 'vault' | 'pc' | 'pics'
-export interface Lane { key: LaneKey; name: string; tag: string; active: boolean; text: string; pct: number | null }
+export interface Lane { key: LaneKey; name: string; tag: string; active: boolean; text: string; pct: number | null; files?: { done: number; total: number } }
 
 export function syncLanes(): Lane[] {
   const out: Lane[] = []
@@ -25,17 +30,23 @@ export function syncLanes(): Lane[] {
   if (backup.task && !backup.busy) out.push({ key: 'drive', name: dname, tag: backup.task.paused ? 'paused' : 'waiting', active: true, text: backup.error || t('backup.lane.savedTask'), pct: null })
   else if (paused) out.push({ key: 'drive', name: dname, tag: 'paused', active: false, text: t('backup.lane.resume'), pct: null })
   else if (work) out.push({ key: 'drive', name: dname, tag: 'running', active: true, text: work.text, pct: work.pct })
+  else if (nativeSync.supported && nativeSync.state && !['idle', 'syncing'].includes(nativeSync.state)) out.push({ key: 'drive', name: dname, tag: ['queued', 'retry', 'offline', 'wifi'].includes(nativeSync.state) ? 'waiting' : 'error', active: false, text: nativeSyncText(), pct: null })
   else out.push({ key: 'drive', name: dname, tag: drive.ok ? 'idle' : drive.lamp, active: false, pct: null,
                   text: drive.why || (phone.sync?.end ? phone.sync.msg : t('backup.lane.copy', { ago: fmtAgo(phone.synced) })) })
 
   if (isApp && !solo && source.syncVault) {
-    const v = vault
-    if (paused && v.opts.on) out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'paused', active: false, text: t('backup.lane.resumes'), pct: null })
-    else if (v.busy) out.push({ key: 'vault', name: t('backup.lane.vault'), tag: v.stopping ? 'stopping' : 'running', active: true, text: v.step || t('backup.lane.syncing'), pct: v.prog?.pct ?? null })
-    else if (v.queued) out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'queued', active: true, text: t('backup.lane.queued', { where: dname }), pct: null })
-    else if (!v.opts.on) out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'off', active: false, text: v.opts.uri ? t('backup.lane.folder', { name: v.opts.name || t('backup.lane.chosen') }) : t('backup.lane.chooseFolder'), pct: null })
-    else if (!drive.ok) out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'needs Drive', active: false, text: drive.why, pct: null })
-    else out.push({ key: 'vault', name: t('backup.lane.vault'), tag: v.brake ? 'held' : v.outcome === 'error' ? 'error' : v.outcome === 'waiting' ? 'waiting for PC' : 'idle', active: false, text: v.brake || v.line || t('backup.lane.notRun'), pct: null })
+    const v = vault, lamp = vaultLamp()
+    if (lamp === 'paused') out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'paused', active: false, text: t('backup.lane.resumes'), pct: null })
+    else if (v.opts.on && nativeSync.supported && ['queued', 'retry', 'wifi', 'offline'].includes(nativeSync.state)) out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'waiting', active: false, text: nativeSyncText(), pct: null })
+    else if (nativeSync.supported && nativeSync.state === 'syncing' && nativeSync.phase === 'vault') out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'running', active: true, text: nativeSync.vaultStep?.key ? t(nativeSync.vaultStep.key) : nativeSyncText(), pct: null })
+    else if (lamp === 'syncing' || lamp === 'stopping') out.push({ key: 'vault', name: t('backup.lane.vault'), tag: v.stopping ? 'stopping' : 'running', active: true, text: v.step || t('backup.lane.syncing'), pct: null })
+    else if (lamp === 'queued') out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'queued', active: true, text: t('backup.lane.queued', { where: dname }), pct: null })
+    else if (lamp === 'off' || lamp === 'no folder') out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'off', active: false, text: v.opts.uri ? t('backup.lane.folder', { name: v.opts.name || t('backup.lane.chosen') }) : t('backup.lane.chooseFolder'), pct: null })
+    else if (lamp === 'needs Drive') out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'needs Drive', active: false, text: drive.why, pct: null })
+    else out.push({ key: 'vault', name: t('backup.lane.vault'), tag: ['in step', 'not run yet'].includes(lamp) ? 'idle' : lamp, active: false, text: v.brake || v.line || t('backup.lane.notRun'), pct: null })
+
+    const files = nativeSync.supported ? nativeSync.vaultFiles : v.files
+    if (v.opts.on && files) out[out.length - 1].files = files
 
     if (v.opts.on && drive.ok && !paused) {
       const pr = v.pc ? pcProgress(v.pc, phoneWords) : null
@@ -50,4 +61,17 @@ export function syncLanes(): Lane[] {
                text: wait ? t('backup.lane.picsWait', { done: pics.done, total: pics.total }) : t('backup.lane.picsFetch', { done: pics.done, total: pics.total }) })
   }
   return out
+}
+
+export function syncSummary(): string {
+  void phone.tokenAt; void phone.signIn
+  if (network.pausePending || network.pauseFailed) return syncPauseReason(phoneWords)
+  const lanes = syncLanes(), drive = lanes.find(l => l.key === 'drive')
+  const running = lanes.filter(l => l.tag === 'running' || l.tag === 'stopping').length
+  const queued = lanes.filter(l => l.tag === 'queued').length
+  if (nativeSync.supported && nativeSync.state && !['syncing', 'idle'].includes(nativeSync.state) && !syncPaused()) return nativeSyncText()
+  const lamp = backup.task ? lampLabel(drive?.tag ?? 'waiting') : syncPaused() ? network.manualPause ? lampLabel('paused') : syncPauseReason(phoneWords, true)
+    : running ? t('settings.sync.runningCount', { running, queued: queued ? t('settings.sync.queuedSuffix', { n: queued }) : '' })
+    : queued ? t('settings.sync.queuedCount', { n: queued }) : driveStatus().ok ? 'idle' : lampLabel(driveStatus().lamp)
+  return syncLine({ signedIn: !!mirrorSource && !!token(mirrorSource.pair), lamp, wifiOnly: network.wifiOnly }, phoneWords)
 }

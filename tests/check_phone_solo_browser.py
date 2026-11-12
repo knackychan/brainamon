@@ -28,7 +28,7 @@ from playwright.sync_api import expect, sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from library import mirror  # noqa: E402  (the phone's backup names come from the desktop's MirrorKey)
-from tests.phone_groups import open_group, row_line  # noqa: E402  (the group rows, projects/phone-settings)
+from tests.phone_pages import open_group, row_line  # noqa: E402  (the group rows, projects/phone-settings)
 
 ART = ROOT / 'local/ui-blocks/shots/phone-solo'
 RAW = bytes([11]) * 32
@@ -127,13 +127,13 @@ def shows(page, scope, case, card=False):
     Backup & phones (also its detail)."""
     want = CASES[case]
     box = page.locator(scope)
-    expect(box.locator('.m-status b')).to_have_text(words(want['text']))
+    expect(box.locator('.m-status b, .m-page-status b')).to_have_text(words(want['text']))
     if not card:
         if want['detail']:
-            expect(box.locator('.m-status small')).to_have_text(words(want['detail']))
+            expect(box.locator('.m-status small, .m-page-status small')).to_have_text(words(want['detail']))
         else:
-            expect(box.locator('.m-status small')).to_have_count(0)
-    keys = box.locator('.m-status').get_by_role('button')
+            expect(box.locator('.m-status small, .m-page-status small')).to_have_count(0)
+    keys = box.locator('.m-status, .m-page-status').get_by_role('button')
     if want['action']:
         expect(keys).to_have_count(1)
         expect(keys).to_have_text(want['action']['label'])
@@ -200,7 +200,7 @@ def main():
                     def on_backup(page, case, name):
                         page.evaluate("location.hash = '#/backup'")
                         want = shows(page, '#m-backup-status', case)
-                        ids = page.evaluate("() => [...document.querySelectorAll('.m-pad > .m-box')].map(e => e.id)")
+                        ids = page.evaluate("() => [...document.querySelectorAll('.m-pad > [id]')].map(e => e.id)")
                         assert ids == ['m-backup-status', 'm-conn', 'm-phone', 'm-recovery'], ids
                         if want['action']:                                   # the Status's key, not a row's too
                             expect(page.get_by_role('button', name=want['action']['label'], exact=True)).to_have_count(1)
@@ -213,7 +213,7 @@ def main():
                     page.goto(base + '/mobile.html#/more')
                     page.wait_for_function(SETTLED)
                     on_more(page, 'solo: only on this phone', 'solo-local')
-                    page.locator('#m-status').get_by_role('link', name='Backup & phones').click()
+                    page.get_by_role('link', name=re.compile('^Backup & phones')).click()
                     expect(page).to_have_url(base + '/mobile.html#/backup')
                     on_backup(page, 'solo: only on this phone', 'solo-local')
                     expect(page.locator('#m-library')).to_contain_text('0 items on this phone')
@@ -268,6 +268,7 @@ def main():
                     drive.mode = 'abort'
                     sync = open_group(page, 'Sync')
                     sync.get_by_role('button', name='Sync now', exact=True).click()
+                    page.evaluate("location.hash = '#/more'")
                     card = page.locator('#m-status')
                     expect(card.locator('.m-status b')).to_have_text('Google Drive could not be reached.', timeout=30000)
                     expect(card.get_by_role('button', name='Retry', exact=True)).to_have_class('m-btn pill pri')
@@ -275,7 +276,7 @@ def main():
                     shoot(page, 'more-solo-unreachable')
                     page.evaluate("location.hash = '#/backup'")
                     status = page.locator('#m-backup-status')
-                    expect(status.locator('.m-status small')).to_have_text('Saved content stays on this phone.')
+                    expect(status.locator('.m-page-status small')).to_have_text('Saved content stays on this phone.')
                     expect(status.get_by_role('alert')).to_contain_text('Google Drive is out of reach')
                     tall(page, '.m-pad')
                     shoot(page, 'backup-solo-unreachable')
@@ -300,7 +301,7 @@ def main():
                         page.wait_for_timeout(50)
                     assert drive.held, 'Recovery setup never reached the held Drive check'
                     drive.release()
-                    expect(recovery.locator('.m-status b')).to_have_text(SET, timeout=60000)
+                    expect(recovery.locator('.m-steps li').first.locator('b')).to_have_text(SET, timeout=60000)
                     expect(recovery.get_by_text('Passphrase set and checked against your backup. Now save the recovery file.', exact=True)).to_be_visible()
                     assert len(drive.writes) == 1 and drive.writes[0].startswith('vi-phone-recovery-'), drive.writes
                     expect(recovery.get_by_role('button', name='Save recovery file…', exact=True)).to_have_class('m-btn sm pri')
@@ -314,8 +315,8 @@ def main():
                         recovery.get_by_role('button', name='Save recovery file…', exact=True).click()
                     kit = Path(folder) / 'kit.json'
                     download.value.save_as(kit)
-                    expect(recovery.locator('.m-status b')).to_have_text('Recovery file saved, not checked')
-                    expect(recovery.get_by_text(re.compile(r'^Passphrase set \d{1,2} \w+\.$'))).to_be_visible()
+                    expect(recovery.locator('.m-card-line')).to_have_text('File saved, not checked')
+                    expect(recovery.get_by_text(re.compile(r'^Passphrase set \d{1,2} \w+$'))).to_be_visible()
                     expect(recovery.get_by_text('Download requested. A browser download is not confirmed until you open the file.', exact=True)).to_be_visible()
                     on_backup(page, 'solo: recovery file not checked', 'solo-check-file')
                     recovery = open_group(page, 'Recovery')
@@ -324,7 +325,7 @@ def main():
                     page.evaluate("async () => { const { refresh } = await import('/src/mobile/state.svelte.ts'); void refresh() }")
                     expect(recovery.locator('#phone-recovery-wait')).to_have_text('Syncing your backup. Recovery setup and file checks become available when the current sync finishes.')
                     expect(status.get_by_role('button', name='Check recovery file…', exact=True)).to_be_disabled()
-                    expect(recovery.get_by_text(re.compile(r'^Passphrase set \d{1,2} \w+\.$'))).to_be_visible()
+                    expect(recovery.get_by_text(re.compile(r'^Passphrase set \d{1,2} \w+$'))).to_be_visible()
                     deadline = time.monotonic() + 10
                     while not drive.held and time.monotonic() < deadline:
                         page.wait_for_timeout(50)
@@ -339,9 +340,9 @@ def main():
                         page.locator('#m-status').get_by_role('button', name='Check recovery file…', exact=True).click()
                     chooser.value.set_files(str(kit))
                     expect(page).to_have_url(base + '/mobile.html#/backup')
-                    expect(recovery.locator('button.m-group-row')).to_have_attribute('aria-expanded', 'true')   # the link opened it
+                    expect(recovery.locator('.m-card')).to_be_visible()   # the link opened it
                     expect(recovery.get_by_text('Recovery file checked against your backup.', exact=True)).to_be_visible(timeout=30000)
-                    expect(recovery.locator('.m-status b')).to_have_text(re.compile(r'^Passphrase set \d{1,2} \w+ · recovery file checked$'))
+                    expect(recovery.locator('.m-steps li').last.locator('b')).to_have_text('Recovery file checked against your backup.')
                     on_backup(page, 'solo: backed up', 'solo-ok')
                     on_more(page, 'solo: backed up', 'solo-ok')
 

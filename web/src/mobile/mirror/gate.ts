@@ -3,6 +3,7 @@
 // actions use stopCloudWork(): cancel reads, invalidate late results and drain atomic writes before continuing.
 // The reload registry has no runtime dependencies, including pairing or cloud state.
 import { languageWorkChanged, registerLanguageCheck } from '../language-switch.ts'
+import { nativeSyncBarrier, nativeSyncPolicy, nativeSync } from '../sync/native.svelte'
 
 export const RECONNECT_BUSY = 'Recovery is reconnecting this phone. Wait for it to finish, then retry.'
 let active = false
@@ -22,9 +23,10 @@ function settled() { if (!active && !cloudChanges) { for (const done of idle) do
 export async function stopCloudWork() {
   stopping = true; revision++
   reads.abort(); reads = new AbortController()
+  await nativeSyncBarrier()
   if (active || cloudChanges) await new Promise<void>(resolve => idle.add(resolve))
 }
-export function allowCloudWork() { stopping = false }
+export function allowCloudWork() { stopping = false; void nativeSyncPolicy({ blocked: false }).catch(() => { nativeSync.state = 'attention' }) }
 export const reconnecting = () => active
 export const cloudChanging = () => cloudChanges > 0
 export function setReconnecting(on: boolean) { active = on; languageWorkChanged(); settled() }

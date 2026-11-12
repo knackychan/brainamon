@@ -40,7 +40,9 @@ https://github.com/knackychan/brainamon/releases。請勿將未經驗證的過�
 單獨使用手機，或與你的 Windows 資料庫配對。選用的 Google Drive 同步會在你的
 Google 帳戶中儲存加密內容；配對的裝置持有解密金鑰，而 Google 可以看到檔案大小
 與更新中繼資料。已儲存的內容可離線閱讀。AI、預覽與同步需要網路連線。
-下載、網站擷取與影片分析在 Windows 上執行；直連電腦模式需要電腦執行中且可連線。
+影片下載與分析在 Windows 上執行；直連電腦模式需要電腦執行中且可連線。
+Android 的「匯入已收藏貼文」可在登入後，透過網站視窗讀取 Facebook、Instagram 與 Threads 的收藏清單。
+TikTok 匯入即將推出。
 預覽與媒體是否可用取決於來源網站。
 
 所有目前的功能皆無須付款或收據即可使用。自願贊助協助開發者持續工作。

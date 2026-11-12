@@ -449,238 +449,210 @@
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 23,
+    "line": 27,
     "kind": "display-assignment",
     "value": "network",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 23,
+    "line": 27,
     "kind": "display-assignment",
     "value": "paused",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 25,
+    "line": 29,
     "kind": "display-assignment",
     "value": "drive",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 25,
+    "line": 29,
     "kind": "display-assignment",
     "value": "paused",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 25,
+    "line": 29,
     "kind": "display-assignment",
     "value": "waiting",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 26,
+    "line": 30,
     "kind": "display-assignment",
     "value": "drive",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 26,
+    "line": 30,
     "kind": "display-assignment",
     "value": "paused",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 27,
+    "line": 31,
     "kind": "display-assignment",
     "value": "drive",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 27,
+    "line": 31,
     "kind": "display-assignment",
     "value": "running",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 28,
+    "line": 32,
     "kind": "display-assignment",
     "value": "drive",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 28,
+    "line": 32,
     "kind": "display-assignment",
     "value": "idle",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 33,
+    "line": 37,
     "kind": "display-assignment",
     "value": "vault",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 33,
+    "line": 37,
     "kind": "display-assignment",
     "value": "paused",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 34,
+    "line": 38,
     "kind": "display-assignment",
     "value": "vault",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 34,
+    "line": 38,
     "kind": "display-assignment",
     "value": "stopping",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 34,
+    "line": 38,
     "kind": "display-assignment",
     "value": "running",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 35,
+    "line": 39,
     "kind": "display-assignment",
     "value": "vault",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 35,
+    "line": 39,
     "kind": "display-assignment",
     "value": "queued",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 36,
+    "line": 40,
     "kind": "display-assignment",
     "value": "vault",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 36,
+    "line": 40,
     "kind": "display-assignment",
     "value": "off",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 37,
+    "line": 41,
     "kind": "display-assignment",
     "value": "vault",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 37,
+    "line": 41,
     "kind": "display-assignment",
     "value": "needs Drive",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 38,
+    "line": 42,
     "kind": "display-assignment",
     "value": "vault",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 38,
-    "kind": "display-assignment",
-    "value": "held",
-    "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
-  },
-  {
-    "file": "web/src/mobile/lanes.ts",
-    "line": 38,
-    "kind": "display-assignment",
-    "value": "error",
-    "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
-  },
-  {
-    "file": "web/src/mobile/lanes.ts",
-    "line": 38,
-    "kind": "display-assignment",
-    "value": "waiting",
-    "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
-  },
-  {
-    "file": "web/src/mobile/lanes.ts",
-    "line": 38,
-    "kind": "display-assignment",
-    "value": "waiting for PC",
-    "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
-  },
-  {
-    "file": "web/src/mobile/lanes.ts",
-    "line": 38,
+    "line": 42,
     "kind": "display-assignment",
     "value": "idle",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 42,
+    "line": 46,
     "kind": "display-assignment",
     "value": "pc",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 42,
+    "line": 46,
     "kind": "display-assignment",
     "value": "running",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 42,
+    "line": 46,
     "kind": "display-assignment",
     "value": "idle",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 49,
+    "line": 53,
     "kind": "display-assignment",
     "value": "pics",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 49,
+    "line": 53,
     "kind": "display-assignment",
     "value": "paused",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 49,
+    "line": 53,
     "kind": "display-assignment",
     "value": "running",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
@@ -1219,7 +1191,7 @@
   },
   {
     "file": "web/src/mobile/mirror/phone-recovery.ts",
-    "line": 100,
+    "line": 99,
     "kind": "call:Error",
     "value": "The phone library or its recovery changed while saving. Save the recovery file again.",
     "reason": "Unchanged validation/security exception message. Known local code maps at the UI boundary; unknown original detail is escaped in translated context, after cancellation classification."
@@ -1345,42 +1317,35 @@
   },
   {
     "file": "web/src/mobile/offline.svelte.ts",
-    "line": 105,
+    "line": 107,
     "kind": "call:Error",
     "value": "Videos play from the Google Drive mirror.",
     "reason": "Offline cache/protocol/default error; display uses the existing Item context and settings catalogs, storage IDs and retained content stay original."
   },
   {
     "file": "web/src/mobile/PhoneBackupChoices.svelte",
-    "line": 55,
+    "line": 79,
     "kind": "expression",
     "value": "replace",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/PhoneBackupChoices.svelte",
-    "line": 87,
+    "line": 81,
     "kind": "expression",
     "value": "replace",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/PhoneBackupChoices.svelte",
-    "line": 89,
-    "kind": "expression",
-    "value": "replace",
-    "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
-  },
-  {
-    "file": "web/src/mobile/PhoneBackupChoices.svelte",
-    "line": 23,
+    "line": 27,
     "kind": "display-assignment",
     "value": "replace",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/PhoneBackupChoices.svelte",
-    "line": 23,
+    "line": 27,
     "kind": "display-assignment",
     "value": "delete",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
@@ -1394,35 +1359,7 @@
   },
   {
     "file": "web/src/mobile/PhoneBackupChoices.svelte",
-    "line": 35,
-    "kind": "display-assignment",
-    "value": "done",
-    "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
-  },
-  {
-    "file": "web/src/mobile/PhoneBackupChoices.svelte",
-    "line": 35,
-    "kind": "display-assignment",
-    "value": "active",
-    "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
-  },
-  {
-    "file": "web/src/mobile/PhoneBackupChoices.svelte",
-    "line": 35,
-    "kind": "display-assignment",
-    "value": "waiting",
-    "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
-  },
-  {
-    "file": "web/src/mobile/PhoneBackupChoices.svelte",
     "line": 38,
-    "kind": "display-assignment",
-    "value": "en",
-    "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
-  },
-  {
-    "file": "web/src/mobile/PhoneBackupChoices.svelte",
-    "line": 42,
     "kind": "display-assignment",
     "value": "backup",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
@@ -1457,245 +1394,210 @@
   },
   {
     "file": "web/src/mobile/screens/Backup.svelte",
-    "line": 160,
+    "line": 167,
     "kind": "expression",
     "value": "Waiting for Google",
     "reason": "Original English control sentinel retained; its displayed branch uses the catalog. Duplicate-clear/connection tests pin it."
   },
   {
     "file": "web/src/mobile/screens/Backup.svelte",
-    "line": 168,
+    "line": 178,
     "kind": "attribute:placeholder",
     "value": "https://…#pair=…",
     "reason": "Literal input-format example, not translated prose; no credential or pairing value is captured."
   },
   {
     "file": "web/src/mobile/screens/Backup.svelte",
-    "line": 58,
-    "kind": "display-assignment",
-    "value": "mismatch",
-    "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
-  },
-  {
-    "file": "web/src/mobile/screens/Backup.svelte",
-    "line": 84,
+    "line": 85,
     "kind": "display-assignment",
     "value": "network",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/screens/Backup.svelte",
-    "line": 101,
+    "line": 104,
     "kind": "display-assignment",
     "value": "clear",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/screens/Backup.svelte",
-    "line": 114,
+    "line": 117,
     "kind": "display-assignment",
     "value": "cancelled",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/screens/Backup.svelte",
-    "line": 114,
+    "line": 117,
     "kind": "display-assignment",
     "value": "recovery",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/screens/Backup.svelte",
-    "line": 128,
+    "line": 131,
     "kind": "display-assignment",
     "value": "backup",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/screens/Backup.svelte",
-    "line": 146,
+    "line": 153,
     "kind": "display-assignment",
     "value": "clear",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/screens/More.svelte",
-    "line": 226,
+    "line": 53,
     "kind": "attribute:placeholder",
     "value": "https://…#pair=…",
     "reason": "Literal input-format example, not translated prose; no credential or pairing value is captured."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 271,
-    "kind": "expression",
-    "value": "running",
-    "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
-  },
-  {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 325,
+    "file": "web/src/mobile/screens/settings/Wiskit.svelte",
+    "line": 120,
     "kind": "expression",
     "value": "sk-…",
     "reason": "Literal input-format example, not translated prose; no credential or pairing value is captured."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 327,
+    "file": "web/src/mobile/screens/settings/Wiskit.svelte",
+    "line": 122,
     "kind": "expression",
     "value": "openai",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 329,
+    "file": "web/src/mobile/screens/settings/Wiskit.svelte",
+    "line": 124,
     "kind": "expression",
     "value": "sk-ant-…",
     "reason": "Literal input-format example, not translated prose; no credential or pairing value is captured."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 331,
+    "file": "web/src/mobile/screens/settings/Wiskit.svelte",
+    "line": 126,
     "kind": "expression",
     "value": "anthropic",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 352,
+    "file": "web/src/mobile/screens/settings/Storage.svelte",
+    "line": 144,
     "kind": "expression",
     "value": "videos",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 374,
+    "file": "web/src/mobile/screens/settings/Storage.svelte",
+    "line": 119,
     "kind": "expression",
     "value": "No.",
     "reason": "Existing unknown-item display ID; Fred retained No.<id> in 02, user/library IDs are unchanged."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 400,
+    "file": "web/src/mobile/screens/settings/Storage.svelte",
+    "line": 93,
     "kind": "expression",
     "value": "No.",
     "reason": "Existing unknown-item display ID; Fred retained No.<id> in 02, user/library IDs are unchanged."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 415,
-    "kind": "expression",
-    "value": "Clearing…",
-    "reason": "Original English control sentinel retained; its displayed branch uses the catalog. Duplicate-clear/connection tests pin it."
-  },
-  {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 66,
+    "file": "web/src/mobile/screens/settings/Storage.svelte",
+    "line": 61,
     "kind": "display-assignment",
     "value": "videos",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 66,
+    "file": "web/src/mobile/screens/settings/Storage.svelte",
+    "line": 65,
     "kind": "display-assignment",
     "value": "canvases",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 96,
-    "kind": "display-assignment",
-    "value": "Clearing…",
-    "reason": "Original English control sentinel retained; its displayed branch uses the catalog. Duplicate-clear/connection tests pin it."
-  },
-  {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 101,
+    "file": "web/src/mobile/screens/settings/Storage.svelte",
+    "line": 47,
     "kind": "display-assignment",
     "value": "clear",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 103,
+    "file": "web/src/mobile/screens/settings/Storage.svelte",
+    "line": 49,
     "kind": "display-assignment",
     "value": "en",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 111,
+    "file": "web/src/mobile/screens/settings/Storage.svelte",
+    "line": 22,
     "kind": "display-assignment",
     "value": "videos",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 115,
+    "file": "web/src/mobile/screens/settings/Storage.svelte",
+    "line": 22,
     "kind": "display-assignment",
     "value": "canvases",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 155,
-    "kind": "display-assignment",
-    "value": "queued",
-    "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
-  },
-  {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 178,
+    "file": "web/src/mobile/screens/settings/Look.svelte",
+    "line": 23,
     "kind": "display-assignment",
     "value": "auto",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 193,
+    "file": "web/src/mobile/screens/settings/Look.svelte",
+    "line": 36,
     "kind": "call:Error",
     "value": "Secure write failed",
     "reason": "Internal guard/default error; catch retains identity and renders translated operation context without changing the English exception."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 215,
+    "file": "web/src/mobile/screens/settings/Wiskit.svelte",
+    "line": 78,
     "kind": "display-assignment",
     "value": "openai",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 215,
+    "file": "web/src/mobile/screens/settings/Wiskit.svelte",
+    "line": 78,
     "kind": "display-assignment",
     "value": "OpenAI",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
-    "file": "web/src/mobile/screens/More.svelte",
-    "line": 215,
+    "file": "web/src/mobile/screens/settings/Wiskit.svelte",
+    "line": 78,
     "kind": "display-assignment",
     "value": "Anthropic",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/screens/Recover.svelte",
-    "line": 46,
+    "line": 52,
     "kind": "call:Error",
     "value": "Recovery screen closed.",
     "reason": "Internal guard/default error; catch retains identity and renders translated operation context without changing the English exception."
   },
   {
     "file": "web/src/mobile/screens/Recover.svelte",
-    "line": 69,
+    "line": 76,
     "kind": "display-assignment",
     "value": "recovery",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/screens/Recover.svelte",
-    "line": 97,
+    "line": 105,
     "kind": "display-assignment",
     "value": "not_connected",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
@@ -1747,20 +1649,6 @@
     "line": 32,
     "kind": "display-assignment",
     "value": "settings.lamp.connecting",
-    "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
-  },
-  {
-    "file": "web/src/mobile/settings-words.ts",
-    "line": 43,
-    "kind": "display-assignment",
-    "value": "Waiting for Google",
-    "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
-  },
-  {
-    "file": "web/src/mobile/settings-words.ts",
-    "line": 44,
-    "kind": "display-assignment",
-    "value": "Checking the account",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
@@ -1996,119 +1884,98 @@
   },
   {
     "file": "web/src/mobile/SyncPanel.svelte",
-    "line": 71,
+    "line": 72,
     "kind": "expression",
     "value": "running",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/SyncPanel.svelte",
-    "line": 71,
+    "line": 72,
     "kind": "expression",
     "value": "network",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/SyncPanel.svelte",
-    "line": 24,
+    "line": 25,
     "kind": "display-assignment",
     "value": "mirror",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/SyncPanel.svelte",
-    "line": 46,
+    "line": 47,
     "kind": "display-assignment",
     "value": "Escape",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/SyncPanel.svelte",
-    "line": 48,
+    "line": 49,
     "kind": "display-assignment",
     "value": ".m-sync-key",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/vault/auto.svelte.ts",
-    "line": 97,
+    "line": 107,
     "kind": "display-assignment",
     "value": "vault",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/vault/auto.svelte.ts",
-    "line": 114,
+    "line": 119,
     "kind": "display-assignment",
     "value": "vault",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/vault/auto.svelte.ts",
-    "line": 168,
+    "line": 188,
     "kind": "display-assignment",
     "value": "waiting",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/vault/auto.svelte.ts",
-    "line": 169,
+    "line": 189,
     "kind": "display-assignment",
     "value": "error",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/vault/auto.svelte.ts",
-    "line": 170,
+    "line": 190,
     "kind": "display-assignment",
     "value": "vault",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/vault/auto.svelte.ts",
-    "line": 170,
-    "kind": "display-assignment",
-    "value": "error",
-    "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
-  },
-  {
-    "file": "web/src/mobile/vault/auto.svelte.ts",
-    "line": 171,
+    "line": 191,
     "kind": "display-assignment",
     "value": "brake",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/vault/auto.svelte.ts",
-    "line": 172,
+    "line": 192,
     "kind": "display-assignment",
     "value": "stopped",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/vault/auto.svelte.ts",
-    "line": 173,
-    "kind": "display-assignment",
-    "value": "waiting",
-    "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
-  },
-  {
-    "file": "web/src/mobile/vault/auto.svelte.ts",
-    "line": 174,
+    "line": 194,
     "kind": "display-assignment",
     "value": "ok",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/Vault.svelte",
-    "line": 34,
-    "kind": "attribute:title",
-    "value": "Obsidian",
-    "reason": "Product name retained in all languages."
-  },
-  {
-    "file": "web/src/mobile/Vault.svelte",
-    "line": 50,
+    "line": 54,
     "kind": "expression",
     "value": "stopped",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
@@ -4409,7 +4276,7 @@
   },
   {
     "file": "web/src/mobile/Mobile.svelte",
-    "line": 196,
+    "line": 207,
     "kind": "expression",
     "value": "translateY(",
     "reason": "CSS/SVG geometry, color or transform syntax parsed from an attribute; not visible prose. Translating it would break rendering.",
@@ -4417,7 +4284,7 @@
   },
   {
     "file": "web/src/mobile/Mobile.svelte",
-    "line": 196,
+    "line": 207,
     "kind": "expression",
     "value": "px)",
     "reason": "CSS/SVG geometry, color or transform syntax parsed from an attribute; not visible prose. Translating it would break rendering.",
@@ -4425,7 +4292,7 @@
   },
   {
     "file": "web/src/mobile/Mobile.svelte",
-    "line": 55,
+    "line": 66,
     "kind": "display-assignment",
     "value": "cv",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data.",
@@ -4433,7 +4300,7 @@
   },
   {
     "file": "web/src/mobile/Mobile.svelte",
-    "line": 55,
+    "line": 66,
     "kind": "display-assignment",
     "value": "lib",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data.",
@@ -4441,7 +4308,7 @@
   },
   {
     "file": "web/src/mobile/Mobile.svelte",
-    "line": 98,
+    "line": 109,
     "kind": "display-assignment",
     "value": "cv",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data.",
@@ -4449,7 +4316,7 @@
   },
   {
     "file": "web/src/mobile/Mobile.svelte",
-    "line": 157,
+    "line": 168,
     "kind": "display-assignment",
     "value": "shared",
     "reason": "Persisted or source-derived title/category/chat text or filename default. It belongs to the library/content contract and must remain verbatim, including existing records and AI history.",
@@ -5812,7 +5679,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1575,
+    "line": 1582,
     "kind": "call:Error",
     "value": "A canvas item changed. Ask Wiskit for a fresh proposal.",
     "reason": "App-owned display copy uses common.error.canvasItemChanged through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -5821,7 +5688,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1577,
+    "line": 1584,
     "kind": "call:Error",
     "value": "Thumbnail unavailable offline. Connect and retry, or ask for text only.",
     "reason": "App-owned display copy uses common.error.thumbnailOffline through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -5830,7 +5697,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1612,
+    "line": 1619,
     "kind": "call:Error",
     "value": "This is not a phone proposal.",
     "reason": "App-owned display copy uses common.error.phoneProposal through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -5839,7 +5706,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1617,
+    "line": 1624,
     "kind": "call:Error",
     "value": "This is not a phone proposal.",
     "reason": "App-owned display copy uses common.error.phoneProposal through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -5848,7 +5715,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1621,
+    "line": 1628,
     "kind": "call:Error",
     "value": "This proposal is no longer pending.",
     "reason": "App-owned display copy uses common.error.proposalPending through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -5857,7 +5724,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1627,
+    "line": 1634,
     "kind": "call:Error",
     "value": "The canvas changed after review. Decline this proposal and prepare it again.",
     "reason": "App-owned display copy uses common.error.canvasReviewChanged through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -5866,7 +5733,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1640,
+    "line": 1647,
     "kind": "display-assignment",
     "value": "queued",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data.",
@@ -5874,7 +5741,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1643,
+    "line": 1650,
     "kind": "call:Error",
     "value": "Canvas operation ID was reused with different content.",
     "reason": "App-owned display copy uses common.error.canvasOperationReused through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -5883,7 +5750,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1648,
+    "line": 1655,
     "kind": "call:Error",
     "value": "Canvas operation ID was reused with different content.",
     "reason": "App-owned display copy uses common.error.canvasOperationReused through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -5892,7 +5759,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1651,
+    "line": 1658,
     "kind": "call:Error",
     "value": "The new canvas ID is occupied.",
     "reason": "App-owned display copy uses common.error.canvasIdOccupied through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -5901,7 +5768,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1659,
+    "line": 1666,
     "kind": "call:Error",
     "value": "A picked image is already on this canvas.",
     "reason": "App-owned display copy uses common.error.imageAlreadyPicked through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -5910,7 +5777,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1700,
+    "line": 1707,
     "kind": "display-assignment",
     "value": "queued",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data.",
@@ -5918,7 +5785,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1715,
+    "line": 1722,
     "kind": "call:Error",
     "value": "This proposal is no longer pending.",
     "reason": "App-owned display copy uses common.error.proposalPending through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -5927,7 +5794,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1718,
+    "line": 1725,
     "kind": "call:Error",
     "value": "A category batch must contain 1 to 100 items.",
     "reason": "App-owned display copy uses common.error.categoryBatchSize through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -5936,7 +5803,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1721,
+    "line": 1728,
     "kind": "call:Error",
     "value": "An item or category changed. Ask Wiskit for a fresh proposal.",
     "reason": "App-owned display copy uses common.error.itemCategoryChanged through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -5945,7 +5812,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1752,
+    "line": 1759,
     "kind": "display-assignment",
     "value": "No.",
     "reason": "Stable No.<id> item identity explicitly retained by design and English card parity; not prose.",
@@ -5953,7 +5820,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1767,
+    "line": 1774,
     "kind": "display-assignment",
     "value": "wiskit.progress.typeFirst",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data.",
@@ -5961,7 +5828,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1767,
+    "line": 1774,
     "kind": "display-assignment",
     "value": "Type a question first.",
     "reason": "Original optional-words/event/default model text. This exact source line has a cataloged display path; ctxLabel/toolText/say translates presentation while retaining raw model/history values.",
@@ -5969,7 +5836,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1774,
+    "line": 1781,
     "kind": "display-assignment",
     "value": "Reading the library…",
     "reason": "Original optional-words/event/default model text. This exact source line has a cataloged display path; ctxLabel/toolText/say translates presentation while retaining raw model/history values.",
@@ -5977,7 +5844,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1812,
+    "line": 1819,
     "kind": "display-assignment",
     "value": "New chat",
     "reason": "Persisted or source-derived title/category/chat text or filename default. It belongs to the library/content contract and must remain verbatim, including existing records and AI history.",
@@ -5985,7 +5852,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1896,
+    "line": 1903,
     "kind": "display-assignment",
     "value": "Topic/resource indexes unavailable; item and note keyword search is available.",
     "reason": "Original optional-words/event/default model text. This exact source line has a cataloged display path; ctxLabel/toolText/say translates presentation while retaining raw model/history values.",
@@ -5993,7 +5860,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1919,
+    "line": 1926,
     "kind": "display-assignment",
     "value": "Deep mode ·",
     "reason": "Original optional-words/event/default model text. This exact source line has a cataloged display path; ctxLabel/toolText/say translates presentation while retaining raw model/history values.",
@@ -6001,7 +5868,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1919,
+    "line": 1926,
     "kind": "display-assignment",
     "value": "is researching your library...",
     "reason": "Original optional-words/event/default model text. This exact source line has a cataloged display path; ctxLabel/toolText/say translates presentation while retaining raw model/history values.",
@@ -6009,7 +5876,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 2077,
+    "line": 2084,
     "kind": "call:Error",
     "value": "no picture",
     "reason": "Internal image-loading fallback for model input; caught locally and replaced with the original link text.",
@@ -6017,7 +5884,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 2079,
+    "line": 2086,
     "kind": "call:Error",
     "value": "no safe picture",
     "reason": "Internal unsafe-image rejection for model input; caught locally and replaced with the original link text.",
@@ -6025,7 +5892,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 2090,
+    "line": 2097,
     "kind": "display-assignment",
     "value": "image/jpeg",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data.",
@@ -6069,7 +5936,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 130,
+    "line": 131,
     "kind": "call:Error",
     "value": "Phone storage is unavailable.",
     "reason": "App-owned display copy uses common.error.storageUnavailable through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -6078,7 +5945,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 137,
+    "line": 138,
     "kind": "call:Error",
     "value": "Phone storage did not save the proposal.",
     "reason": "App-owned display copy uses common.error.proposalNotSaved through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -6087,7 +5954,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 144,
+    "line": 145,
     "kind": "call:Error",
     "value": "Phone storage is unavailable.",
     "reason": "App-owned display copy uses common.error.storageUnavailable through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -6096,7 +5963,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 153,
+    "line": 154,
     "kind": "call:Error",
     "value": "This proposal is no longer pending.",
     "reason": "App-owned display copy uses common.error.proposalPending through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -6105,7 +5972,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 165,
+    "line": 166,
     "kind": "call:Error",
     "value": "Phone storage is unavailable.",
     "reason": "App-owned display copy uses common.error.storageUnavailable through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -6114,7 +5981,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 194,
+    "line": 195,
     "kind": "display-assignment",
     "value": "items",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data.",
@@ -6122,7 +5989,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 194,
+    "line": 195,
     "kind": "display-assignment",
     "value": "readonly",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data.",
@@ -6130,7 +5997,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 214,
+    "line": 216,
     "kind": "display-assignment",
     "value": "outbox",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data.",
@@ -6138,7 +6005,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 214,
+    "line": 216,
     "kind": "display-assignment",
     "value": "readonly",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data.",
@@ -6146,7 +6013,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 227,
+    "line": 229,
     "kind": "display-assignment",
     "value": "drafts",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data.",
@@ -6154,7 +6021,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 253,
+    "line": 255,
     "kind": "call:Error",
     "value": "Phone storage is unavailable. Keep saved results and retry.",
     "reason": "App-owned display copy uses common.error.storageKeepImport through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -6163,7 +6030,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 258,
+    "line": 260,
     "kind": "call:Error",
     "value": "Phone storage did not save the import.",
     "reason": "App-owned display copy uses common.error.importNotSaved through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -6172,7 +6039,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 268,
+    "line": 270,
     "kind": "call:Error",
     "value": "Phone storage is unavailable.",
     "reason": "App-owned display copy uses common.error.storageUnavailable through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -6181,7 +6048,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 275,
+    "line": 277,
     "kind": "call:Error",
     "value": "Phone storage could not read the chat queue.",
     "reason": "App-owned display copy uses common.error.chatRead through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -6190,7 +6057,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 281,
+    "line": 283,
     "kind": "call:Error",
     "value": "Phone storage is unavailable.",
     "reason": "App-owned display copy uses common.error.storageUnavailable through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -6199,7 +6066,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 290,
+    "line": 292,
     "kind": "call:Error",
     "value": "Phone storage did not save the chat.",
     "reason": "App-owned display copy uses common.error.chatNotSaved through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -6208,7 +6075,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 294,
+    "line": 296,
     "kind": "display-assignment",
     "value": "changes",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data.",
@@ -6216,7 +6083,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 294,
+    "line": 296,
     "kind": "display-assignment",
     "value": "readonly",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data.",
@@ -6224,7 +6091,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 328,
+    "line": 330,
     "kind": "call:Error",
     "value": "Phone storage did not save the changes.",
     "reason": "App-owned display copy uses common.error.changesNotSaved through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -6233,7 +6100,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 344,
+    "line": 346,
     "kind": "call:Error",
     "value": "Phone storage is unavailable.",
     "reason": "App-owned display copy uses common.error.storageUnavailable through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -6242,7 +6109,7 @@
   },
   {
     "file": "web/src/mobile/store.ts",
-    "line": 350,
+    "line": 352,
     "kind": "call:Error",
     "value": "Phone storage could not save the canvas result.",
     "reason": "App-owned display copy uses common.error.canvasResultNotSaved through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only.",
@@ -6898,5 +6765,415 @@
     "value": "FAILED",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data.",
     "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/lanes.ts",
+    "line": 42,
+    "kind": "display-assignment",
+    "value": "in step",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/lanes.ts",
+    "line": 42,
+    "kind": "display-assignment",
+    "value": "not run yet",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/screens/More.svelte",
+    "line": 100,
+    "kind": "attribute:title",
+    "value": "Obsidian",
+    "reason": "Product name retained in all languages.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/screens/More.svelte",
+    "line": 103,
+    "kind": "attribute:title",
+    "value": "Obsidian",
+    "reason": "Product name retained in all languages.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/screens/settings/Sync.svelte",
+    "line": 26,
+    "kind": "display-assignment",
+    "value": "retry",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/screens/settings/Sync.svelte",
+    "line": 26,
+    "kind": "display-assignment",
+    "value": "send",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-lines.ts",
+    "line": 20,
+    "kind": "display-assignment",
+    "value": "busy",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-lines.ts",
+    "line": 20,
+    "kind": "display-assignment",
+    "value": "done",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-lines.ts",
+    "line": 20,
+    "kind": "display-assignment",
+    "value": "todo",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 21,
+    "kind": "display-assignment",
+    "value": "done",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 22,
+    "kind": "display-assignment",
+    "value": "account-mismatch",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 22,
+    "kind": "display-assignment",
+    "value": "working",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 22,
+    "kind": "display-assignment",
+    "value": "connect",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 22,
+    "kind": "display-assignment",
+    "value": "attention",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 22,
+    "kind": "display-assignment",
+    "value": "done",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 22,
+    "kind": "display-assignment",
+    "value": "empty",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 23,
+    "kind": "display-assignment",
+    "value": "done",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 23,
+    "kind": "display-assignment",
+    "value": "working",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 23,
+    "kind": "display-assignment",
+    "value": "waiting",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 24,
+    "kind": "display-assignment",
+    "value": "done",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 24,
+    "kind": "display-assignment",
+    "value": "first-backup",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 24,
+    "kind": "display-assignment",
+    "value": "working",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 24,
+    "kind": "display-assignment",
+    "value": "no-library",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 24,
+    "kind": "display-assignment",
+    "value": "key",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 24,
+    "kind": "display-assignment",
+    "value": "backup-off",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 24,
+    "kind": "display-assignment",
+    "value": "attention",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 24,
+    "kind": "display-assignment",
+    "value": "waiting",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 30,
+    "kind": "display-assignment",
+    "value": "done",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 30,
+    "kind": "display-assignment",
+    "value": "empty",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 31,
+    "kind": "display-assignment",
+    "value": "prepared",
+    "reason": "Exact recovery fact identifier; the step label and explanation use catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 31,
+    "kind": "display-assignment",
+    "value": "done",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 31,
+    "kind": "display-assignment",
+    "value": "empty",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 32,
+    "kind": "display-assignment",
+    "value": "checked",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 32,
+    "kind": "display-assignment",
+    "value": "done",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 32,
+    "kind": "display-assignment",
+    "value": "attention",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 32,
+    "kind": "display-assignment",
+    "value": "empty",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 40,
+    "kind": "display-assignment",
+    "value": "done",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 40,
+    "kind": "display-assignment",
+    "value": "empty",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 40,
+    "kind": "display-assignment",
+    "value": "failed",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 40,
+    "kind": "display-assignment",
+    "value": "paused",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 40,
+    "kind": "display-assignment",
+    "value": "working",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/settings-steps.ts",
+    "line": 40,
+    "kind": "display-assignment",
+    "value": "waiting",
+    "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/ui/kinds.ts",
+    "line": 3,
+    "kind": "display-assignment",
+    "value": "M2 6l3 3 5-6",
+    "reason": "SVG path coordinates for the status badge glyph, never displayed text.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/ui/kinds.ts",
+    "line": 4,
+    "kind": "display-assignment",
+    "value": "M4 2v8m4-8v8",
+    "reason": "SVG path coordinates for the status badge glyph, never displayed text.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/Vault.svelte",
+    "line": 36,
+    "kind": "attribute:infoTitle",
+    "value": "Obsidian",
+    "reason": "Product name retained in all languages.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/Vault.svelte",
+    "line": 47,
+    "kind": "text",
+    "value": "Obsidian",
+    "reason": "Product name retained in all languages.",
+    "disposition": "exempt"
+  },
+  {
+    "file": "web/src/mobile/screens/settings/Wiskit.svelte",
+    "line": 58,
+    "kind": "display-assignment",
+    "value": "AbortError",
+    "reason": "DOM exception name used to distinguish cancellation; visible text is cataloged."
+  },
+  {
+    "file": "web/src/mobile/store.ts",
+    "line": 380,
+    "kind": "call:Error",
+    "value": "Phone storage is unavailable.",
+    "reason": "Internal storage error. Explicit cleanup renders the localized Storage or Backup error; never raw exception text."
+  },
+  {
+    "file": "web/src/mobile/store.ts",
+    "line": 384,
+    "kind": "call:Error",
+    "value": "Phone storage could not complete the operation.",
+    "reason": "Internal storage error. Explicit cleanup renders the localized Storage or Backup error; never raw exception text."
+  },
+  {
+    "file": "web/src/mobile/vault/auto.svelte.ts",
+    "line": 134,
+    "kind": "display-assignment",
+    "value": "vault",
+    "reason": "Vault storage key, native error context or outcome enum. Visible labels use existing localized catalogs."
+  },
+  {
+    "file": "web/src/mobile/vault/auto.svelte.ts",
+    "line": 190,
+    "kind": "display-assignment",
+    "value": "error",
+    "reason": "Vault storage key, native error context or outcome enum. Visible labels use existing localized catalogs."
+  },
+  {
+    "file": "web/src/mobile/vault/auto.svelte.ts",
+    "line": 193,
+    "kind": "display-assignment",
+    "value": "waiting",
+    "reason": "Vault storage key, native error context or outcome enum. Visible labels use existing localized catalogs."
   }
 ]

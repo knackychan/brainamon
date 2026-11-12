@@ -640,6 +640,11 @@ export async function linkGet(url) {
                         self.assertEqual(page.locator('.m-import-identity,.proto-device,.proto-picker').count(), 0)
                         for name in NAMES:
                             block = show(page, name)
+                            if name == 'TikTok':
+                                expect(block.get_by_text('Coming soon', exact=True)).to_have_count(2)
+                                self.assertEqual(block.get_by_role('group', name='TikTok actions').count(), 0)
+                                self.assertEqual(block.locator('.m-import-action').count(), 0)
+                                continue
                             actions = block.get_by_role('group', name=f'{name} actions')
                             self.assertEqual(actions.locator('.m-import-action>.m-btn').evaluate_all('(xs)=>xs.map(x=>x.getAttribute("aria-label"))'), ['Request export', 'Scan saved posts', 'Import file'])
                             expect(actions.get_by_role('button', name='Scan saved posts')).to_be_disabled()
@@ -702,6 +707,10 @@ export async function linkGet(url) {
                 page.add_init_script('window.__sites=' + json.dumps({'state': state, 'calls': [], 'forgets': [], 'mode': ''}))
                 page.route('**/src/mobile/native.ts', lambda route: route.fulfill(content_type='application/javascript', body=NATIVE))
                 page.goto(base + '/mobile.html#/import')
+                tiktok = show(page, 'TikTok')
+                expect(tiktok.get_by_text('Coming soon', exact=True)).to_have_count(2)
+                self.assertEqual(tiktok.get_by_role('button', name='Scan saved posts').count(), 0)
+                self.assertEqual(page.evaluate('window.__sites.calls'), [])
                 instagram = show(page, 'Instagram')
                 scan = instagram.get_by_role('button', name='Scan saved posts', exact=True)
                 expect(scan).to_be_enabled()

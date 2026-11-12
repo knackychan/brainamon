@@ -33,6 +33,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
@@ -40,7 +41,7 @@ from datetime import datetime
 from pathlib import Path, PureWindowsPath
 
 from core import ai_client, ai_defaults, app_console, app_paths, config, private_storage, entitlements, sync_license
-from library import drive_client, export, mirror, vault_sync
+from library import drive_client, export, mirror, recovery, vault_sync
 from library.export_targets import DriveMirrorTarget, ExportStopped
 from server import cloud_errors, delivery, intake, intents
 from server.cloud_errors import WorkerStopping      # raised here; the tests and routes read it as sync.WorkerStopping
@@ -63,8 +64,19 @@ CONTROL_WAIT = 8           # seconds a Remove click waits for an access-record r
 
 KEY_MISSING = ("This PC no longer has the key that opens this library's backup in Google Drive, so nothing was uploaded. "
                'Unlock the backup with your passphrase, recovery file or a phone code, or reset the backup.')
+S_PAUSE_RESTORE = 'cloud_pause_restore'
 S_PAUSED = 'cloud_paused_at'        # ms: when backup was paused; it stays paused until Resume (D14)
+DISCONNECT_PREPARING = 'Preparing disconnect.'
 PREVIOUS_TOKEN = 'google_token.previous.json'      # the old account's sign-in while its copy waits to be deleted (finding 7)
+
+
+def _store_settings(db, values):
+    with db.conn:
+        for key, value in values.items():
+            if value is None:
+                db.conn.execute('DELETE FROM settings WHERE key = ?', (key,))
+            else:
+                db.conn.execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', (key, value))
 
 
 TASKS = {      # kind: (title, step labels); `STEPS` below maps a persisted stage to the step it is in
@@ -76,6 +88,14 @@ TASKS = {      # kind: (title, step labels); `STEPS` below maps a persisted stag
     intents.UPDATE: ('Updating this folder', ['Downloading what changed', 'Switching at the restart', 'Becoming the backup PC']),
     intents.DISCONNECT: ('Disconnecting Google Drive', ['Stopping current work', 'Deleting the backup if requested', 'Signing out']),
 }
+TASK_ERRORS = {cloud_errors.AUTH_EXPIRED: cloud_errors.EXPIRED, cloud_errors.OFFLINE: cloud_errors.OFFLINE_TEXT,
+               cloud_errors.DRIVE_FULL: cloud_errors.FULL, cloud_errors.RATE_LIMITED: cloud_errors.RATE_TEXT,
+               cloud_errors.LOCAL_STORAGE: cloud_errors.STORAGE_TEXT, cloud_errors.BUSY_CODE: cloud_errors.BUSY,
+               cloud_errors.FOREIGN_BACKUP: cloud_errors.FOREIGN}
+TASK_ERROR_CODES = {*TASK_ERRORS, cloud_errors.WRONG_ACCOUNT, cloud_errors.WORKER_STOPPING, cloud_errors.NOT_OWNER,
+                    cloud_errors.OTHER, cloud_errors.OTHER_COPY}
+RESUME_BLOCKERS = {cloud_errors.NOT_OWNER, cloud_errors.FOREIGN_BACKUP, cloud_errors.WRONG_ACCOUNT, cloud_errors.OTHER_COPY}
+
 STEPS = {(intents.REMOVE, 'requested'): 3, (intents.REMOVE, 'prepared'): 3, (intents.REMOVE, 'publishing'): 3, (intents.REMOVE, 'cleanup'): 5,
          (intents.ENROLL, 'queued'): 1, (intents.ENROLL, 'uploading'): 2,
          (intents.SWITCH, 'queued'): 1, (intents.SWITCH, 'signing-in'): 2, (intents.SWITCH, 'cleanup'): 3,
@@ -145,7 +165,14 @@ def _save_vault_state(path: Path, st: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix('.tmp')
     tmp.write_text(json.dumps(st), encoding='utf-8')
-    tmp.replace(path)
+    for attempt in range(5):
+        try:
+            tmp.replace(path)
+            return
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(.1 * (attempt + 1))
 
 
 def _folder_key(folder) -> str:
@@ -284,6 +311,13 @@ class SyncService:
         self._control_thread = None
         self._sign_in = sign_in or drive_client.sign_in
         self._lock = threading.Lock()
+        self._pause_control = threading.RLock()
+        self._resume_check_stop = None
+        self._paused_task = None
+        self._failed_task = None
+        self._pair_cache = None
+        self._pair_identity = None
+        self._pair_identity_lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()      # this run's: start() makes a new one, so a thread that outlived shutdown() stays stopped
         self._life = threading.Lock()       # start() and a worker's last step: which thread is current, whether one follows
@@ -322,7 +356,7 @@ class SyncService:
         self._signin_thread: threading.Thread | None = None
         self._after_sign_in: set[str] = set()   # what Connect turns on once Google answers: 'mirror', 'vault'
         # seq: bumped by every change, so the page can drop an answer older than the last `cloud` event
-        self.st = {'seq': 0, 'state': 'off', 'done': 0, 'total': 0, 'bytes_done': 0, 'bytes_total': 0, 'items_done': 0, 'items_total': 0,
+        self.st = {'seq': 0, 'recovery_gate_active': False, 'on': False, 'vault': {'on': False, 'folder': ''}, 'state': 'off', 'done': 0, 'total': 0, 'bytes_done': 0, 'bytes_total': 0, 'items_done': 0, 'items_total': 0,
                    'error': '', 'error_code': '', 'error_action': '',
                    'error_at': 0,              # ms: when the other PC became the backup PC (not_owner) or made its backup (foreign_backup)
                    'error_account': '',        # the Google account a discarded sign-in used (wrong_account): the page offers Switch to it
@@ -344,6 +378,7 @@ class SyncService:
         self._vault_status_id, self._vault_status_at = '', 0.0
         from server.recovery import RecoveryService
         self.recovery = RecoveryService(self)
+        self.intents.on_change = lambda: self._set()
 
     # ── what the Settings window reads ──────────────────────────────────────
     @property
@@ -365,29 +400,122 @@ class SyncService:
         return {'signed_in': tok is not None, 'token_issued': float(tok.get('signed_in_at') or 0) if tok else 0}
 
     def status(self) -> dict:
-        task = self._task_view()
-        with self._lock:
-            return dict(self.st, licensed=entitlements.feature_enabled('phone_sync'), running=self.running, vault_running=self.vault_running, **self._token_view(),
-                        configured=bool(config.google_client()[0]), task=task)
+        with self.intents._lock:
+            items = self.intents.all()
+            task = self._task_view(items)
+            tasks = []
+            for it in items:
+                error, code = it.get('error', ''), it.get('code', '')
+                if code not in TASK_ERROR_CODES:
+                    code = cloud_errors.OTHER if error else ''
+                tasks.append({'id': it['id'], 'kind': it['kind'], 'title': TASKS[it['kind']][0], 'stage': it['stage'],
+                              'error': TASK_ERRORS.get(code, 'This task needs attention. Open it for details.') if error else '', 'code': code})
+            with self._lock:
+                snap = dict(self.st)
+        return dict(snap, licensed=entitlements.feature_enabled('phone_sync'), running=self.running, vault_running=self.vault_running,
+                    **self._token_view(), configured=bool(config.google_client()[0]), task=task, tasks=tasks,
+                    pair_ready=self._pair_ready(snap, items))
 
-    def _task_view(self):
+    def _pair_ready(self, snap, items) -> bool:
+        if self._closing or snap['recovery_gate_active'] or self._pair_identity is None or not entitlements.feature_enabled('phone_sync'):
+            return False
+        try:
+            def stamp(path):
+                try:
+                    st = path.stat()
+                    return st.st_ino, st.st_mtime_ns, st.st_size
+                except FileNotFoundError:
+                    return None
+            paths = (self.cloud_dir / 'rotation.json', self.key_path, self.control_key_path)
+            signature = (snap['key_missing'], self._pair_identity, tuple((it['kind'], it['payload'].get('new')) for it in items),
+                         tuple((stamp(path), stamp(private_storage.location(path))) for path in paths))
+            if self._pair_cache and self._pair_cache[0] == signature:
+                return self._pair_cache[1]
+            try:
+                signer = private_storage.read(self.control_key_path, readonly=True)
+            except FileNotFoundError:
+                signer = None
+            if signer is not None:
+                from cryptography.hazmat.primitives import serialization
+                serialization.load_pem_private_key(signer, password=None)
+            rotation = self._rotation(readonly=True)
+            if rotation and rotation.get('stage') != 'complete':
+                key = self._rotation_key(rotation['new'])
+                ready = any(it['kind'] == intents.REMOVE and it['payload'].get('new') == key.fingerprint for it in items)
+            elif snap['key_missing']:
+                ready = False
+            else:
+                key = mirror.MirrorKey.load(self.key_path, readonly=True)
+                epoch, adopt = self._pair_identity
+                if epoch and (not key or key.fingerprint not in (epoch, adopt)):
+                    self._pair_cache = signature, False
+                    return False
+                ready = True
+            self._pair_cache = signature, ready
+            return ready
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError, mirror.MirrorKeyError):
+            return False
+
+    def _write_identity(self, fn):
+        with self._pair_identity_lock:
+            self._pair_identity = None
+            def write(db):
+                result = fn(db)
+                return result, db.get_setting(S_EPOCH, '') or '', db.get_setting(S_ADOPT, '') or ''
+            result, epoch, adopt = self.writer.call(write)
+            self._pair_identity = epoch, adopt
+            return result
+
+    def refresh_vault_folder(self) -> None:
+        with self._pause_control:
+            folder = self.writer.read(lambda db: db.get_setting('obsidian_vault', '') or '')
+            if folder != self.st['vault']['folder']:
+                self._set(vault={**self.st['vault'], 'folder': folder})
+
+    def _task_view(self, items=None):
+        task = self._live_task_view(items)
+        saved = self._paused_task
+        if self.st['paused_since'] and task:
+            if saved and (saved['id'], saved['stage']) == (task['id'], task['stage']):
+                return {**saved, 'error': task['error'], 'code': task['code'], 'paused_snapshot': True}
+            self._paused_task = None
+            return {**task, 'done': 0, 'total': 0, 'bytes_done': 0, 'bytes_total': 0, 'items_done': 0, 'items_total': 0,
+                    'uploaded_items': None, 'uploaded_items_total': None, 'uploaded_files': None}
+        if not task:
+            self._paused_task = None
+        failed = self._failed_task
+        if failed and (not task or (failed['id'], failed['stage']) != (task['id'], task['stage'])):
+            self._failed_task = failed = None
+        if failed and self.st['state'] == 'error':
+            return {**failed, 'error': task['error'], 'code': task['code']}
+        return task
+
+    def _live_task_view(self, items=None):
         """The long task the page shows as one card (S3): its saved stage, the step that stage is in and the live counts (files and
         bytes, S7). Everything comes from the intent's persisted stage, so a restart shows the same step."""
-        items = self.intents.all()
+        if items is None:
+            items = self.intents.all()
         if not items:
             return None
         it = items[0]
+        activity = self.st.get('recovery_activity') or {}
+        if activity.get('action') == 'enroll' and activity.get('state') == 'running':
+            it = next((item for item in items if item['kind'] == intents.ENROLL), it)
         title, labels = TASKS[it['kind']]
         step = STEPS.get((it['kind'], it['stage']), 1)
-        if it['kind'] == intents.REMOVE and it['stage'] == 'publishing' and self._checking_copy:
+        if it['kind'] == intents.REMOVE and self._checking_copy:
             step = 4        # the whole check: the library's files, then the Obsidian vault's upload and read-back
+        vault = step == 4 and it['kind'] == intents.REMOVE and self.st.get('vault_state') == 'syncing' and self.st.get('vault_total', 0) > 0
         steps = [{'label': label, 'state': 'done' if n < step else 'active' if n == step else 'waiting'} for n, label in enumerate(labels, 1)]
-        return {'id': it['id'], 'kind': it['kind'], 'stage': it['stage'], 'title': title, 'step': step, 'of': len(labels), 'steps': steps,
-                'done': self.st.get('done', 0), 'total': self.st.get('total', 0),
-                'bytes_done': self.st.get('bytes_done', 0), 'bytes_total': self.st.get('bytes_total', 0), 'since': it['created'],
+        task = {'id': it['id'], 'kind': it['kind'], 'stage': it['stage'], 'title': title, 'step': step, 'of': len(labels), 'steps': steps,
+                'done': self.st.get('vault_done' if vault else 'done', 0), 'total': self.st.get('vault_total' if vault else 'total', 0),
+                'bytes_done': 0 if vault else self.st.get('bytes_done', 0), 'bytes_total': 0 if vault else self.st.get('bytes_total', 0), 'since': it['created'],
                 'items_done': self.st.get('items_done', 0), 'items_total': self.st.get('items_total', 0),
                 'uploaded_items': it['payload'].get('uploaded_items'), 'uploaded_items_total': it['payload'].get('uploaded_items_total'), 'uploaded_files': it['payload'].get('uploaded_files'),
                 'error': it.get('error', ''), 'code': it.get('code', ''), 'lock': self.st.get('rotation_lock', '') if it['kind'] == intents.REMOVE else ''}
+        if it['kind'] == intents.ENROLL or it['kind'] == intents.DISCONNECT and it.get('error') == DISCONNECT_PREPARING:
+            task.update(done=0, total=0, bytes_done=0, bytes_total=0, items_done=0, items_total=0)
+        return task
 
     def _set(self, emit: bool = True, **kw) -> None:
         if 'error' in kw and 'error_code' not in kw:
@@ -435,11 +563,7 @@ class SyncService:
 
     def _emit(self) -> None:
         """The `cloud` SSE snapshot: the latest state, whichever thread changed it last."""
-        task = self._task_view()
-        with self._lock:
-            snap = dict(self.st)
-        snap.update(licensed=entitlements.feature_enabled('phone_sync'), running=self.running, vault_running=self.vault_running, task=task, **self._token_view())     # the Cloud tab's Account row follows a sign-in
-        self.hub.publish('cloud', snap)
+        self.hub.publish('cloud', self.status())
 
     # ── lifecycle ───────────────────────────────────────────────────────────
     def require_open(self):
@@ -463,24 +587,34 @@ class SyncService:
         if any(i['kind'] == intents.DISCONNECT or i['kind'] in (intents.RESET, intents.SWITCH) and i['stage'] == 'queued' for i in self.intents.all()):
             return
         # Hold the reconnect gate until the thread exists: reconnect either sees it and drains it, or it never starts.
-        if not self.recovery.mutation.acquire(blocking=False):
-            return
         try:
-            state = self.recovery._load()
-            if state and state.get('restored'):
-                return
-            if self._closing or self.recovery.reconnecting or not self.signed_in() or not self.key_path.exists():
-                return
-            if self._control_stop.is_set():
-                if self._control_thread and self._control_thread.is_alive():
+            with self.recovery.gate():
+                state = self.recovery._load()
+                if state and state.get('restored'):
                     return
-                self._control_stop = threading.Event()
-            if not self._control_thread or not self._control_thread.is_alive():
-                self._control_thread = threading.Thread(target=self._control_loop, name='cm-license-control', daemon=True)
-                self._control_thread.start()
-            self._control_wake.set()
-        finally:
-            self.recovery.mutation.release()
+                if self._closing or self.recovery.reconnecting or not self.signed_in() or not self.key_path.exists():
+                    return
+                if self._control_stop.is_set():
+                    if self._control_thread and self._control_thread.is_alive():
+                        return
+                    self._control_stop = threading.Event()
+                if not self._control_thread or not self._control_thread.is_alive():
+                    self._control_thread = threading.Thread(target=self._control_loop, name='cm-license-control', daemon=True)
+                    self._control_thread.start()
+                self._control_wake.set()
+        except cloud_errors.Busy:
+            return
+
+    def _start_control_after_accept(self):
+        try:
+            self._start_control()
+        except Exception:
+            app_console.emit('log', 'Phone access checks could not start after the saved change.', level='warning')
+            try:
+                self._set(error='Phone access checks could not start. Restart Brainamon to try again.',
+                          error_code=cloud_errors.OTHER, error_action=cloud_errors.NONE)
+            except Exception:
+                pass
 
     def _control_loop(self):
         last, renew = None, 0
@@ -538,6 +672,7 @@ class SyncService:
         """Delete the old key's phone-access record (I6). A phone reads it on every Drive call, so it stops at that call;
         a phone that cannot reach Drive keeps the grant it already holds, which ends by itself (GRANT_MS after the last
         renewal)."""
+        self._check_expected_account(rotation.get('expected_account'), client)
         key = self._rotation_key(rotation['old'])
         names = {key.name(path) for path in sync_license.CONTROL_LOGICALS}
         for f in listing:
@@ -606,16 +741,31 @@ class SyncService:
             self.writer.call(delivery.recover)
         except Exception as e:
             app_console.emit('log', 'From the phone: an interrupted change file could not be undone yet', level='error', error=e)
-        on, vault, last, account, expired, paused = self.writer.read(lambda db: (db.get_setting(S_ON, '') == 'on',
-                                                                                  db.get_setting(S_VAULT, '') == 'on',
-                                                                                  int(db.get_setting(S_LAST, '0') or 0),
-                                                                                  db.get_setting(S_ACCOUNT, ''),
-                                                                                  db.get_setting(S_EXPIRED, '') == '1',
-                                                                                  int(db.get_setting(S_PAUSED, '0') or 0)))
+        with self._pair_identity_lock:
+            on, vault, folder, last, account, expired, paused, epoch, adopt = self.writer.read(lambda db: (db.get_setting(S_ON, '') == 'on',
+                                                                                      db.get_setting(S_VAULT, '') == 'on',
+                                                                                      db.get_setting('obsidian_vault', '') or '',
+                                                                                      int(db.get_setting(S_LAST, '0') or 0),
+                                                                                      db.get_setting(S_ACCOUNT, ''),
+                                                                                      db.get_setting(S_EXPIRED, '') == '1',
+                                                                                      int(db.get_setting(S_PAUSED, '0') or 0),
+                                                                                      db.get_setting(S_EPOCH, '') or '', db.get_setting(S_ADOPT, '') or ''))
+            self._pair_identity = epoch, adopt
+        disconnect = self.intents.find(intents.DISCONNECT)
+        priority_disconnect = bool(disconnect)
+        if disconnect and disconnect.get('error') == DISCONNECT_PREPARING:
+            self.writer.call(lambda db: _store_settings(db, {S_ON: '', S_VAULT: 'off', S_PAUSED: '', S_PAUSE_RESTORE: ''}))
+            on = vault = False
+            paused = 0
+            self.intents.update(intents.DISCONNECT, error='', code='')
+        elif (paused or priority_disconnect) and (on or vault):
+            self.writer.call(lambda db: _store_settings(db, {S_ON: '', S_VAULT: 'off'}))
+            on = vault = False
         signed = self.signed_in()
+        key_missing = self._key_missing()
         with self._lock:
-            self.st.update(last_publish=last, account=account, token_expired=expired and signed, paused_since=0 if on else paused,
-                           key_missing=self._key_missing())
+            self.st.update(on=on, vault={'on': vault, 'folder': folder}, last_publish=last, account=account,
+                           token_expired=expired and signed, paused_since=paused, key_missing=key_missing)
         rotation = self._rotation()
         if rotation and rotation['stage'] != 'complete':
             self._set(rotation='pending')
@@ -626,7 +776,7 @@ class SyncService:
                 self._sync_remove_intent(rotation)
         self._lock_status(rotation)
         self._start_control()
-        if self.intents.find(intents.DISCONNECT):
+        if priority_disconnect:
             self.start(oneshot=True)
         elif expired and signed:
             # Google refused this PC's sign-in before the last quit: show why instead of starting work that fails again.
@@ -657,11 +807,18 @@ class SyncService:
         epoch, adopt = self.writer.read(lambda db: (db.get_setting(S_EPOCH, ''), db.get_setting(S_ADOPT, '')))
         return epoch in (old, new) or adopt in (old, new)
 
-    def start(self, oneshot: bool = False) -> None:
+    def start(self, oneshot: bool = False, *, _control: bool = True) -> None:
+        with self._pause_control:
+            if self.st['paused_since'] and not self.intents.find(intents.DISCONNECT):
+                return
+            self._start_worker(oneshot)
+        if _control and not self.st['paused_since']:
+            self._start_control_after_accept()
+
+    def _start_worker(self, oneshot: bool = False) -> None:
         """The sync thread. `oneshot`: backup itself is off and the thread only runs what is waiting (an intent, a pending
         removal); it ends when that is done (D4). Turning backup on makes any running thread an ordinary one."""
         self.require_open()
-        self._start_control()
         with self._life:
             if self.running:
                 if not oneshot:
@@ -680,20 +837,27 @@ class SyncService:
             self._thread.start()
         self._emit()
 
-    def ensure_running(self) -> None:
+    def ensure_running(self, *, _control: bool = True) -> None:
         """After a handler saved an intent (and at boot): the sync thread exists while backup is on or something is waiting
         for it, and it is told to look now. Handlers call this and return; they never wait for the thread (S3)."""
         if self._closing or not self.intents.all():
             return
         on = self.writer.read(lambda db: db.get_setting(S_ON, '') == 'on')
         if not self.running or self._stop.is_set():
-            self.start(oneshot=not on)
+            self.start(oneshot=not on, _control=_control)
         self.poke(force=True)
 
-    def start_vault(self) -> None:
+    def start_vault(self, *, _control: bool = True) -> None:
+        with self._pause_control:
+            if self.st['paused_since']:
+                return
+            self._start_vault_worker()
+        if _control and not self.st['paused_since']:
+            self._start_control_after_accept()
+
+    def _start_vault_worker(self) -> None:
         """The vault rounds' thread, with its own On / Off beside the phone mirror's. The first round runs at once."""
         self.require_license()
-        self._start_control()
         with self._life:
             if self.vault_running:
                 if self._vault_stop.is_set():
@@ -715,7 +879,7 @@ class SyncService:
             thread.join(10)
         if thread and thread.is_alive():
             # One request outlasts the wait. The state says so at once; the worker settles it as it exits (I4).
-            self._set(state='stopping', done=0, total=0)
+            self._set(state='stopping', **({} if self.st['paused_since'] else {'done': 0, 'total': 0}))
             raise WorkerStopping(MIRROR_STOPPING)
         elif self._thread is thread:
             self._thread = None
@@ -727,7 +891,7 @@ class SyncService:
         if thread:
             thread.join(10)
         if thread and thread.is_alive():
-            self._set(vault_state='stopping', vault_step='', vault_done=0, vault_total=0, vault_since=0)
+            self._set(vault_state='stopping', **({} if self.st['paused_since'] else {'vault_step': '', 'vault_done': 0, 'vault_total': 0, 'vault_since': 0}))
             raise WorkerStopping(VAULT_STOPPING)
         elif self._vault_thread is thread:
             self._vault_thread = None
@@ -760,10 +924,15 @@ class SyncService:
         with self._lock:
             changes = {}
             if (self.st['vault_state'] == 'stopping' or self.st['state'] == 'stopping') and not self.vault_running:
-                changes.update(vault_state='off', vault_reason='', vault_summary='', vault_skipped=0, vault_skipped_note='', vault_step='',
-                               vault_done=0, vault_total=0, vault_since=0)
+                changes.update(vault_state='off', vault_reason='', vault_summary='', vault_skipped=0, vault_skipped_note='')
+                if not self.st['paused_since']:
+                    changes.update(vault_step='', vault_done=0, vault_total=0, vault_since=0)
             if self.st['state'] == 'stopping' and not self.running and not self.vault_running:
-                changes.update(state='off', done=0, total=0, error='')
+                changes.update(state='off')
+                if not self.st['paused_since'] or self.st.get('error_code') not in RESUME_BLOCKERS:
+                    changes['error'] = ''
+                if not self.st['paused_since']:
+                    changes.update(done=0, total=0)
             if not changes:
                 return
             self.st.update(changes)
@@ -893,7 +1062,7 @@ class SyncService:
                         for w in ('mirror', 'vault', 'recovery'):
                             if w in want and (w != 'vault' or entitlements.feature_enabled('phone_sync')):
                                 try:
-                                    self._turn_on(w)
+                                    self._turn_on(w, after_sign_in=True)
                                 except drive_client.DriveError as e:     # reconnect is running: nothing turns on
                                     self._set(state='idle' if self.running else 'off', error=str(e))
                 self._signin_thread = threading.Thread(target=run, name='cm-signin', daemon=True)
@@ -917,32 +1086,62 @@ class SyncService:
             if self.st['state'] == 'signing-in':
                 self._set(state='idle' if self.running else 'off', error='', **self._sign_in_dropped())
 
-    def switch(self, delete_old: bool | None = None) -> None:
+    def _check_expected_account(self, expected, client=None) -> None:
+        if expected is None:
+            return
+        account = client.about().get('email', '') if client is not None else self.st.get('account', '')
+        if not expected.strip() or account.strip().casefold() != expected.strip().casefold():
+            raise cloud_errors.RecoveryBlocked('The Google account changed. Review this action again for the current account.')
+
+    def switch(self, delete_old: bool | None = None, *, expected_account: str | None = None) -> None:
         """Change account. Without `delete_old` (None): sign out without starting uploads or vault sync; existing copies and
         keys stay. With it (the Switch account form): a task (finding 7). This PC signs in to the other account and backs
         up there; the copy in the old account is deleted only after that first backup is complete, and only when asked."""
         with self.recovery.gate():
+            self._check_expected_account(expected_account)
             if not config.google_client()[0]:
                 raise drive_client.DriveError('No Google sign-in app is configured for this build.')
             if delete_old is None:
                 self.sign_out(delete_mirror=False)
                 self.connect('recovery')
                 return
-            self.intents.add(intents.SWITCH, {'delete_old': bool(delete_old), 'account': self.st.get('account', '')})
-        self._start_intent(intents.SWITCH)
+            with self._pause_control:
+                update = self.intents.find(intents.UPDATE)
+                if update and update['stage'] == 'swap':
+                    raise drive_client.DriveError('The switch to the newer library is prepared. Restart Brainamon to finish it.')
+                self.intents.add(intents.SWITCH, {'delete_old': bool(delete_old), 'account': self.st.get('account', ''),
+                                                **({'expected_account': expected_account} if expected_account is not None else {})})
+                self.recovery.cancel_update()
+                self._start_intent(intents.SWITCH)
 
     def _start_intent(self, kind: str) -> None:
         """Accept a backup/account change without doing network or key work in the request handler."""
-        self.recovery.cancel_update()
         self._vault_stop.set()
         self._vault_wake.set()
         self._control_stop.set()
         self._control_wake.set()
         self._stop.set()
         self._wake.set()
-        self.writer.call(lambda db: (db.set_setting(S_PAUSED, ''), db.set_setting(S_VAULT, 'off')))
-        self._set(paused_since=0, error='')
-        self.ensure_running()
+        with self._pause_control:
+            self._stop.set()
+            self._vault_stop.set()
+            try:
+                self.writer.call(lambda db: _store_settings(db, {S_PAUSED: '', S_PAUSE_RESTORE: '', S_VAULT: 'off'}))
+            except Exception:
+                message = 'The cloud task was saved, but its local settings could not be updated. Try again.'
+                self.intents.update(kind, error=message, code=cloud_errors.LOCAL_STORAGE)
+                self._set(state='error', error=message, error_code=cloud_errors.LOCAL_STORAGE, error_action=cloud_errors.RETRY)
+                return
+            self._paused_task = None
+            self._set(paused_since=0, error='', vault={**self.st['vault'], 'on': False})
+        try:
+            self.ensure_running(_control=False)
+        except (OSError, RuntimeError, drive_client.DriveError):
+            app_console.emit('log', 'A saved cloud task could not start.', level='warning')
+            try:
+                self._set(state='error', error='The cloud task was saved. Restart Brainamon to continue.')
+            except Exception:
+                pass
 
     def _old_copy_ids(self) -> list:
         """Drive ids of the copy this PC backs up now: its mirror files, its access record, and this library's recovery records
@@ -968,23 +1167,32 @@ class SyncService:
         sign-in put aside (kept while the old copy is to be deleted, revoked otherwise), then the browser opens for the other
         account and backup starts when Google answers."""
         p = it['payload']
+        if p.get('expected_account') is not None:
+            self._check_expected_account(p['expected_account'], self._raw_factory(drive_client.load_token(self.token_path)))
         if 'ids' not in p:
             p = self.intents.update(intents.SWITCH, payload={'ids': self._desktop_backup_ids() if p.get('delete_old') else []})['payload']
         if stop and stop.is_set():
             raise ExportStopped()
-        rotation = self._rotation()
-        if rotation and rotation['stage'] != 'complete':
-            # Switching accounts must not revive a phone key that Remove already revoked.
-            new = self._rotation_key(rotation['new'])
-            new.save(self.key_path)
-            self.recovery.archive_state('switch')
-            self.writer.call(lambda db: (db.clear_sync_state(), db.set_setting(S_EPOCH, ''), db.set_setting(S_ADOPT, new.fingerprint)))
-        self._retire_tasks(intents.SWITCH)
-        self._vault_resume = False
-        self.writer.call(lambda db: (db.set_setting(S_ON, ''), db.set_setting(S_VAULT, 'off'), db.set_setting(S_PAUSED, '')))
+        with self._pause_control:
+            if stop and stop.is_set():
+                raise ExportStopped()
+            rotation = self._rotation()
+            if rotation and rotation['stage'] != 'complete':
+                # Switching accounts must not revive a phone key that Remove already revoked.
+                new = self._rotation_key(rotation['new'])
+                new.save(self.key_path)
+                self.recovery.archive_state('switch')
+                self._write_identity(lambda db: (db.clear_sync_state(), db.set_setting(S_EPOCH, ''), db.set_setting(S_ADOPT, new.fingerprint)))
+            self._retire_tasks(intents.SWITCH)
+            self._vault_resume = False
+            self.writer.call(lambda db: (db.set_setting(S_ON, ''), db.set_setting(S_VAULT, 'off'), db.set_setting(S_PAUSED, ''), db.set_setting(S_PAUSE_RESTORE, '')))
+            self._paused_task = None
+            self._set(on=False, vault={**self.st['vault'], 'on': False}, paused_since=0)
         self._vault_stop.set()
         self._vault_wake.set()
         self._end_vault()
+        if stop and stop.is_set():
+            raise ExportStopped()
         self.recovery.forget_reconnect()
         tok = drive_client.load_token(self.token_path)
         if tok and p.get('delete_old'):
@@ -996,7 +1204,7 @@ class SyncService:
         self._clear_expired()
         self._account_read = False
         self._oneshot = True            # a running thread now only waits for the sign-in
-        self._set(state='off', done=0, total=0, used=0, limit=0, files=0, size=0, skipped=0, skipped_note='', error='', paused_since=0,
+        self._set(state='off', on=False, vault={**self.st['vault'], 'on': False}, done=0, total=0, used=0, limit=0, files=0, size=0, skipped=0, skipped_note='', error='',
                   vault_state='off', vault_reason='', vault_summary='', vault_skipped=0, vault_skipped_note='')
         self.intents.update(intents.SWITCH, stage='signing-in')
         if not (stop and stop.is_set()) and not self.intents.find(intents.DISCONNECT):
@@ -1018,6 +1226,7 @@ class SyncService:
             client.stop = stop
             if isinstance(client, drive_client.DriveClient):
                 client.token_path = self.previous_token_path        # a refresh of the old sign-in never lands in the new one's file
+            self._check_expected_account(p.get('expected_account'), client)
             old_ids = p.get('ids', [])
             self._set(done=0, total=len(old_ids))
             drive_client.delete_files(client, old_ids, lambda done, total: self._set(done=done, total=total), ExportStopped)
@@ -1032,32 +1241,50 @@ class SyncService:
                 pass
         self.intents.finish(intents.SWITCH)
 
-    def reset_backup(self, replace_existing: bool = False) -> None:
+    def reset_backup(self, replace_existing: bool = False, *, expected_account: str | None = None) -> None:
         """Reset backup: a new library key and a new first backup. The old backup is deleted only once the new one is complete,
         so there is never a moment with nothing to restore. Recovery starts over (a new passphrase and file)."""
         with self.recovery.gate():
+            self._check_expected_account(expected_account)
             if drive_client.load_token(self.token_path) is None:
                 raise drive_client.DriveError('Google Drive is not connected. Choose Back up to Google Drive first.')
-            pending = self.intents.find(intents.RESET)
-            if pending:
-                # Upgrading a stuck reset to an explicit replacement starts once; ordinary retries reuse its key.
-                if replace_existing and not pending['payload'].get('replace_existing'):
-                    self.intents.update(intents.RESET, stage='queued', error='', code='', payload={'replace_existing': True, 'ids': None, 'new': None})
-                else:
-                    self.intents.update(intents.RESET, error='', code='')
-                self.writer.call(lambda db: db.set_setting(S_PAUSED, ''))
-                self._set(paused_since=0, error='')
-                if self.intents.find(intents.RESET)['stage'] == 'queued':
-                    self._start_intent(intents.RESET)
-                else:
-                    self.ensure_running()
-                return
-            self.intents.add(intents.RESET, {'replace_existing': replace_existing})
-            self.writer.call(lambda db: db.set_setting(S_PAUSED, ''))
-        self._start_intent(intents.RESET)
+            self.recovery.cancel_update()
+            with self._pause_control:
+                pending = self.intents.find(intents.RESET)
+                if pending:
+                    self._check_expected_account(pending['payload'].get('expected_account'))
+                    if expected_account is not None:
+                        self.intents.update(intents.RESET, payload={'expected_account': expected_account})
+                    # Upgrading a stuck reset to an explicit replacement starts once; ordinary retries reuse its key.
+                    if replace_existing and not pending['payload'].get('replace_existing'):
+                        self.intents.update(intents.RESET, stage='queued', error='', code='', payload={'replace_existing': True, 'ids': None, 'new': None})
+                    else:
+                        self.intents.update(intents.RESET, error='', code='')
+                    if self.intents.find(intents.RESET)['stage'] == 'queued':
+                        self._start_intent(intents.RESET)
+                    else:
+                        before = self.writer.read(lambda db: {key: db.get_setting(key, None) for key in (S_PAUSED, S_PAUSE_RESTORE)})
+                        old_task, was_running = self._paused_task, self.running
+                        try:
+                            self.clear_pause()
+                            self.ensure_running(_control=False)
+                        except Exception:
+                            if not was_running:
+                                self._stop.set()
+                            self.writer.call(lambda db: _store_settings(db, before))
+                            self._paused_task = old_task
+                            self.intents.update(intents.RESET, error=pending.get('error', ''), code=pending.get('code', ''))
+                            self._set(paused_since=int(before[S_PAUSED] or 0))
+                            raise
+                    return
+                self.intents.add(intents.RESET, {'replace_existing': replace_existing,
+                                               **({'expected_account': expected_account} if expected_account is not None else {})})
+                self._start_intent(intents.RESET)
 
     def _reset_begin(self, it, stop) -> None:
         p = it['payload']
+        if p.get('expected_account') is not None:
+            self._check_expected_account(p['expected_account'], self._raw_factory(drive_client.load_token(self.token_path)))
         if p.get('ids') is None:
             p = self.intents.update(intents.RESET, payload={'ids': self._desktop_backup_ids() if p.get('replace_existing') else self._old_copy_ids()})['payload']
         if stop and stop.is_set():
@@ -1069,17 +1296,21 @@ class SyncService:
         self._vault_stop.set()
         self._vault_wake.set()
         self._end_vault()
-        self.recovery.archive_state('reset')
-        old = mirror.MirrorKey.load(self.key_path)
-        if old and old.fingerprint != new.fingerprint:
-            old.save(self.cloud_dir / f'mirror-before-reset-{it["id"]}.key')
-        new.save(self.key_path)
-        self.writer.call(lambda db: (db.set_setting(S_ADOPT, new.fingerprint), db.set_setting(S_EPOCH, ''), db.clear_sync_state(), db.set_setting(S_ON, 'on'),
-                                     db.set_setting(S_PAUSED, ''), db.set_setting(S_VAULT, 'off')))
-        self._set(paused_since=0, key_missing=False, error='', vault_state='off')
+        with self._pause_control:
+            if stop.is_set():
+                raise ExportStopped()
+            self.recovery.archive_state('reset')
+            old = mirror.MirrorKey.load(self.key_path)
+            if old and old.fingerprint != new.fingerprint:
+                old.save(self.cloud_dir / f'mirror-before-reset-{it["id"]}.key')
+            new.save(self.key_path)
+            self._write_identity(lambda db: (db.set_setting(S_ADOPT, new.fingerprint), db.set_setting(S_EPOCH, ''), db.clear_sync_state(), db.set_setting(S_ON, 'on'),
+                                          db.set_setting(S_PAUSED, ''), db.set_setting(S_PAUSE_RESTORE, ''), db.set_setting(S_VAULT, 'off')))
+            self._paused_task = None
+            self._set(on=True, vault={**self.st['vault'], 'on': False}, paused_since=0, key_missing=False, error='', vault_state='off')
         self.intents.update(intents.RESET, stage='backing-up')
         self._control_wake.set()
-        if stop.is_set():
+        if stop.is_set() and not self.st['paused_since']:
             resume = self._resume
             self.turn_off()
             self._resume = self._resume or resume
@@ -1102,10 +1333,14 @@ class SyncService:
         tok = drive_client.load_token(self.token_path)
         if not it or it['stage'] not in ('backing-up', 'cleanup') or (it.get('error') and it['stage'] != 'cleanup') or tok is None:
             return
-        self.intents.update(intents.RESET, stage='cleanup')
-        self._set(upload_step='Checking the old backup files to delete…', done=0, total=0)
+        self._set(emit=False, upload_step='Checking the old backup files to delete…', done=0, total=0)
+        if it['stage'] != 'cleanup':
+            self.intents.update(intents.RESET, stage='cleanup')
+        else:
+            self._emit()
         client = self._raw_factory(tok)
         client.stop = stop
+        self._check_expected_account(it['payload'].get('expected_account'), client)
         present = {f['id'] for f in client.list()}
         remaining = [fid for fid in it['payload'].get('ids', []) if fid in present]
         self._set(upload_step='Deleting the old backup…', done=0, total=len(remaining))
@@ -1225,13 +1460,13 @@ class SyncService:
         except drive_client.DriveError as e:        # reconnect or a close is running: nothing starts
             self._set(error=str(e))
 
-    def _turn_on(self, what: str) -> None:
+    def _turn_on(self, what: str, after_sign_in: bool = False) -> None:
         if what == 'recovery':
             self._set(state='off', error='')
         elif what == 'vault':
-            self.turn_vault_on()
+            self.turn_vault_on(after_sign_in=after_sign_in)
         else:
-            self.turn_on()
+            self.turn_on(after_sign_in=after_sign_in)
 
     def _key_missing(self) -> bool:
         """The library was backed up before (an epoch is recorded) but this PC has no key file: a reinstall (D9). Making a
@@ -1243,33 +1478,81 @@ class SyncService:
             return False        # damaged, not missing: the next use says so
         return bool(self.writer.read(lambda db: db.get_setting(S_EPOCH, '')))
 
-    def turn_on(self) -> None:
-        with self.recovery.gate():
+    def _enable_switch(self, vault: bool, start: bool = True, extra_settings=None) -> None:
+        keys = (S_ON, S_VAULT, S_PAUSED, S_PAUSE_RESTORE, *(extra_settings or {}))
+        before = self.writer.read(lambda db: {key: db.get_setting(key, None) for key in keys})
+        fields = ('on', 'vault', 'paused_since', 'key_missing', 'state', 'vault_state', 'vault_devices',
+                  'error', 'error_code', 'error_action', 'error_at', 'error_account')
+        old_state = {key: self.st[key] for key in fields}
+        old_task = self._paused_task
+        was_running = self.vault_running if vault else self.running
+        changes = {S_VAULT if vault else S_ON: 'on', S_PAUSED: '', S_PAUSE_RESTORE: '', **(extra_settings or {})}
+        write = lambda db: _store_settings(db, changes)
+        committed = False
+        try:
+            if vault:
+                self._set(vault_devices=None)
+            self._licensed_call(write) if vault else self.writer.call(write)
+            committed = True
+            self._paused_task = None
+            if vault:
+                self._set(vault={**self.st['vault'], 'on': True}, paused_since=0)
+                if start:
+                    self.start_vault(_control=False)
+            else:
+                self._set(on=True, paused_since=0, key_missing=False)
+                if start:
+                    self.start(_control=False)
+        except Exception:
+            if not was_running:
+                (self._vault_stop if vault else self._stop).set()
+            if committed:
+                self.writer.call(lambda db: _store_settings(db, before))
+            self._paused_task = old_task
+            self._set(**old_state)
+            raise
+
+    def turn_on(self, after_sign_in: bool = False) -> None:
+        with self.recovery.gate(), self._pause_control:
+            if after_sign_in and self.st['paused_since']:
+                return
             self.require_open()
-            self._finish_stop()         # a stop whose last worker has exited is over: nothing may stay 'stopping'
+            self._finish_stop()
             if self.st['state'] in ('stopping', 'disconnecting'):
                 raise drive_client.DriveError('Uploads are still stopping. Wait for the current requests to finish.')
             if self._key_missing():
                 self._set(key_missing=True)
                 raise drive_client.DriveError(KEY_MISSING)
-            self.writer.call(lambda db: (db.set_setting(S_ON, 'on'), db.set_setting(S_PAUSED, '')))
-            self._set(emit=False, paused_since=0, key_missing=False)
-            self.start()
+            self._enable_switch(False)
+        self._start_control_after_accept()
 
-    def turn_vault_on(self) -> None:
-        with self.recovery.gate():
+    def turn_vault_on(self, after_sign_in: bool = False, *, start: bool = True, extra_settings=None) -> None:
+        with self.recovery.gate(), self._pause_control:
+            if after_sign_in and self.st['paused_since']:
+                return
             self._finish_stop()
             if self.st['state'] in ('stopping', 'disconnecting') or self.st['vault_state'] == 'stopping':
                 raise drive_client.DriveError('Vault sync is still stopping. Wait for the current requests to finish.')
-            self._set(vault_devices=None)
-            self._licensed_call(lambda db: db.set_setting(S_VAULT, 'on'))
-            self.start_vault()
+            self._enable_switch(True, start=start, extra_settings=extra_settings)
+        if start:
+            self._start_control_after_accept()
 
     def turn_vault_off(self) -> None:
         """Stop syncing the vault: its thread ends, the phone mirror goes on. 'stopping' shows at
         once; an outstanding request can outlast the 10 s wait."""
-        self._set(vault_state='stopping', vault_step='', vault_done=0, vault_total=0, vault_since=0, vault_devices=None)
-        self.writer.call(lambda db: db.set_setting(S_VAULT, 'off'))
+        with self._pause_control:
+            def disable(db):
+                raw = db.get_setting(S_PAUSE_RESTORE, '')
+                values = {S_VAULT: 'off'}
+                if db.get_setting(S_PAUSED, '') and raw:
+                    record = self._read_pause_record(raw)
+                    record.update(vault=False, owner='user', token=secrets.token_hex(16))
+                    values[S_PAUSE_RESTORE] = json.dumps(record, separators=(',', ':'))
+                _store_settings(db, values)
+            self.writer.call(disable)
+            if self._resume_check_stop:
+                self._resume_check_stop.set()
+            self._set(vault={**self.st['vault'], 'on': False}, vault_state='stopping', vault_step='', vault_done=0, vault_total=0, vault_since=0, vault_devices=None)
         self._end_vault()
         # the phone reads the last status the PC sealed into Drive: say it is off, or it goes on showing a round
         self._vault_announce(vault_state='off', vault_reason='', vault_summary='', vault_skipped=0, vault_skipped_note='', vault_step='', vault_done=0, vault_total=0, vault_since=0)
@@ -1282,8 +1565,9 @@ class SyncService:
         if vault and self.vault_running:
             more = dict(vault_state='stopping', vault_step='', vault_done=0, vault_total=0, vault_since=0)
         self._resume = self._vault_resume = False
-        self._set(state=state, done=0, total=0, **more)
-        self.writer.call(lambda db: (db.set_setting(S_ON, ''), vault and db.set_setting(S_VAULT, 'off')))
+        with self._pause_control:
+            self.writer.call(lambda db: (db.set_setting(S_ON, ''), vault and db.set_setting(S_VAULT, 'off')))
+            self._set(state=state, on=False, vault={**self.st['vault'], 'on': False} if vault else self.st['vault'], done=0, total=0, **more)
         try:
             if vault:
                 self.shutdown()
@@ -1300,33 +1584,187 @@ class SyncService:
             self._finish_stop()
             raise
 
-    def turn_off(self) -> None:
-        """Stop library uploads and vault sync together; in-flight requests finish in the background."""
-        self._resume = self._vault_resume = False
-        self._stop.set()
-        self._vault_stop.set()
-        now_ms = int(time.time() * 1000)
-        paused = self.writer.call(lambda db: self._pause_marks(db, now_ms))
-        if not paused and self.intents.all():
-            paused = now_ms
-            self.writer.call(lambda db: db.set_setting(S_PAUSED, str(paused)))
-        self._set(state='stopping', done=0, total=0, error='', vault_state='stopping',
-                  vault_step='', vault_done=0, vault_total=0, vault_since=0, paused_since=paused)
-        self._wake.set()
-        self._vault_wake.set()
-        self._finish_stop()
-
     @staticmethod
-    def _pause_marks(db, now_ms: int) -> int:
-        """Backup off by the user's Pause: the time is kept until Resume (D14). A pause while already paused keeps the first."""
-        was_on = db.get_setting(S_ON, '') == 'on'
-        since = int(db.get_setting(S_PAUSED, '0') or 0)
-        if was_on and not since:
-            since = now_ms
-            db.set_setting(S_PAUSED, str(since))
-        db.set_setting(S_ON, '')
-        db.set_setting(S_VAULT, 'off')
-        return since
+    def _read_pause_record(raw):
+        if not raw:
+            return None
+        try:
+            record = json.loads(raw)
+            if (not isinstance(record, dict) or set(record) != {'upload', 'vault', 'owner', 'token'}
+                    or type(record['upload']) is not bool or type(record['vault']) is not bool
+                    or record['owner'] not in ('user', 'recovery') or not isinstance(record['token'], str)
+                    or not re.fullmatch(r'[0-9a-f]{32}', record['token'])):
+                raise ValueError()
+            return record
+        except (ValueError, TypeError):
+            raise drive_client.DriveError('The saved pause settings are damaged. Turn on backup explicitly to continue.')
+
+    def clear_pause(self) -> None:
+        with self._pause_control:
+            self.writer.call(lambda db: _store_settings(db, {S_PAUSED: '', S_PAUSE_RESTORE: ''}))
+            self._paused_task = None
+            self._set(paused_since=0)
+
+    def turn_off(self, source: str = 'user') -> str | None:
+        """Pause work, retaining its original switches and the last reported task progress."""
+        with self._pause_control:
+            if source == 'recovery' and (self.st['paused_since'] or not (self.running or self.vault_running)
+                                         or self.st['state'] in ('stopping', 'disconnecting')
+                                         or self.st['vault_state'] == 'stopping'):
+                return None
+            now_ms = int(time.time() * 1000)
+            was_running = self.running or self.vault_running or self.st['state'] == 'signing-in'
+            snapshot = self._task_view() if not self.st['paused_since'] else None
+            def pause(db):
+                since = int(db.get_setting(S_PAUSED, '0') or 0)
+                raw = db.get_setting(S_PAUSE_RESTORE, '')
+                if since and raw:
+                    record = self._read_pause_record(raw)
+                elif since:
+                    record = {'upload': True, 'vault': False}
+                else:
+                    record = {'upload': db.get_setting(S_ON, '') == 'on', 'vault': db.get_setting(S_VAULT, '') == 'on'}
+                    if record['upload'] or record['vault'] or self.intents.all() or was_running:
+                        since = now_ms
+                if not since:
+                    return 0, None
+                record.update(owner=source, token=secrets.token_hex(16))
+                _store_settings(db, {S_PAUSED: str(since), S_PAUSE_RESTORE: json.dumps(record, separators=(',', ':')),
+                                     S_ON: '', S_VAULT: 'off'})
+                return since, record['token']
+            paused, token = self.writer.call(pause)
+            if not paused:
+                return None
+            if self._resume_check_stop:
+                self._resume_check_stop.set()
+            if snapshot is not None:
+                self._paused_task = snapshot
+            self._resume = self._vault_resume = False
+            self._stop.set()
+            self._vault_stop.set()
+            error = {} if self.st.get('error_code') in RESUME_BLOCKERS else {'error': ''}
+            self._set(state='stopping', on=False, vault={**self.st['vault'], 'on': False},
+                      vault_state='stopping', paused_since=paused, **error)
+            self._wake.set()
+            self._vault_wake.set()
+            self._finish_stop()
+            return token if source == 'recovery' else None
+
+    def _resume_plan(self, token):
+        since, raw = self.writer.read(lambda db: (db.get_setting(S_PAUSED, ''), db.get_setting(S_PAUSE_RESTORE, '')))
+        if not since:
+            return None
+        record = self._read_pause_record(raw)
+        if token is not None and (not record or record['owner'] != 'recovery' or record['token'] != token):
+            return None
+        if record is None:
+            record = {'upload': True, 'vault': False}
+        self.require_open()
+        self._finish_stop()
+        if self.st['state'] in ('stopping', 'disconnecting') or self.st['vault_state'] == 'stopping':
+            raise WorkerStopping('The current requests are still stopping. Backup stays paused; choose Resume again after they finish.')
+        if self.recovery._activation_pending():
+            raise cloud_errors.RecoveryBlocked('A library change was saved. Restart Brainamon to finish before resuming.')
+        try:
+            recovery_state = self.recovery._load(readonly=True)
+            legacy = self.recovery._optional(self.cloud_dir / 'recovery-legacy.json', readonly=True) if not recovery_state else None
+        except (OSError, RuntimeError, ValueError):
+            raise cloud_errors.RecoveryBlocked('Recovery settings cannot be read. Keep backup paused and check recovery.') from None
+        if recovery_state and recovery_state.get('restored'):
+            raise cloud_errors.RecoveryBlocked('This is a restored library. Restart and make this PC the backup PC before resuming.')
+        if legacy:
+            raise cloud_errors.RecoveryBlocked('Set up recovery for the restored legacy library before resuming.')
+        tasks = self.intents.all()
+        disconnect = next((it for it in tasks if it['kind'] == intents.DISCONNECT), None)
+        ready = [it for it in tasks if not it.get('error') and it['stage'] not in intents.WAITING.get(it['kind'], ())]
+        runnable = bool(ready) and not (disconnect and disconnect.get('error'))
+        needs_work = bool(record['upload'] or record['vault'] or runnable)
+        if needs_work and (not self.signed_in() or self.st['token_expired']):
+            raise drive_client.DriveError(drive_client.SIGN_IN_REQUIRED)
+        blocker = self.st.get('error_code') if needs_work else ''
+        if blocker == cloud_errors.WRONG_ACCOUNT:
+            raise cloud_errors.WrongAccount(self.st.get('error_account', ''), self.st.get('account', ''))
+        if blocker == cloud_errors.FOREIGN_BACKUP:
+            raise cloud_errors.ForeignBackup(self.st.get('error_at', 0))
+        if blocker == cloud_errors.NOT_OWNER and not any(it['kind'] == intents.UPDATE and not it.get('error') for it in tasks):
+            raise cloud_errors.NotUploader(self.st.get('error') or 'Another PC is the backup PC. Recover or update this library before resuming.', self.st.get('error_at', 0))
+        if blocker == cloud_errors.OTHER_COPY:
+            raise cloud_errors.OtherCopy(self.st.get('error') or KEY_CONFLICT)
+        if needs_work and self._key_missing():
+            raise drive_client.DriveError(KEY_MISSING)
+        key = mirror.MirrorKey.load(self.key_path, readonly=True) if needs_work else None
+        if key is not None and self._key_conflict(key):
+            self._set(error=KEY_CONFLICT, error_code=cloud_errors.OTHER_COPY, error_action=cloud_errors.NONE)
+            raise cloud_errors.OtherCopy(KEY_CONFLICT)
+        if record['vault']:
+            self.require_license()
+        repair = runnable and ready[0]['kind'] in (intents.DISCONNECT, intents.SWITCH, intents.RESET, intents.UPDATE)
+        return since, raw, record, runnable, needs_work and not repair
+
+    def resume(self, token: str | None = None) -> None:
+        with self.recovery.gate():
+            with self._pause_control:
+                plan = self._resume_plan(token)
+                if plan is None:
+                    return
+                since, raw, record, runnable, needs_guard = plan
+                check_stop = threading.Event() if needs_guard else None
+                self._resume_check_stop = check_stop
+            if needs_guard:
+                failure = None
+                try:
+                    client = self.recovery._client(readonly=True)
+                    if isinstance(client.client, drive_client.DriveClient):
+                        client.client.stop = check_stop
+                    self.recovery.guard(client)
+                except recovery.RecoveryError as exc:
+                    failure = drive_client.DriveError(str(exc))
+                except Exception as exc:
+                    failure = exc
+                with self._pause_control:
+                    if self._resume_check_stop is check_stop:
+                        self._resume_check_stop = None
+                    current = self.writer.read(lambda db: (db.get_setting(S_PAUSED, ''), db.get_setting(S_PAUSE_RESTORE, '')))
+                    if check_stop.is_set() or current != (since, raw):
+                        return
+                    if failure is not None:
+                        classified = self.classified(failure)
+                        if classified['code'] == cloud_errors.OFFLINE:
+                            failure = cloud_errors.ResumeOffline('Backup stays paused; choose Resume backup again when the connection is back.')
+                            classified = self.classified(failure)
+                        self._set(error=classified['message'], error_code=classified['code'], error_action=classified['action'],
+                                  error_at=getattr(failure, 'at', 0))
+                        raise failure
+            with self._pause_control:
+                current = self.writer.read(lambda db: (db.get_setting(S_PAUSED, ''), db.get_setting(S_PAUSE_RESTORE, '')))
+                if current != (since, raw):
+                    return
+                plan = self._resume_plan(token)
+                if plan is None:
+                    return
+                _, _, record, runnable, _ = plan
+                self.writer.call(lambda db: _store_settings(db, {S_ON: 'on' if record['upload'] else '',
+                    S_VAULT: 'on' if record['vault'] else 'off', S_PAUSED: '', S_PAUSE_RESTORE: ''}))
+                saved_task, saved_failed = self._paused_task, self._failed_task
+                self._paused_task = self._failed_task = None
+                try:
+                    self._set(on=record['upload'], vault={**self.st['vault'], 'on': record['vault']}, paused_since=0)
+                    if record['upload']:
+                        self.start(_control=False)
+                    elif runnable:
+                        self.ensure_running(_control=False)
+                    if record['vault']:
+                        self.start_vault(_control=False)
+                except Exception:
+                    self._stop.set()
+                    self._vault_stop.set()
+                    self._paused_task, self._failed_task = saved_task, saved_failed
+                    self.writer.call(lambda db: _store_settings(db, {S_ON: '', S_VAULT: 'off',
+                                                                        S_PAUSED: since, S_PAUSE_RESTORE: raw}))
+                    self._set(on=False, vault={**self.st['vault'], 'on': False}, paused_since=int(since))
+                    raise
+        if record['upload'] or record['vault'] or runnable:
+            self._start_control_after_accept()
 
     def sign_out(self, delete_mirror: bool = False) -> None:
         """Stop uploading and the vault sync, optionally delete the mirror from Drive, forget the Google sign-in.
@@ -1339,31 +1777,60 @@ class SyncService:
             self._halt('disconnecting', vault=True)
             self._disconnect(delete_mirror)
 
-    def request_disconnect(self, delete_mirror: bool = False, delete_existing: bool = False) -> None:
+    def request_disconnect(self, delete_mirror: bool = False, delete_existing: bool = False, *, expected_account: str | None = None) -> None:
         """Accept the action now; the sync worker completes it after current requests drain."""
         self.require_open()
+        self._check_expected_account(expected_account)
         self.recovery.cancel_update()
         self.recovery.cancel.set()
         self.cancel_sign_in()
-        pending = self.intents.find(intents.DISCONNECT)
-        if pending:
-            self.intents.update(intents.DISCONNECT, error='', code='', payload={'delete_mirror': delete_mirror, 'delete_existing': delete_existing})
-        else:
-            self.intents.add(intents.DISCONNECT, {'delete_mirror': delete_mirror, 'delete_existing': delete_existing})
-        self.turn_off()
-        self._control_stop.set()
-        self._control_wake.set()
-        self._set(state='disconnecting', error='', paused_since=0)
-        self.writer.call(lambda db: db.set_setting(S_PAUSED, ''))
-        self.ensure_running()
+        with self._pause_control:
+            if self._resume_check_stop:
+                self._resume_check_stop.set()
+            pending = self.intents.find(intents.DISCONNECT)
+            if pending:
+                self._check_expected_account(pending['payload'].get('expected_account'))
+                self.intents.update(intents.DISCONNECT, error=DISCONNECT_PREPARING, code=cloud_errors.BUSY_CODE,
+                                    payload={'delete_mirror': delete_mirror, 'delete_existing': delete_existing,
+                                             **({'expected_account': expected_account} if expected_account is not None else {})})
+            else:
+                self.intents.add(intents.DISCONNECT, {'delete_mirror': delete_mirror, 'delete_existing': delete_existing,
+                                                     **({'expected_account': expected_account} if expected_account is not None else {})},
+                                 error=DISCONNECT_PREPARING, code=cloud_errors.BUSY_CODE)
+            self._resume = self._vault_resume = False
+            self._stop.set()
+            self._vault_stop.set()
+            self._control_stop.set()
+            self._wake.set()
+            self._vault_wake.set()
+            self._control_wake.set()
+            try:
+                self.writer.call(lambda db: _store_settings(db, {S_ON: '', S_VAULT: 'off', S_PAUSED: '', S_PAUSE_RESTORE: ''}))
+            except Exception:
+                message = 'Disconnect was saved, but its local settings could not be updated. Try again.'
+                self.intents.update(intents.DISCONNECT, error=message, code=cloud_errors.LOCAL_STORAGE)
+                self._set(state='error', error=message, error_code=cloud_errors.LOCAL_STORAGE, error_action=cloud_errors.RETRY)
+                return
+            self._paused_task = self._failed_task = None
+            self._set(state='disconnecting', on=False, vault={**self.st['vault'], 'on': False}, error='', paused_since=0,
+                      done=0, total=0, items_done=0, items_total=0, upload_step='',
+                      vault_state='stopping' if self.vault_running else 'off', vault_step='', vault_done=0, vault_total=0, vault_since=0)
+            self.intents.update(intents.DISCONNECT, error='', code='')
+            self.ensure_running(_control=False)
 
-    def _disconnect(self, delete_mirror: bool, delete_existing: bool = False, stop=None) -> None:
+    def _disconnect(self, delete_mirror: bool, delete_existing: bool = False, stop=None, expected_account=None) -> None:
         """Called only after writers have stopped. Deletion is explicit and needs no decryption key."""
         with self.recovery.gate():
+            tok = drive_client.load_token(self.token_path)
+            if expected_account is not None:
+                pending = self.intents.find(intents.DISCONNECT)
+                if tok is None and (not pending or pending['stage'] != 'signing-out'):
+                    raise cloud_errors.RecoveryBlocked('The Google account changed. Review this action again for the current account.')
+                if tok is not None:
+                    self._check_expected_account(expected_account, self._raw_factory(tok))
             self.recovery.forget_reconnect()
             self._retire_tasks(intents.DISCONNECT, keep_rotation=not delete_mirror)
             self._set(state='disconnecting', rotation='', error='')
-            tok = drive_client.load_token(self.token_path)
             try:
                 if tok and delete_mirror:
                     client = self._raw_factory(tok)
@@ -1400,7 +1867,7 @@ class SyncService:
             if delete_mirror:
                 # the copy is gone: no "last backup" either, so the next backup on this PC is a first backup again
                 self.recovery.archive_state('delete')
-                self.writer.call(lambda db: (db.clear_sync_state(), db.set_setting(S_EPOCH, ''), db.set_setting(S_ADOPT, ''), db.set_setting(S_ACCOUNT, ''), db.set_setting(S_LAST, '0')))
+                self._write_identity(lambda db: (db.clear_sync_state(), db.set_setting(S_EPOCH, ''), db.set_setting(S_ADOPT, ''), db.set_setting(S_ACCOUNT, ''), db.set_setting(S_LAST, '0')))
             # A superseded account switch must never delete its old account later.
             try:
                 private_storage.remove(self.previous_token_path)
@@ -1408,7 +1875,7 @@ class SyncService:
                 pass
             self.intents.finish(intents.DISCONNECT)
             self._account_read = False
-            self.writer.call(lambda db: db.set_setting(S_PAUSED, ''))
+            self.writer.call(lambda db: (db.set_setting(S_PAUSED, ''), db.set_setting(S_PAUSE_RESTORE, '')))
             self._set(state='off', done=0, total=0, used=0, limit=0, files=0, size=0, skipped=0, skipped_note='', error='', paused_since=0,
                       upload_step='', phones=None, key_missing=False, vault_state='off', vault_reason='', vault_summary='', vault_skipped=0, vault_skipped_note='', **({'account': '', 'last_publish': 0} if delete_mirror else {}))
 
@@ -1479,15 +1946,16 @@ class SyncService:
         names = set().union(*(restore.manifest_names(key, man) for _entry, _raw, _plain, man in found))
         return {f['id'] for f in listing if f['name'] in names}
 
-    def unpair(self, recovery_passphrase: str = '', new_passphrase: str = '') -> str:
+    def unpair(self, recovery_passphrase: str = '', new_passphrase: str = '', *, expected_account: str | None = None) -> str:
         """Remove all phones: record the removal, lock the phones out and save the task; `cm-sync` does the rest (S3). The click
         needs no Drive for the recovery part (the replacement records are sealed here and go up later), so a lost phone is
         locked out offline too. Nothing joins a worker: a request in flight delays the re-encrypting, never the lock-out
         (I6). A second click while the task exists is refused (A19). Returns the new key's fingerprint."""
         with self.recovery.activity('unpair', 'Locking phones out…'):
+            self._check_expected_account(expected_account)
             if self.intents.find(intents.REMOVE):
                 raise cloud_errors.Busy(intents.BUSY_TEXT[intents.REMOVE])
-            record = self._begin_rotation(recovery_passphrase, new_passphrase, int(time.time() * 1000))
+            record = self._begin_rotation(recovery_passphrase, new_passphrase, int(time.time() * 1000), expected_account=expected_account)
             fingerprint = self._rotation_key(record['new']).fingerprint
             self.intents.add(intents.REMOVE, {'new': fingerprint})
             self._sync_remove_intent(record)
@@ -1508,7 +1976,7 @@ class SyncService:
         self.ensure_running()
         return fingerprint
 
-    def _begin_rotation(self, recovery_passphrase, new_passphrase, clicked: int, draft=None) -> dict:
+    def _begin_rotation(self, recovery_passphrase, new_passphrase, clicked: int, draft=None, expected_account=None) -> dict:
         """The Remove click, before anything else (I6): record the rotation when none is pending, then lock the phones out.
         Another click while one is pending only retries the lock-out. Returns the rotation record."""
         record, fresh = self._rotation(), False
@@ -1529,6 +1997,8 @@ class SyncService:
                       'locked_by': self._grant_bound(old, clicked)}
             if replacement:
                 record['recovery'] = replacement
+            if expected_account is not None:
+                record['expected_account'] = expected_account
             self._save_rotation(record)
             fresh = True
         self._lock_status(record)
@@ -1553,6 +2023,7 @@ class SyncService:
         record = self._rotation()
         if not record or record['stage'] == 'complete':
             return record
+        self._check_expected_account(record.get('expected_account'), client)
         old, new = self._rotation_key(record['old']), self._rotation_key(record['new'])
         if stop.is_set():
             raise ExportStopped()
@@ -1617,7 +2088,7 @@ class SyncService:
             self._set(upload_step='Activating the replacement recovery key…', done=0, total=0)
             self.recovery.commit_rotation(client, new, record['recovery'])
         new.save(self.key_path)
-        self.writer.call(lambda db: db.set_setting(S_ADOPT, new.fingerprint))
+        self._write_identity(lambda db: db.set_setting(S_ADOPT, new.fingerprint))
         self._set(rotation='pending')
         return record
 
@@ -1668,6 +2139,7 @@ class SyncService:
                 raise drive_client.DriveError('The re-encrypted library has no manifest yet. Retry the upload.')
             man = found[0][3]
             whole, read = sum(int(e.get('size') or 0) for e in man['files'].values()), 0       # plain sizes: the pass shows bytes beside files (S7)
+            self._set(done=0, total=len(man['files']), bytes_done=0, bytes_total=whole)
             big = threading.BoundedSemaphore(VERIFY_BIG_AT_ONCE)
             def verify(item):
                 logical, entry = item
@@ -1699,15 +2171,25 @@ class SyncService:
                 idx = next(f for f in listing if f['name'] == vault_sync.index_name(key, 'pc'))
                 _, files = vault_sync.decode_index(key.open(vault_sync.INDEX_LOGICAL, client.download(idx['id'])))
                 by_name = {f['name']: f for f in listing}
+                blobs = set(files.values())
+                self._set(upload_step='Verifying the uploaded Obsidian vault…', done=0, total=len(blobs))
                 def verify_vault(cid):
                     f = by_name[vault_sync.blob_name(cid)]
                     data = key.open(vault_sync.blob_logical(cid), client.download(f['id']))
                     if key.content_id(data) != cid:
                         raise mirror.MirrorKeyError('Rotated vault verification failed.')
-                for _ in self._rotation_files(set(files.values()), verify_vault, stop):      # sizes unknown here: four at a time
-                    pass
+                for index, _ in enumerate(self._rotation_files(blobs, verify_vault, stop)):      # sizes unknown here: four at a time
+                    self._set(done=index + 1)
+        except ExportStopped:
+            raise
+        except Exception:
+            task = self._live_task_view()
+            if task and task['kind'] == intents.REMOVE:
+                self._failed_task = task
+            raise
         finally:
             self._checking_copy = False
+        self._set(emit=False, upload_step='Checking the old encrypted files to delete…', done=0, total=0)
         record['stage'] = 'cleanup'
         self._save_rotation(record)
         listing = client.list()
@@ -1716,15 +2198,25 @@ class SyncService:
         old_key = self._rotation_key(record['old'])
         grants = {old_key.name(path) for path in sync_license.CONTROL_LOGICALS}
         record['owned'] += [f['id'] for f in listing if f['name'] in grants and f['id'] not in record['owned']]
-        self._set(upload_step='Removing the old encrypted copies to finish unpairing…', done=0, total=len(record['owned']))
-        def remove(fid):
-            if fid in present:
-                client.delete(fid)
-
-        for fid, _ in self._rotation_files(list(record['owned']), remove, stop):
-            record['owned'].remove(fid)
-            self._set(done=self.st['done'] + 1)
+        record['cleanup_total'] = max(record.get('cleanup_total', 0), len(record['owned']))
+        record['owned'] = [fid for fid in record['owned'] if fid in present]
+        self._save_rotation(record)
+        self._set(upload_step='Removing the old encrypted copies to finish unpairing…',
+                  done=record['cleanup_total'] - len(record['owned']), total=record['cleanup_total'])
+        def deleted(ids):
+            confirmed = set(ids)
+            record['owned'] = [fid for fid in record['owned'] if fid not in confirmed]
+            # Checkpoint each confirmed batch, not every file; an interrupted request is safely retried as missing.
             self._save_rotation(record)
+            self._set(done=record['cleanup_total'] - len(record['owned']))
+
+        remaining = list(record['owned'])
+        window = drive_client.DELETE_BATCH_SIZE * drive_client.DELETE_WORKERS
+        for start in range(0, len(remaining), window):
+            if stop.is_set():
+                raise ExportStopped()
+            # Each window rechecks ownership through the guarded client before deleting.
+            drive_client.delete_files(client, remaining[start:start + window], stopped=ExportStopped, deleted=deleted)
         self.recovery.prune_old_key(client, record)        # D5: setups of the old key open nothing now
         # Retain the old key locally to recover pending old edits; never apply them automatically.
         if not record.get('locked_at'):
@@ -1732,7 +2224,7 @@ class SyncService:
         record['stage'] = 'complete'
         self._save_rotation(record)
         self._lock_status(self._rotation())
-        self.writer.call(lambda db: db.set_setting(S_ADOPT, ''))
+        self._write_identity(lambda db: db.set_setting(S_ADOPT, ''))
         self._set(rotation='complete', error='')
         if entitlements.feature_enabled('phone_sync') and self.writer.read(lambda db: db.get_setting(S_VAULT, '') == 'on'):
             self.start_vault()
@@ -1754,8 +2246,16 @@ class SyncService:
             sync_license.signer(self.control_key_path, create=True)
             rotation = self._rotation()
             if rotation and rotation['stage'] != 'complete':
-                return self._rotation_key(rotation['new'])      # D15: a phone added now gets the new key and waits for its copy
+                key = self._rotation_key(rotation['new'])
+                task = self.intents.find(intents.REMOVE)
+                if not task or task['payload'].get('new') != key.fingerprint:
+                    raise drive_client.DriveError('Another library has a pending phone removal. Finish it there before pairing.')
+                return key      # D15: a phone added now gets the new key and waits for its copy
+            if self._key_missing():
+                raise drive_client.DriveError(KEY_MISSING)
             key = self._key()
+            if self._key_conflict(key):
+                raise drive_client.DriveError(KEY_CONFLICT)
         return key
 
     def license_public_key(self):
@@ -1824,8 +2324,8 @@ class SyncService:
                     db.clear_sync_state()
                     db.set_setting(S_EPOCH, '')
                 db.set_setting(S_ACCOUNT, a['email'])
+            self._write_identity(save)
             self._set(account=a['email'], used=a['used'], limit=a['limit'])
-            self.writer.call(save)
             if other:
                 self.recovery.archive_state('account-switch')
                 app_console.emit('log', f'Drive mirror: signed in as {a["email"]}; the copy in {before} stays there and is no longer updated from this PC', level='warning')
@@ -1891,6 +2391,9 @@ class SyncService:
     def _loop(self, stop: threading.Event) -> None:
         finished = False        # a one-shot thread that found nothing left to do (D4)
         try:
+            with self._pause_control:
+                if stop.is_set() or (self.st['paused_since'] and not self.intents.find(intents.DISCONNECT)):
+                    return
             seen, changed_at, wait_until = None, 0.0, 0.0
             self._next_intake, self._gap = 0.0, INTAKE
             while not stop.is_set() and not self._closing:
@@ -1898,6 +2401,8 @@ class SyncService:
                     if self.st['state'] == 'starting':
                         self._set(upload_step='Checking for pending phone changes in Google Drive…', upload_since=int(time.time() * 1000))
                     self._run_intents(stop)
+                    if self.st['paused_since'] and not self.intents.find(intents.DISCONNECT):
+                        break
                     if any(i['kind'] == intents.DISCONNECT or
                            i['kind'] in (intents.RESET, intents.SWITCH) and i['stage'] == 'queued' or
                            i['kind'] == intents.SWITCH and i['stage'] == 'signing-in' and not self.signed_in()
@@ -1966,6 +2471,9 @@ class SyncService:
         """The Obsidian vault rounds, on their own thread: one round can send thousands of files, and
         the phone mirror must keep uploading meanwhile."""
         try:
+            with self._pause_control:
+                if stop.is_set() or self.st['paused_since']:
+                    return
             self._vault_tls.stop = stop
             next_vault = 0.0
             while not stop.is_set() and not self._closing and entitlements.feature_enabled('phone_sync'):
@@ -1978,8 +2486,7 @@ class SyncService:
                     except Exception as e:      # never the end of the thread
                         app_console.emit('log', 'Vault sync failed', level='warning', error=e)
                         if not stop.is_set():
-                            self._vault_announce(vault_state='error', vault_reason=str(e), vault_step='', vault_done=0, vault_total=0,
-                                                 vault_since=0)
+                            self._vault_announce(vault_state='error', vault_reason=str(e))
                 if stop.is_set():
                     break
                 self._vault_wake.wait(POLL)
@@ -2017,6 +2524,8 @@ class SyncService:
         """Run what handlers saved, at the top of the loop and never in the middle of an upload request (S3). A removal needs
         nothing here: its stages run inside the publish (`_rotation_prepare`, `_rotation_finish`)."""
         disconnect = self.intents.find(intents.DISCONNECT)
+        if not disconnect and self.st['paused_since']:
+            return
         if disconnect:
             if disconnect.get('error') or stop.is_set():
                 return
@@ -2024,7 +2533,8 @@ class SyncService:
                 self._set(state='disconnecting', upload_step='Stopping current work…')
                 return
             try:
-                self._disconnect(disconnect['payload'].get('delete_mirror', False), disconnect['payload'].get('delete_existing', False), stop)
+                self._disconnect(disconnect['payload'].get('delete_mirror', False), disconnect['payload'].get('delete_existing', False), stop,
+                                 expected_account=disconnect['payload'].get('expected_account'))
                 stop.set()
             except ExportStopped:
                 raise
@@ -2092,6 +2602,7 @@ class SyncService:
         force_manifest = False
         if stop.is_set() or self._closing:
             return False
+        self._failed_task = None
         tok = drive_client.load_token(self.token_path)
         if tok is None:
             self._set(state='signed-out', error='Sign in to Google Drive again to keep uploading.')
@@ -2130,7 +2641,7 @@ class SyncService:
                     db.set_setting(S_ADOPT, '')
                 return _payload(db), db.get_sync_state(), read_options(db)
             self._set(upload_step='Preparing the encrypted library for upload…', done=0, total=0)
-            payload, state, opts = self.writer.call(load)
+            payload, state, opts = self._write_identity(load)
             self._set(state=self._unless_stopped(stop, 'publishing'), upload_step='Uploading the encrypted library…', done=0, total=0, error='')
             force_manifest, self._force_manifest = self._force_manifest or payload['receipts'] != self._published_receipts, False
             target = DriveMirrorTarget(
@@ -2372,7 +2883,7 @@ class SyncService:
         if owner:
             man = owner_vault.read_manifest(vault)
             if man is None:                       # Fred 2026-10-28: wait for Reclaim rather than change identity twice
-                self._vault_report(client, key, push=True, vault_state='error', vault_reason=MANIFEST_MISSING, vault_summary='', **ended)
+                self._vault_report(client, key, push=True, vault_state='error', vault_reason=MANIFEST_MISSING, vault_summary='')
                 return
             if man.get('pending'):
                 owner_vault.settle_pending(vault, man)
@@ -2431,11 +2942,11 @@ class SyncService:
         self._set(vault_devices=devices if not unreadable else None, vault_members=sorted(st['devices']))
         _save_vault_state(sp, st)
         if owner and (unreadable or missing):
-            self._vault_report(client, key, push=True, vault_state='error', vault_reason=PHONES_UNCHECKED, vault_summary='', **ended)
+            self._vault_report(client, key, push=True, vault_state='error', vault_reason=PHONES_UNCHECKED, vault_summary='')
             return
         old = [d['device'] for d in devices if not d['ok']]
         if owner and old:
-            self._vault_report(client, key, push=True, vault_state='error', vault_reason=phone_old(old), vault_summary='', **ended)
+            self._vault_report(client, key, push=True, vault_state='error', vault_reason=phone_old(old), vault_summary='')
             return
         # Missing lists are not departures. Only drop_device removes remembered membership and its base.
 
@@ -2538,13 +3049,13 @@ class SyncService:
             # a vault with files left out is not "in step": the words say so first (the Settings line and the phone's panel show them)
             note = vault_sync.skipped_note(len(over))
             summary = note.rstrip('.') + ('' if summary == 'Already in step' else f'; {summary}')
-        ended.update(vault_last=int(time.time() * 1000), vault_skipped=len(over), vault_skipped_note=vault_sync.skipped_note(len(over)))
+        reported = dict(vault_last=int(time.time() * 1000), vault_skipped=len(over), vault_skipped_note=vault_sync.skipped_note(len(over)))
         if braked:
-            self._vault_report(client, key, push=True, vault_state='brake', vault_reason=braked, vault_summary='', **ended)
+            self._vault_report(client, key, push=True, vault_state='brake', vault_reason=braked, vault_summary='', **reported)
         elif failed:
-            self._vault_report(client, key, push=True, vault_state='error', vault_reason='Some phone vault changes could not be read or applied; retry before publishing.', vault_summary='', **ended)
+            self._vault_report(client, key, push=True, vault_state='error', vault_reason='Some phone vault changes could not be read or applied; retry before publishing.', vault_summary='', **reported)
         else:
-            self._vault_report(client, key, push=True, vault_state='idle', vault_reason='', vault_summary=summary, **ended)
+            self._vault_report(client, key, push=True, vault_state='idle', vault_reason='', vault_summary=summary, **ended, **reported)
             if any(total.values()):
                 app_console.emit('log', f'Vault sync: {summary}')
 

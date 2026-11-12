@@ -10,6 +10,11 @@
   import ForgotPassphrase from '../../components/ForgotPassphrase.svelte'
   import { onMount, tick } from 'svelte'
   import MBox from '../ui/MBox.svelte'
+  import MCard from '../ui/MCard.svelte'
+  import MRunBar from '../ui/MRunBar.svelte'
+  import MPicker from '../ui/MPicker.svelte'
+  import { backup } from '../backup.svelte'
+  import '../tools.css'
   import MButton from '../ui/MButton.svelte'
   import MHint from '../ui/MHint.svelte'
   import PageKeys from '../PageKeys.svelte'
@@ -34,6 +39,7 @@
   const signedIn = $derived((phone.tokenAt, phone.signIn, m ? !!token(m.pair) : false))
   const working = $derived((!!phone.sync && !phone.sync.end) || phone.refreshing || phone.connecting)
   type Method = 'password' | 'kit' | 'code'
+  let checking = $state(false)
   let busy = $state(false), error = $state(''), errorDisplay = $state(''), message = $state('')
   let password = $state(''), code = $state('')
   let method = $state<Method>(location.hash.endsWith('/file') ? 'kit' : m ? 'password' : 'code')
@@ -44,7 +50,8 @@
   let alive = true, revision = cloudRevision()
   let choices = $state(false)
   function current() { cloudCheckpoint(revision); if (!alive) throw new Error('Recovery screen closed.') }
-  const available = $derived(signedIn && !!m && !busy && !working)
+  const gated = $derived(!!backup.task || backup.busy)
+  const available = $derived(signedIn && !!m && !busy && !working && !gated)
   $effect(() => { void signedIn; found = null; sure = false })     // a sign-in change makes a found key stale
 
   function clearSecrets() { password = ''; code = '' }
@@ -67,7 +74,7 @@
     revision = cloudRevision(); busy = true; error = ''; message = ''
     try { await action() }
     catch (e) { if (alive) { error = (e as Error).message; errorDisplay = nativeError('recovery', e) } }
-    finally { busy = false; done() }
+    finally { busy = false; checking = false; done() }
   }
   async function discover() {
     await recoveryAccount(m!.pair, m!.drive)
@@ -92,6 +99,7 @@
         key = await keyFromMaterial(code)
         account = signedIn && m ? await recoveryAccount(m.pair, m.drive) : ''
       }
+      current(); checking = true
       const check: Eligibility = signedIn && m
         ? await reconnectCheck(await MirrorKey.fromText(key), m.drive, m.changes)
         : { ok: false, reason: 'not_connected', message: REFUSALS.not_connected }
@@ -128,23 +136,25 @@
   {/snippet}
 </PageKeys>
 <div class="m-pad m-calm m-page">
-  <MBox id="m-recover">
+  <h1 class="m-page-title">{t('recovery.action.recover')}</h1>
+  <MRunBar lead={t(found ? 'recovery.step.keep' : checking ? 'recovery.step.checkPhone' : 'recovery.step.unlock')} right={t('common.step', { n: found ? 3 : checking ? 2 : 1, total: 3 })} total={3} done={found ? 2 : checking ? 1 : 0} run={busy} label={t('recovery.action.recover')} />
+  <MCard id="m-recover">
     <span class="m-recover-k">{t('recovery.method.backupTitle')}</span>
-    <h2 class="m-recover-t">{t('recovery.action.recover')}</h2>
     <div id="phone-unlock-method" tabindex="-1" class="m-recover-tabs"><MSeg look="tabs" label={t('recovery.method.unlock')} options={[['password', t('recovery.method.passphrase')], ['kit', t('recovery.method.file')], ['code', t('recovery.method.code')]]} value={method} disabled={busy} onchange={choose} /></div>
     {#if !m}
       <MHint>{t('recovery.warning.start')}</MHint>
     {:else if !signedIn}
       <MHint>{t('recovery.warning.connect')}</MHint>
     {/if}
+    {#if gated}<MHint>{t('recovery.warning.finishBeforeRestore')}</MHint>{/if}
     {#if working}<MHint>{t('recovery.warning.waitRestore')}</MHint>{/if}
     {#if !found}
       {#if method === 'password'}
         <MButton size="sm" disabled={!available} onclick={() => run(discover)}>{t('recovery.action.findSetups')}</MButton>
         {#if setups.length > 1}
-          <label class="m-fld"><span>{t('recovery.method.setup')}</span><select bind:value={selected} disabled={!available}>{#each setups as setup (setup.id)}<option value={setup.id}>{t('recovery.state.setupAt', { when: clock(setup.record.header.created * 1000, Date.now(), phoneLocale()) })}</option>{/each}</select></label>
+          <MPicker label={t('recovery.method.setup')} bind:value={selected} disabled={!available} options={setups.map(setup => [setup.id, t('recovery.state.setupAt', { when: clock(setup.record.header.created * 1000, Date.now(), phoneLocale()) })])} />
         {:else if setups.length === 1}
-          <MRow title={t('recovery.method.setup')} desc={t('recovery.state.setupAt', { when: clock(setups[0].record.header.created * 1000, Date.now(), phoneLocale()) })} />
+          <MRow wrap title={t('recovery.method.setup')} desc={t('recovery.state.setupAt', { when: clock(setups[0].record.header.created * 1000, Date.now(), phoneLocale()) })} />
         {/if}
         {#if setups.length}
           <label class="m-fld"><span>{t('recovery.method.passphraseLabel')}</span><input type="password" bind:value={password} oninput={languageWorkChanged} maxlength="1024" autocomplete="off" disabled={!available} /></label>
@@ -153,17 +163,17 @@
       {:else if method === 'kit'}
         <div class="m-hero-key"><MButton shape="pill" variant="pri" disabled={!available} onclick={() => run(find)}>{t('recovery.action.openFile')}</MButton></div>
       {:else}
-        <label class="m-fld"><span>{t('recovery.method.original')}</span><input type="password" bind:value={code} oninput={languageWorkChanged} maxlength="32768" autocomplete="off" spellcheck="false" disabled={busy || working} /></label>
-        <div class="m-hero-key"><MButton shape="pill" variant="pri" disabled={busy || working || !code.trim()} onclick={() => run(find)}>{t('recovery.action.findBackup')}</MButton></div>
+        <label class="m-fld"><span>{t('recovery.method.original')}</span><input type="password" bind:value={code} oninput={languageWorkChanged} maxlength="32768" autocomplete="off" spellcheck="false" disabled={gated || busy || working} /></label>
+        <div class="m-hero-key"><MButton shape="pill" variant="pri" disabled={gated || busy || working || !code.trim()} onclick={() => run(find)}>{t('recovery.action.findBackup')}</MButton></div>
       {/if}
     {:else}
-      <MRow id="phone-recovery-keep" title={t('recovery.action.keep')} desc={eligibilityText(found.check, phoneWords)} />
+      <MRow wrap id="phone-recovery-keep" title={t('recovery.action.keep')} desc={eligibilityText(found.check, phoneWords)} />
       {#if found.check.ok}
         <MHint>{sure ? t('recovery.warning.confirmReconnect') : t('recovery.warning.keep')}</MHint>
       {/if}
       <div class="m-hero-key">
         {#if found.check.ok}<MButton shape="pill" variant="pri" disabled={!available} onclick={() => run(reconnect)}>{sure ? t('recovery.action.confirmReconnect') : t('recovery.action.reconnect')}</MButton>{/if}
-        <MButton shape="pill" variant={found.check.ok ? 'default' : 'pri'} disabled={busy || working} onclick={() => run(restoreEmpty)}>{t('recovery.action.empty')}</MButton>
+        <MButton shape="pill" variant={found.check.ok ? 'default' : 'pri'} disabled={gated || busy || working} onclick={() => run(restoreEmpty)}>{t('recovery.action.empty')}</MButton>
         <MTextButton disabled={busy} onclick={() => { forget(); error = ''; message = '' }}>{t('common.cancel')}</MTextButton>
       </div>
     {/if}
@@ -174,11 +184,11 @@
     <!-- Forgot passphrase? under the form, the quiet disclosure it is (spec section 4.4) -->
     <ForgotPassphrase mobile words={phoneWords} workingLabel={t('recovery.action.settings')}
       workingReason={busy ? t('recovery.warning.waitCheck') : working ? t('recovery.warning.waitSync') : !m ? t('recovery.warning.workingDevice') : ''}
-      methodReason={busy ? t('recovery.warning.waitCheck') : ''}
+      methodReason={gated ? t('recovery.warning.finishBeforeRestore') : busy ? t('recovery.warning.waitCheck') : ''}
       onworking={() => { location.hash = '#/backup' }}
       onfile={() => guideMethod('kit')} oncode={() => guideMethod('code')}
       onnone={() => { forget(); clearSecrets(); choices = true }} />
-  </MBox>
+  </MCard>
   {#if choices && m}<PhoneBackupChoices onclose={() => choices = false} />
   {:else if choices}<MBox><MHint>{t('recovery.warning.startConnect')}</MHint><MButton as="a" href="#/more">{t('recovery.action.openSettings')}</MButton></MBox>{/if}
 </div>

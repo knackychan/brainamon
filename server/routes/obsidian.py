@@ -49,9 +49,16 @@ def _view(request: Request) -> dict:
 def _fail(exc: Exception):
     if isinstance(exc, owner_vault.VaultError):
         text = str(exc)
-        code = 409 if text == map_service.PHONES_UNCHECKED or text.startswith(map_service.PHONE_OLD) or 'Cancelled' in text else 400
+        code = 409 if text in (map_service.PHONES_UNCHECKED, map_service.VAULT_CHANGED) or text.startswith(map_service.PHONE_OLD) or 'Cancelled' in text else 400
         raise HTTPException(code, str(exc))
     raise exc
+
+
+def _expected_vault(body: dict) -> str:
+    vault = body.get('expected_vault')
+    if not isinstance(vault, str) or not vault:
+        raise HTTPException(409, 'Reload Settings and confirm the vault action again.')
+    return vault
 
 
 @router.get('/api/obsidian')
@@ -83,6 +90,7 @@ async def set_vault(request: Request, body: dict = Body(...)):
         return {'needs_takeover': True, 'count': exc.count, 'message': str(exc)}
     except Exception as exc:                      # noqa: BLE001
         _fail(exc)
+    await run_in_threadpool(request.app.state.sync.refresh_vault_folder)
     request.app.state.hub.publish('settings_changed', {'obsidian': True})
     return {'ok': True, **r, **_view(request)}
 
@@ -94,6 +102,7 @@ async def move(request: Request, body: dict = Body(...)):
         n = await run_in_threadpool(request.app.state.maps.move, str(body.get('path') or '').strip())
     except Exception as exc:                      # noqa: BLE001
         _fail(exc)
+    await run_in_threadpool(request.app.state.sync.refresh_vault_folder)
     request.app.state.hub.publish('settings_changed', {'obsidian': True})
     return {'ok': True, 'copied': n, **_view(request)}
 
@@ -108,35 +117,35 @@ def cancel(request: Request):
 @router.post('/api/obsidian/reset')
 async def reset(request: Request, body: dict = Body(...)):
     try:
-        await run_in_threadpool(request.app.state.maps.reset, str(body.get('path') or ''))
+        await run_in_threadpool(request.app.state.maps.reset, str(body.get('path') or ''), _expected_vault(body))
     except Exception as exc:                      # noqa: BLE001
         _fail(exc)
     return {'ok': True, **_view(request)}
 
 
 @router.post('/api/obsidian/reclaim')
-async def reclaim(request: Request):
+async def reclaim(request: Request, body: dict = Body(default={})):
     try:
-        n = await run_in_threadpool(request.app.state.maps.reclaim)
+        n = await run_in_threadpool(request.app.state.maps.reclaim, _expected_vault(body))
     except Exception as exc:                      # noqa: BLE001
         _fail(exc)
     return {'ok': True, 'reclaimed': n, **_view(request)}
 
 
 @router.post('/api/obsidian/takeover')
-async def takeover(request: Request):
+async def takeover(request: Request, body: dict = Body(default={})):
     try:
-        await run_in_threadpool(request.app.state.maps.take_over)
+        await run_in_threadpool(request.app.state.maps.take_over, _expected_vault(body))
     except Exception as exc:                      # noqa: BLE001
         _fail(exc)
     return {'ok': True, **_view(request)}
 
 
 @router.post('/api/obsidian/leftovers/remove')
-async def remove_leftovers(request: Request):
+async def remove_leftovers(request: Request, body: dict = Body(default={})):
     """Remove leftovers: pages an earlier library made, kept at take-over, deleted when still unchanged."""
     try:
-        n = await run_in_threadpool(request.app.state.maps.remove_leftovers)
+        n = await run_in_threadpool(request.app.state.maps.remove_leftovers, _expected_vault(body))
     except Exception as exc:                      # noqa: BLE001
         _fail(exc)
     return {'ok': True, 'removed': n, **_view(request)}

@@ -94,6 +94,7 @@ class VaultStorageTest(unittest.TestCase):
               stripTypeScriptTypes('class Source {\n'+text.slice(start,end)+'\n}')+'; return Source')(
                 kv, () => ({}), vaultRound, () => 'test-phone')
             const source = new Source()
+            source.nativeReady = async () => false
             source.drive = {authorize:async () => {}}
             source.key = Promise.resolve({})
             assert.equal((await source.syncVault()).state,'idle')

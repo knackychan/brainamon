@@ -20,6 +20,7 @@ class PhoneConnection(unittest.TestCase):
           globalThis.__pair = {e:'pc@example.com',g:'',l:'synthetic-verifier'}
           globalThis.__test = {signed:false,redirect:false,saveFail:false,wrong:false,cancel:false,rows:0,accountSaves:0}
           const modules = {
+            './sync/native.svelte': 'export const nativeSync={supported:false};export const nativeSyncText=()=>"";export const nativeSyncPolicy=async()=>{};export const nativeSyncBarrier=async()=>{}',
             './backup.svelte': 'export const backup={busy:false,task:null}',
             '../lib/md': 'export const setCardLookup=()=>{}',
             './source/desktop': 'export class DesktopSource {}',
@@ -31,6 +32,7 @@ class PhoneConnection(unittest.TestCase):
             './network.svelte': `export const network={licenseLocked:false,licenseProblem:''};export class SyncPaused extends Error{};export const syncPaused=()=>false;export const syncPauseReason=()=>''`,
           }
           registerHooks({resolve(s,c,next){
+            if(s==='../sync/native.svelte')return {url:'data:text/javascript,'+encodeURIComponent(modules['./sync/native.svelte']),shortCircuit:true}
             if(c.parentURL?.endsWith('/mobile/state.svelte.ts') && modules[s])return {url:'data:text/javascript,'+encodeURIComponent(modules[s]),shortCircuit:true}
             if(c.parentURL?.endsWith('/mobile/mirror/status.ts')&&s==='./drive')return {url:'data:text/javascript,'+encodeURIComponent(modules['./mirror/drive']),shortCircuit:true}
             try{return next(s,c)}catch(e){if(s.startsWith('.')&&!/\.\w+$/.test(s))return next(s+'.ts',c);throw e}

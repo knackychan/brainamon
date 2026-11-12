@@ -110,7 +110,7 @@ function pc(f: PhoneFacts, pending: number, words?: PhoneWords): PhoneState {
     case 'key': return say('key', 'next', (words?.('backup.state.key') ?? "This phone's pairing is out of date."), f.app
       ? (words?.('backup.state.keyScan') ?? 'Scan the new code on your PC: Settings > Backup & phones > Add a phone.')
       : (words?.('backup.state.keyLink') ?? 'Open the new pairing link from your PC: Settings > Backup & phones > Add a phone.'), scan(true))
-    case 'mirror-off': return say('backup-off', 'next', (words?.('backup.state.backupOff') ?? "Your PC isn't backing up the library."), (words?.('backup.state.backupOffHelp') ?? 'On the PC: Settings > Backup & phones > Turn on backup.'))
+    case 'mirror-off': return say('backup-off', 'next', (words?.('backup.state.backupOff') ?? "Your PC isn't backing up the library."), (words?.('backup.state.backupOffHelp') ?? 'On the PC: Settings > Backup & phones > Turn on backup or Resume backup.'))
     default: return say('no-library', 'next', (words?.('backup.state.noLibrary') ?? 'No library in Google Drive yet.'), f.noLibraryText,
       f.noLibrary === 'account' ? key('change-account', (words?.('backup.action.account') ?? 'Change account'), false) : f.noLibrary === 'unknown' ? key('retry', (words?.('common.retry') ?? 'Retry'), false) : null)
   }

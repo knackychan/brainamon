@@ -6,11 +6,11 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  type State = 'done' | 'todo' | 'next' | 'optional'
+  type State = 'done' | 'todo' | 'next' | 'optional' | 'busy'
   type Props = HTMLAttributes<HTMLElement> & { on?: boolean; state?: State; n?: number; as?: 'p' | 'span'; ref?: HTMLElement; children?: Snippet }
   let { on = false, state, n, as = 'p', class: cls, ref = $bindable(), children, ...rest }: Props = $props()
   const s = $derived(state ?? (on ? 'done' : 'todo'))
-  const dot = $derived(['status-dot', s === 'done' && 'on', s === 'next' && 'next', s === 'optional' && 'opt'])
+  const dot = $derived(['status-dot', s === 'done' && 'on', s === 'next' && 'next', s === 'optional' && 'opt', s === 'busy' && 'busy'])
 </script>
 
 {#if children}
@@ -18,3 +18,7 @@
 {:else}
   <i bind:this={ref} {...rest} class={[...dot, cls]} aria-hidden="true">{#if n && s !== 'done'}{n}{/if}</i>
 {/if}
+
+<style>
+  :global(.status-dot.busy) { border-color: var(--accent); border-right-color: transparent; }
+</style>

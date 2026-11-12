@@ -7,11 +7,13 @@
   import ForgotPassphrase from '../components/ForgotPassphrase.svelte'
   import BackupChoices from '../components/BackupChoices.svelte'
   import { openSettings } from '../lib/io-commands.svelte'
-  import { api } from '../lib/api'
-  import { addSample, amount, day, gb, hm, long, num, timeLeft, W, type CloudView, type RecoveryView, type Sample } from '../lib/backup'
+  import { api, ApiError } from '../lib/api'
+  import { addSample, amount, day, gb, hm, long, num, timeLeft, W, type CloudSnapshot, type CloudView, type RecoveryView, type Sample } from '../lib/backup'
+  import { reconnectSteps } from '../lib/backup-state'
   import { on } from '../lib/events.svelte'
   import { isDesktop, pickFileObj, pickPath } from '../lib/pick'
   import { restartApp } from '../lib/restart'
+  import { toast } from '../lib/ui.svelte'
   import Button from '../components/ui/Button.svelte'
   import Field from '../components/ui/Field.svelte'
   import GroupBox from '../components/ui/GroupBox.svelte'
@@ -20,6 +22,7 @@
   import Progress from '../components/ui/Progress.svelte'
   import Segmented from '../components/ui/Segmented.svelte'
   import Status from '../components/ui/Status.svelte'
+  import TaskSteps from '../components/ui/TaskSteps.svelte'
   import TextButton from '../components/ui/TextButton.svelte'
   import WinBody from '../components/ui/WinBody.svelte'
 
@@ -32,45 +35,94 @@
   let another = $state(untrack(() => initialMethod !== 'pass')), wantCopy = $state(false), kept = $state(false), busy = $state(false)
   let folder = $state(''), newPass = $state(''), newPass2 = $state('')
   let finding = $state(false)          // Find backup is reading Drive: the newest recovery setup first (I5)
+  let restarting = $state(false)
   let noKey = $state(false), foreign = $state(false)
   let pausing = $state(false)         // this window paused the backup and the last upload request is still finishing
   let samples = $state<Sample[]>([])
   let now = $state(Date.now())
-  let pausedByMe = false, vaultWasOn = false, finished = false
+  let pauseToken: string | null = null, pausePromise: Promise<void> | null = null
+  let copyPromise: Promise<RecoveryView | null> | null = null, copyAccepted = false, copyUncertain = false, copyGeneration = 0
+  let reconnectPromise: Promise<void> | null = null
+  let choicePromise: Promise<void> | null = null, choiceFinished: (() => void) | null = null, choiceAccepted = false, choiceUncertain = false
+  let recRequest = 0, cloudEpoch = 0, cloudSnap: CloudSnapshot | null = null
+  let finished = false, finishPromise: Promise<void> | null = null
 
   const message = (e: unknown) => (e as Error).message
-  async function readRec() { try { rec = await api.get<RecoveryView>('/api/cloud/recovery') } catch (e) { error = message(e) } }
-  async function readCloud() { try { cv = await api.get<CloudView>('/api/cloud') } catch (e) { error = message(e) } }
-
-  // Backup is paused while this window is open; the pause is the window's own, so only the window undoes it.
-  async function pauseBackup() {
-    if (finished || !cv || !(cv.running || cv.vault_running)) return
-    vaultWasOn = cv.vault.on
-    const resumeAfter = cv.on && !cv.error && !cv.task
-    pausing = true
-    try { await api.post('/api/cloud/pause'); pausedByMe = resumeAfter } catch (e) { error = message(e); pausing = false }
-  }
-  // A copy that is running or ready to open must not be disturbed by this library's uploads; a restored library stays off until it takes over.
-  const keepsOff = () => !!rec && (['restoring', 'complete', 'activated'].includes(rec.job.state) || rec.restored || rec.restart_required)
-  async function finish() {
-    if (finished) return
-    finished = true
-    if (!pausedByMe || keepsOff()) return
-    for (let attempt = 0; attempt < 15; attempt++) {
-      try {
-        await api.post('/api/cloud/resume')
-        if (vaultWasOn && cv?.licensed) await api.post('/api/cloud/vault/connect').catch(() => {})
-        return
-      } catch (e) {
-        if (!/still stopping/.test(message(e))) return
-        await new Promise(r => setTimeout(r, 1000))
+  async function readRec() {
+    const request = ++recRequest
+    const generation = copyGeneration, afterCopy = copyAccepted
+    try {
+      const result = await api.get<RecoveryView>('/api/cloud/recovery')
+      if (request === recRequest) {
+        rec = result
+        if (afterCopy && generation === copyGeneration && ['error', 'cancelled'].includes(result.job.state)) copyAccepted = false
       }
     }
+    catch (e) { if (request === recRequest) { rec = null; error = message(e) } }
+  }
+  function takeCloud(value: CloudView) {
+    const next = cloudSnap && value.seq < cloudSnap.seq ? { ...value, ...cloudSnap } : value
+    if (!cv || next.seq >= cv.seq) cv = next
+  }
+  async function readCloud() {
+    const epoch = cloudEpoch
+    try {
+      const result = await api.get<CloudView>('/api/cloud')
+      if (epoch === cloudEpoch) takeCloud(result)
+      else if (!finished) await readCloud()
+    } catch (e) { if (epoch === cloudEpoch) error = message(e); else if (!finished) await readCloud() }
+  }
+
+  // Backup is paused while this window is open; the pause is the window's own, so only the window undoes it.
+  function pauseBackup() {
+    if (finished || !cv || !(cv.running || cv.vault_running)) return
+    pausing = true
+    pausePromise = (async () => {
+      try {
+        const result = await api.post<CloudView & { pause_token: string | null }>('/api/cloud/pause', { source: 'recovery' })
+        pauseToken = result.pause_token
+      } catch (e) { error = message(e); pausing = false }
+    })()
+  }
+  // A copy that is running or ready to open must not be disturbed by this library's uploads; a restored library stays off until it takes over.
+  const keepsOff = () => choiceAccepted || copyAccepted || (!!rec && (['restoring', 'complete', 'activated'].includes(rec.job.state) || rec.restored || rec.restart_required))
+  function choiceBusy(active: boolean) {
+    if (active) choicePromise = new Promise(resolve => { choiceFinished = resolve })
+    else { choiceFinished?.(); choiceFinished = null }
+  }
+  function finish() {
+    if (finishPromise) return finishPromise
+    finished = true
+    finishPromise = (async () => {
+      await pausePromise
+      await copyPromise
+      await reconnectPromise
+      await choicePromise
+      if (choiceUncertain) { toast('Backup remains paused because the backup change could not be confirmed. Check backup before resuming.', 'w'); return }
+      if (copyUncertain) { toast('Backup remains paused because the copy request could not be confirmed. Check recovery before resuming.', 'w'); return }
+      if (!pauseToken || keepsOff()) return
+      for (let attempt = 0; attempt < 15; attempt++) {
+        try {
+          await api.post('/api/cloud/resume', { pause_token: pauseToken })
+          return
+        } catch (e) {
+          if (!/still stopping/.test(message(e)) || attempt === 14) {
+            toast(`Backup remains paused: ${message(e)}`, 'w')
+            return
+          }
+          await new Promise(r => setTimeout(r, 1000))
+        }
+      }
+    })()
+    return finishPromise
   }
 
   onMount(() => {
     void (async () => { await Promise.all([readRec(), readCloud()]); foreign = cv?.error_code === 'foreign_backup'; await pauseBackup() })()
-    const offs = [on('cloud', (d: Partial<CloudView>) => { if (cv && (d.seq ?? 0) >= cv.seq) cv = { ...cv, ...d } })]
+    const offs = [on('cloud', (d: CloudSnapshot) => {
+      if (d.seq < Math.max(cloudSnap?.seq ?? 0, cv?.seq ?? 0)) return
+      cloudSnap = d; if (cv) cv = { ...cv, ...d }
+    }), on('hello', () => { cloudEpoch++; cloudSnap = null; cv = null; void readCloud() })]
     const status = setInterval(() => { now = Date.now(); void readRec(); if (pausing) void readCloud() }, 2000)     // the pause lands when the last upload request ends
     return () => { offs.forEach(off => off()); clearInterval(status); void finish() }
   })
@@ -96,10 +148,12 @@
   }
   async function signIn() {
     error = ''
-    try { cv = await api.post<CloudView>('/api/cloud/recovery/sign-in') } catch (e) { error = message(e) }
+    const epoch = cloudEpoch
+    try { const result = await api.post<CloudView>('/api/cloud/recovery/sign-in'); if (epoch === cloudEpoch) takeCloud(result) } catch (e) { error = message(e) }
   }
   async function cancelSignIn() {
-    try { cv = await api.post<CloudView>('/api/cloud/cancel-sign-in') } catch (e) { error = message(e) }
+    const epoch = cloudEpoch
+    try { const result = await api.post<CloudView>('/api/cloud/cancel-sign-in'); if (epoch === cloudEpoch) takeCloud(result) } catch (e) { error = message(e) }
   }
   const methodWait = $derived(busy ? 'Wait for the current recovery check to finish.' : '')
   function chooseMethod(next: Method) {
@@ -136,7 +190,10 @@
       if (newPass.length < 12) { error = 'Use at least 12 characters.'; return }
       if (newPass !== newPass2) { error = 'The two passphrases are different.'; return }
     }
-    if (await post('reconnect', ready ? { password: '', confirmation: '', confirm: true } : { password: newPass, confirmation: newPass2, confirm: true })) { kept = true; newPass = newPass2 = ''; await readCloud() }
+    reconnectPromise = (async () => {
+      if (await post('reconnect', ready ? { password: '', confirmation: '', confirm: true } : { password: newPass, confirmation: newPass2, confirm: true })) { kept = true; newPass = newPass2 = ''; await readCloud() }
+    })()
+    await reconnectPromise
   }
   async function chooseFolder() {
     const picked = await pickPath('folder')
@@ -144,20 +201,59 @@
   }
   async function copy() {
     if (!folder.trim()) { error = 'Choose a new folder.'; return }
-    await post('restore', { destination: folder.trim() })
+    recRequest++; copyGeneration++; copyAccepted = false
+    copyPromise = (async () => {
+      busy = true; error = ''; copyUncertain = true
+      try {
+        const result = await api.post<RecoveryView>('/api/cloud/recovery/restore', { destination: folder.trim() })
+        copyAccepted = true; copyUncertain = false; await readRec(); return result
+      } catch (e) {
+        if (e instanceof ApiError && e.status >= 400 && e.status < 500) {
+          const request = ++recRequest
+          try {
+            const current = await api.get<RecoveryView>('/api/cloud/recovery')
+            if (request === recRequest) {
+              rec = current
+              copyAccepted = ['restoring', 'complete', 'activated'].includes(current.job.state) || current.restored || current.restart_required
+              copyUncertain = false
+            }
+          } catch { /* leave the pause in place if recovery status is unknown */ }
+        }
+        error = message(e); return null
+      } finally { busy = false }
+    })()
+    await copyPromise
   }
+  async function cancelCopy() { await post('cancel') }
   async function updateFolder() {
     if (await post('update-start', { confirm: true })) close()
   }
   async function restartNow() {
-    if (!rec?.restart_required && !(await post('activate', { confirm: true }))) return
-    try { await restartApp() } catch (e) { error = message(e) }
+    if (restarting) return
+    restarting = true
+    let accepted = false
+    try {
+      if (!rec?.restart_required && !(await post('activate', { confirm: true }))) return
+      await restartApp()
+      accepted = true
+    } catch (e) { error = message(e) }
+    finally { if (!accepted) restarting = false }
   }
   const left = $derived(job?.state === 'restoring' ? timeLeft(samples, job.done, job.total) : null)
+  const activity = $derived(cv?.recovery_activity?.action === 'reconnect' ? cv.recovery_activity : rec?.activity?.action === 'reconnect' ? rec.activity : null)
 </script>
 
 <WinBody>
   <div class="set-calm">
+    {#if activity}
+      <GroupBox aria-label="Recovery progress" active={activity.state === 'running'}>
+        <Label as="span">Recovery progress</Label>
+        <div><Status state={activity.state === 'running' ? 'busy' : 'next'} role="status">{activity.step}</Status>
+          <TaskSteps steps={reconnectSteps(activity)} running={activity.state === 'running'} />
+          {#if activity.state === 'error' && error}<Hint tone="error" role="alert">{error}</Hint>{/if}
+        </div>
+      </GroupBox>
+    {/if}
     <GroupBox aria-label="Recover a library">
       <Label as="span">Recover</Label>
       {#if job?.state === 'restoring'}
@@ -168,7 +264,7 @@
           {#if error}<Hint tone="error" role="alert">{error}</Hint>{/if}
         </div>
         <span></span>
-        <div><div class="frow"><TextButton onclick={() => post('cancel')}>Stop copying</TextButton></div></div>
+        <div><div class="frow"><TextButton onclick={cancelCopy}>Stop copying</TextButton></div></div>
       {:else if copied}
         <div>
           <Status on role="status">{job?.destination ? `Copied to ${job.destination}. Drive was not changed.` : 'Restored library selected. Drive was not changed.'}</Status>
@@ -176,7 +272,7 @@
           {#if error}<Hint tone="error" role="alert">{error}</Hint>{/if}
         </div>
         <span></span>
-        <div><div class="frow"><Button variant="pri" size="sm" onclick={restartNow}>Restart now</Button></div></div>
+        <div><div class="frow"><Button variant="pri" size="sm" disabled={restarting} aria-describedby={restarting ? 'rw-restarting' : undefined} onclick={restartNow}>Restart now</Button>{#if restarting}<Hint id="rw-restarting" role="status">Preparing the library and restarting Brainamon…</Hint>{/if}</div></div>
       {:else if kept}
         <div><Status on role="status">This folder is unlocked again. Backup continues from where it stopped.</Status></div>
         <span></span>
@@ -195,7 +291,7 @@
         </div></div>
       {:else if noKey}
         <div>
-          <BackupChoices account={cv?.account || rec?.account || ''} ondone={() => { finished = true; close(); openSettings('backup') }} />
+          <BackupChoices account={cv?.account || rec?.account || ''} replaceReason={cv?.recovery_gate_active ? 'Wait for the current recovery change to finish.' : ''} onbusy={choiceBusy} onerror={e => { choiceUncertain ||= !(e instanceof ApiError && e.status >= 400 && e.status < 500) }} ondone={() => { choiceAccepted = true; close(); openSettings('backup') }} />
           <TextButton onclick={() => noKey = false}>Back to recovery methods</TextButton>
         </div>
       {:else if found}

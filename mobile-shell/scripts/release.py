@@ -99,7 +99,7 @@ def main():
     aab = ANDROID / 'app' / 'build' / 'outputs' / 'bundle' / 'release' / 'app-release.aab'
     apk = ANDROID / 'app' / 'build' / 'outputs' / 'apk' / 'release' / 'app-release.apk'
     for p in (aab, apk):
-        # --release-mobile: no phone site reader in a release (projects/phone-site-reader/plans/01-engine.md)
+        # --release-mobile checks that the reader and its scripts ship together.
         run([sys.executable, ROOT / 'packaging' / 'payload_guard.py', p, '--release-mobile'], ROOT)
     tools = sorted((home / 'build-tools').iterdir())[-1]
     signer = tools / ('apksigner.bat' if os.name == 'nt' else 'apksigner')

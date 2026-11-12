@@ -273,6 +273,18 @@ class OwnershipTest(unittest.TestCase):
     def read(self, rel):
         return (self.vault / rel).read_text(encoding='utf-8')
 
+    def test_progress_counts_checks_writes_and_removals(self):
+        V.apply_render(self.vault, self.man, files_of(**{'Brainamon/old.md': 'old'}))
+        events = []
+        V.apply_render(self.vault, self.man, files_of(**{'Brainamon/new.md': 'new'}),
+                       progress=lambda *args: events.append(args))
+        self.assertEqual(events, [('checking', 0, 2), ('checking', 1, 2), ('checking', 2, 2),
+                                  ('saving', 0, 2), ('saving', 1, 2), ('saving', 2, 2)])
+        events.clear()
+        V.apply_render(self.vault, self.man, files_of(**{'Brainamon/new.md': 'new'}),
+                       progress=lambda *args: events.append(args))
+        self.assertEqual(events, [('checking', 0, 1), ('checking', 1, 1)])
+
     def test_unchanged_listed_file_is_updated(self):
         V.apply_render(self.vault, self.man, files_of(**{'Brainamon/Items/a-1.md': 'v1'}))
         self.assertEqual(self.read('Brainamon/Items/a-1.md'), 'v1')

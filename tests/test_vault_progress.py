@@ -58,9 +58,9 @@ FIXTURE = r"""
       const signal = {aborted:false}
       const env = {drive,key,fs,device:'test-phone',force:false,signal,
         load:async () => state, save:async next => { state = structuredClone(next); saves++ },
-        progress:(step,done,total,overall) => {
+        progress:(step,done,total,overall,display,files) => {
           if (step === taking) assert.ok(done <= metrics.writes, 'pull progress must not lead completed writes')
-          events.push({step,done,total,overall}); hooks.progress?.(step,done)
+          events.push({step,done,total,overall,files}); hooks.progress?.(step,done)
         },
       }
       return {env,hooks,metrics,events,mem,blobs,state:() => state,saves:() => saves,
@@ -71,6 +71,84 @@ FIXTURE = r"""
 
 @unittest.skipUnless(_node_ok(), 'needs Node 22.6+ (type stripping)')
 class VaultProgressTest(unittest.TestCase):
+    def test_repeated_budget_chunks_reconcile_counts_until_index_publication(self):
+        node(TS_RESOLVE + FIXTURE + r"""
+            const f = await fixture(13)
+            const phoneIndex = INDEX_PREFIX + await key.name('vault/index/test-phone')
+            let completed = 0
+            for (let chunk = 0; chunk < 4; chunk++) {
+              let writes = 0
+              f.hooks.write = () => { if (++writes > 3) throw Error('synthetic budget exhausted') }
+              await assert.rejects(vaultRound(f.env), /synthetic budget exhausted/)
+              assert.equal(f.events.find(e => e.files).files.done, completed, 'new chunk rescans committed content')
+              completed += f.metrics.writes
+              assert.equal(completed, (chunk + 1) * 3)
+              assert.equal(f.events.filter(e => e.files).at(-1).files.done, completed)
+              assert.equal(f.blobs.has(phoneIndex), false, 'partial chunks never publish the phone index')
+              assert.deepEqual(f.state()?.base ?? {}, {})
+              f.reset()
+            }
+            delete f.hooks.write
+            assert.equal((await vaultRound(f.env)).state, 'idle')
+            assert.equal(f.events.find(e => e.files).files.done, 12)
+            assert.equal(f.metrics.writes, 1, 'verified files are not rewritten by continuations')
+            assert.equal(f.blobs.has(phoneIndex), true)
+            assert.equal(f.events.filter(e => e.files).at(-1).files.done, 13)
+        """, timeout=10)
+
+    def test_verified_counts_reconcile_safe_writes_after_interruption(self):
+        node(TS_RESOLVE + FIXTURE + r"""
+            const f = await fixture(2 * PARALLEL + 1), writes = barrier(PARALLEL)
+            f.hooks.write = () => writes.wait()
+            const first = vaultRound(f.env)
+            await bounded(writes.ready)
+            assert.deepEqual(f.events.filter(e => e.files).at(-1).files, {done:0,total:2*PARALLEL+1})
+            f.env.signal.aborted = true; writes.release()
+            assert.equal((await first).state,'stopped')
+            assert.equal(f.events.filter(e => e.files).at(-1).files.done,PARALLEL)
+            f.reset(); delete f.hooks.write; f.env.signal.aborted=false
+            await vaultRound(f.env)
+            assert.deepEqual(f.events.find(e => e.files).files,{done:PARALLEL,total:2*PARALLEL+1})
+            assert.deepEqual(f.events.filter(e => e.files).at(-1).files,{done:2*PARALLEL+1,total:2*PARALLEL+1})
+        """, timeout=10)
+
+    def test_presence_failed_writes_and_pending_index_are_not_completed_sync(self):
+        node(TS_RESOLVE + FIXTURE + r"""
+            const f = await fixture(1)
+            f.mem.set('pc/0.md',text('Wrong existing content'))
+            f.hooks.write = () => { throw Error('interrupted before commit') }
+            await assert.rejects(vaultRound(f.env),/interrupted before commit/)
+            assert.equal(f.events.find(e => e.files).files.done,0)
+            assert.equal(f.events.filter(e => e.files).at(-1).files.done,0)
+            delete f.hooks.write; f.reset()
+            const create = f.env.drive.create, held = deferred(), reached = deferred()
+            f.env.drive.create = async (name,data) => {
+              if(name.startsWith(INDEX_PREFIX)){reached.resolve();await held.promise}
+              return create(name,data)
+            }
+            let ended=false
+            const run=vaultRound(f.env).then(result=>{ended=true;return result})
+            await bounded(reached.promise)
+            assert.equal(f.events.filter(e=>e.files).at(-1).files.done,1)
+            assert.equal(ended,false,'all verified files still await publication')
+            held.resolve(); assert.equal((await run).state,'idle')
+        """, timeout=10)
+
+    def test_interrupted_cold_pull_keeps_scan_hints_without_advancing_the_base(self):
+        node(TS_RESOLVE + FIXTURE + r"""
+            const f = await fixture(1, 3)
+            f.hooks.write = () => { throw Error('synthetic interrupted pull') }
+            await assert.rejects(vaultRound(f.env), /synthetic interrupted pull/)
+            assert.deepEqual(f.state().base, {})
+            assert.equal(f.state().cacheVersion, 1)
+            assert.equal(Object.keys(f.state().cache).length, 3)
+            delete f.hooks.write
+            let phoneReads = 0
+            f.hooks.read = path => { if (path.startsWith('phone/')) phoneReads++ }
+            assert.equal((await vaultRound(f.env)).state, 'idle')
+            assert.equal(phoneReads, 3, 'stable files are read only for upload, not rehashed after the interrupted pull')
+        """, timeout=10)
+
     def test_parallel_pulls_and_uploads_report_completions_through_the_final_batch(self):
         node(TS_RESOLVE + FIXTURE + r"""
             const n = 2 * PARALLEL + 1, f = await fixture(n,n)
@@ -99,7 +177,7 @@ class VaultProgressTest(unittest.TestCase):
             }
             assert.deepEqual(f.events.map(e => e.overall), f.events.map(e => e.overall).sort((a,b) => a-b))
             assert.equal(f.metrics.writes, n); assert.equal(f.metrics.uploads, n)
-            assert.equal(f.saves(), 1)
+            assert.equal(f.saves(), 2) // scan hints, then the completed round
         """, timeout=10)
 
     def test_stop_with_parallel_files_in_flight_resumes_without_downloads_then_uses_warm_cache(self):
@@ -137,11 +215,12 @@ class VaultProgressTest(unittest.TestCase):
               await assert.rejects(() => vaultRound(f.env), /synthetic operation failure/)
               const completed = step === taking ? f.metrics.writes : f.metrics.uploads
               assert.equal(f.events.filter(e => e.step === step).at(-1).done, completed)
-              assert.ok(completed < 3); assert.equal(f.saves(), 0)
+              assert.ok(completed < 3); assert.equal(f.saves(), step === taking ? 0 : 1)
+              if (f.state()) assert.deepEqual(f.state().base, {})
             }
         """, timeout=10)
 
-    def test_file_edited_after_scan_finishes_the_step_without_counting_an_upload(self):
+    def test_file_edited_after_scan_does_not_publish_a_stale_index(self):
         node(TS_RESOLVE + FIXTURE + r"""
             const f = await fixture(0,1)
             let reads = 0
@@ -149,10 +228,9 @@ class VaultProgressTest(unittest.TestCase):
               if (++reads === 2) f.mem.set(path,text('Edited after scanning this phone file'))
               return f.mem.get(path)
             }
-            assert.equal((await vaultRound(f.env)).state, 'idle')
+            await assert.rejects(() => vaultRound(f.env), /file changed during sync/)
             assert.equal(f.metrics.uploads, 0)
-            assert.deepEqual(f.events.filter(e => e.step === sending).map(e => [e.done,e.total]), [[0,1],[1,1]])
-            assert.equal(f.events.filter(e => e.step === sending).at(-1).overall, .97)
+            assert.equal([...f.blobs.keys()].filter(n => n.startsWith('vi-')).length, 1, 'only the PC index exists')
             delete f.hooks.read; f.reset()
             const next = await vaultRound(f.env)
             assert.equal(next.state, 'idle'); assert.equal(f.metrics.uploads, 1)
@@ -214,12 +292,13 @@ class VaultProgressTest(unittest.TestCase):
               f.blobs.set(blobName(id),await key.seal(blobLogical(id),data))
             }
             await publish(); f.reset()
+            const savesBefore = f.saves()
             const writes = barrier(PARALLEL)
             f.hooks.write = () => writes.wait()
             const round = vaultRound(f.env)
             await bounded(writes.ready)
             assert.equal(f.metrics.writes,0)
-            assert.equal(f.saves(),2) // baseline plus one cache-only checkpoint, before any replacement
+            assert.equal(f.saves(),savesBefore+1) // one cache-only checkpoint before any replacement
             assert.deepEqual(f.state().base,before.base)
             for (const path of Object.keys(index.files)) assert.ok(!Object.hasOwn(f.state().cache,path))
             assert.deepEqual(f.state().cache['phone/0.md'],before.cache['phone/0.md'])

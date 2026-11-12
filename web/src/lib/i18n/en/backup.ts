@@ -1,4 +1,5 @@
 export const messages = {
+  "backup.vault.verified": "Last verified: {done}/{total} PC files",
 
 
 
@@ -252,7 +253,7 @@ export const messages = {
   "backup.state.keyScan": "Scan the new code on your PC: Settings > Backup & phones > Add a phone.",
   "backup.state.keyLink": "Open the new pairing link from your PC: Settings > Backup & phones > Add a phone.",
   "backup.state.backupOff": "Your PC isn't backing up the library.",
-  "backup.state.backupOffHelp": "On the PC: Settings > Backup & phones > Turn on backup.",
+  "backup.state.backupOffHelp": "On the PC: Settings > Backup & phones > Turn on backup or Resume backup.",
   "backup.state.noLibrary": "No library in Google Drive yet.",
   "backup.state.connecting": "Connecting to Google Drive…",
   "backup.state.checking": "Checking Google Drive…",
@@ -322,7 +323,7 @@ export const messages = {
   "backup.pair.withPc": "Pair with a PC",
   "backup.warning.pair": "Scan the code from the PC (Settings > Backup & phones > Add a phone). Everything saved here goes to the PC.",
   "backup.action.removeLocal": "Remove from this phone",
-  "backup.warning.removeLocal": "Removes the local phone copy. Independent copies stay where you saved them.",
+  "backup.warning.removeLocal": "Removes this phone’s library, offline saves, queued changes and capture drafts. Independent copies stay where you saved them.",
   "backup.warning.lostKey": "A lost key cannot decrypt old content. Keep this phone’s local library and replace one selected backup, or delete that backup and disconnect.",
   "backup.help.choices": "Only standalone phone backups appear here. The short ID distinguishes backups; encrypted names cannot tell us which phone made them. Recovery files and independent copies stay where they were saved.",
   "backup.warning.taskSync": "Local content and queued edits stay here. Other backups stay in Drive. Normal sync waits until this task finishes.",
@@ -341,6 +342,7 @@ export const messages = {
 } as const
 
 export const budgets = {
+  "backup.vault.verified": {"limit": 160, "params": {"done": "number", "total": "number"}},
   "backup.action.task": {"limit": 40, "params": {}},
   "backup.action.signIn": {"limit": 40, "params": {}},
   "backup.action.scan": {"limit": 40, "params": {}},

@@ -16,16 +16,210 @@ ROOT = Path(__file__).resolve().parents[1]
 SERVER = '''
 import sys
 from pathlib import Path
-from core import app_paths, config
+from core import app_paths, config, site_sessions
 root=Path(sys.argv[1]); port=int(sys.argv[2])
 app_paths.LOCAL=root/'local'; app_paths.LOCAL.mkdir()
 app_paths.TOOLS_POINTER=app_paths.LOCAL/'tools.json'
 app_paths.CACHE=app_paths.LOCAL/'cache'; app_paths.ERROR_LOG=app_paths.LOCAL/'error_log.txt'
+site_sessions.ROOT=app_paths.LOCAL/'site-sessions'
 config.ENV_PATH=root/'absent.env'
+# Synthetic test credentials stay in this disposable folder; DPAPI is outside this UI check.
+site_sessions._crypt = lambda raw, decrypt=False: raw
 from server.app import create_app
 import uvicorn
 uvicorn.run(create_app(data_dir=root/'data', port=port, cloud_dir=root/'cloud'), host='127.0.0.1', port=port, log_level='warning')
 '''
+
+
+def check_scrapers(page, opened, runtime, out):
+    """Exercise the live Expand UI without launching a site, watcher or import."""
+    previous_runtime = dict(runtime)
+    out = out / 'scraper-expand'
+    out.mkdir(parents=True, exist_ok=True)
+    launches, playlists, watches = [], [], []
+    def start(route):
+        launches.append(route.request.post_data_json)
+        route.fulfill(json={'ok': True})
+    def playlist(route):
+        playlists.append(route.request.post_data_json)
+        route.fulfill(json={'ok': True})
+    def watch(route):
+        watches.append(route.request.post_data_json)
+        route.fulfill(json={'watching': watches[-1]['on'], 'dir': 'Synthetic Downloads'})
+    page.context.route('**/api/scrapers/playwright', start)
+    page.context.route('**/api/import/youtube-playlist', playlist)
+    page.context.route('**/api/scrapers/watch', watch)
+    page.get_by_role('button', name='File', exact=True).click()
+    page.get_by_role('menuitem', name='Scrapers').click()
+    scraper = page.get_by_role('dialog', name='Scrapers', exact=True)
+    expect(scraper.locator('button[data-site]')).to_have_count(5)
+    expect(scraper.locator('[data-site][aria-expanded=true]')).to_have_count(1)
+    assert not scraper.locator('.scraper-help[open], .scraper-options[open]').count()
+    assert not launches and not playlists and not opened
+    for width in (1280, 390):
+        page.set_viewport_size({'width': width, 'height': 960})
+        assert scraper.evaluate('e => e.scrollWidth <= e.clientWidth + 1')
+        page.screenshot(path=str(out / f'instagram-default-{width}.png'))
+    page.set_viewport_size({'width': 1280, 'height': 960})
+
+    def site(key, method=None):
+        button = scraper.locator(f'button[data-site="{key}"]')
+        if button.get_attribute('aria-expanded') != 'true':
+            button.click()
+        expect(scraper.locator('[data-site][aria-expanded=true]')).to_have_count(1)
+        if method:
+            scraper.locator(f'button[data-method="{method}"]').click()
+        return scraper
+
+    def options():
+        details = scraper.locator('.scraper-options')
+        if details.get_attribute('open') is None:
+            details.locator('summary').click()
+        return scraper.get_by_label('Remove from saved posts after export', exact=False)
+
+    # Category/method selection alone never copies, launches or imports anything.
+    for key in ('facebook', 'instagram', 'threads', 'youtube', 'reddit'):
+        site(key)
+        expected = {'manual', 'file', 'playlist' if key == 'youtube' else 'automatic'}
+        assert set(scraper.locator('[data-method]').evaluate_all('(xs) => xs.map(x => x.dataset.method)')) == expected
+    assert not launches and not playlists and not opened
+    assert page.evaluate('window.__copiedScript === undefined')
+
+    # Manual scripts stay tied to the expanded category; unsupported unsave stays disabled.
+    for key in ('facebook', 'instagram', 'threads', 'youtube', 'reddit'):
+        site(key, 'manual')
+        remove = options()
+        if key == 'youtube':
+            expect(remove).to_have_count(0)
+        else:
+            expect(remove).to_be_enabled() if key == 'facebook' else expect(remove).to_be_disabled()
+            assert not remove.is_checked()
+        with page.expect_response(f'**/api/scrapers/{key}.js?*') as response:
+            scraper.get_by_role('button', name='Copy script', exact=True).click()
+        assert 'unsave=false' in response.value.url
+        page.wait_for_function('text => window.__copiedScript === text', arg=response.value.text())
+        assert not opened
+    site('facebook', 'manual')
+    options()
+    scraper.get_by_label('Stop at title', exact=True).fill("Tutorial's saved title")
+    scraper.get_by_role('button', name='Copy script', exact=True).click()
+    page.wait_for_function("window.__copiedScript.includes(\"Tutorial\\\\'s saved title\")")
+    page.evaluate('window.__clipboardFail = true')
+    scraper.get_by_role('button', name='Copy script', exact=True).click()
+    scraper.get_by_role('status').filter(has_text='Clipboard access denied').first.wait_for()
+    assert not opened
+    page.evaluate('window.__clipboardFail = false')
+
+    # Cancel preserves both clipboard and account. Confirmation alone enables removal.
+    options().check()
+    for width in (1280, 390):
+        page.set_viewport_size({'width': width, 'height': 960})
+        page.screenshot(path=str(out / f'facebook-removal-{width}.png'))
+    for width, button in ((1280, scraper.get_by_role('button', name='Copy script', exact=True)), (390, scraper.locator('[data-run]'))):
+        page.set_viewport_size({'width': width, 'height': 960})
+        page.evaluate("window.__copiedScript = 'cancelled copy sentinel'")
+        button.click()
+        confirm = page.get_by_role('alertdialog', name='Unsave after export?')
+        expect(confirm).to_be_visible()
+        assert confirm.evaluate('e => e.scrollWidth <= e.clientWidth + 1')
+        page.screenshot(path=str(out / f'facebook-confirmation-{width}.png'))
+        confirm.get_by_role('button', name='Cancel', exact=True).click()
+        assert page.evaluate('window.__copiedScript') == 'cancelled copy sentinel'
+        assert not opened and not launches
+    page.set_viewport_size({'width': 1280, 'height': 960})
+    scraper.get_by_role('button', name='Copy script', exact=True).click()
+    page.get_by_role('alertdialog', name='Unsave after export?').get_by_role('button', name='Continue', exact=True).click()
+    page.wait_for_function("window.__copiedScript.includes('const UNSAVE_AFTER_SCRAPE = true;')")
+
+    # The shared browser readiness control still gates automatic collection.
+    runtime.update(state='ready', version='1.61.0', error='', source='Synthetic environment', path='C:/test/python.exe', managed=False)
+    for key in ('facebook', 'instagram', 'reddit'):
+        site(key, 'automatic')
+        options().check()
+        scraper.get_by_label('Remember this login', exact=False).check()
+        start_button = scraper.locator('[data-run]')
+        if start_button.is_disabled():
+            tools_panel = scraper.locator('.scraper-tools')
+            if tools_panel.get_attribute('open') is None:
+                tools_panel.locator('summary').click()
+            check = scraper.get_by_role('button', name='Check browser tools again', exact=True)
+            if check.count():
+                check.click()
+        expect(start_button).to_be_enabled()
+        before = len(launches)
+        start_button.click()
+        page.get_by_role('alertdialog', name='Unsave after export?').get_by_role('button', name='Cancel', exact=True).click()
+        assert len(launches) == before
+        start_button.click()
+        with page.expect_response('**/api/scrapers/playwright'):
+            page.get_by_role('alertdialog', name='Unsave after export?').get_by_role('button', name='Continue', exact=True).click()
+        assert launches[-1]['platform'] == key and len(launches) == before + 1
+        assert launches[-1]['unsave'] is True and launches[-1]['unsave_confirmed'] is True
+        assert launches[-1]['remember'] is True
+    site('threads', 'automatic')
+    expect(options()).to_be_disabled()
+    assert not options().is_checked()
+    before = len(launches)
+    with page.expect_response('**/api/scrapers/playwright'):
+        scraper.locator('[data-run]').click()
+    assert len(launches) == before + 1
+    assert launches[-1]['platform'] == 'threads' and launches[-1]['unsave'] is False
+    assert launches[-1]['unsave_confirmed'] is False
+    assert page.get_by_role('alertdialog', name='Unsave after export?').count() == 0
+
+    site('youtube', 'playlist')
+    scraper.get_by_role('textbox', name='Playlist link', exact=True).fill('https://www.youtube.com/playlist?list=PLsynthetic')
+    with page.expect_response('**/api/import/youtube-playlist'):
+        scraper.locator('[data-run]').click()
+    assert playlists == [{'url': 'https://www.youtube.com/playlist?list=PLsynthetic'}]
+    site('reddit', 'file')
+    scraper.locator('[data-run]').click()
+    importer = page.get_by_role('dialog', name='Import CSV or JSON', exact=True)
+    expect(importer).to_be_visible()
+    page.keyboard.press('Escape')
+    importer.wait_for(state='detached')
+
+    site('facebook', 'manual')
+    scraper.locator('[data-method="manual"]').press('ArrowLeft')
+    expect(scraper.locator('[data-method="automatic"]')).to_have_attribute('aria-selected', 'true')
+    expect(scraper.locator('[data-method="automatic"]')).to_be_focused()
+    scraper.locator('[data-method="automatic"]').press('ArrowRight')
+    expect(scraper.locator('[data-method="manual"]')).to_have_attribute('aria-selected', 'true')
+    expect(scraper.locator('[data-method="manual"]')).to_be_focused()
+    help_panel = scraper.locator('.scraper-help')
+    if help_panel.get_attribute('open') is None:
+        help_panel.locator('summary').click()
+    image = help_panel.get_by_role('img')
+    if image.count():
+        image.scroll_into_view_if_needed()
+        image.evaluate('e => e.decode()')
+        assert image.evaluate('e => e.naturalWidth') == 1536
+    for width in (1280, 390):
+        page.set_viewport_size({'width': width, 'height': 960})
+        assert scraper.evaluate('e => e.scrollWidth <= e.clientWidth + 1')
+        page.screenshot(path=str(out / f'scraper-expand-{width}.png'))
+    page.set_viewport_size({'width': 1280, 'height': 960})
+    # Closing while a script is loading must not copy, open or restart its watcher later.
+    pending = []
+    page.context.route('**/api/scrapers/facebook.js?*', lambda route: pending.append(route))
+    page.evaluate("window.__copiedScript = 'closed window sentinel'")
+    before_watches = len(watches)
+    scraper.locator('[data-run]').click()
+    for _ in range(50):
+        if pending:
+            break
+        page.wait_for_timeout(10)
+    assert len(pending) == 1
+    scraper.locator('.cw-foot').get_by_role('button', name='Close', exact=True).click()
+    scraper.wait_for(state='detached')
+    pending[0].fulfill(body='const delayedScript = true;', content_type='text/javascript')
+    pending[0].request.response().finished()
+    page.evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+    assert page.evaluate('window.__copiedScript') == 'closed window sentinel'
+    assert not opened and not any(watch['on'] for watch in watches[before_watches:])
+    page.context.unroute('**/api/scrapers/facebook.js?*')
+    runtime.clear()
+    runtime.update(previous_runtime)
 
 
 def main():
@@ -51,7 +245,7 @@ def main():
                     raise AssertionError('Isolated server did not start')
                 sys.path.insert(0, str(ROOT))
                 from core import app_paths, local_auth
-                with mock.patch.object(app_paths, 'LOCAL', root / 'local'):
+                with mock.patch.object(app_paths, 'LOCAL', root / 'local'), mock.patch('core.site_sessions._crypt', side_effect=lambda raw, decrypt=False: raw):
                     headers = local_auth.headers(port)
                     entry = local_auth.browser_url(base, port)
                 with sync_playwright() as pw:
@@ -82,6 +276,17 @@ def main():
                     # The first run uses the handed-off six-step flow, with real tools and no automatic installs.
                     welcome = page.get_by_role('dialog', name='Welcome to Brainamon')
                     welcome.get_by_role('button', name='Skip', exact=True).wait_for()
+                    if '--scrapers-only' in sys.argv:
+                        with page.expect_response(lambda response: '/api/onboarding' in response.url and response.request.method == 'PUT'):
+                            welcome.get_by_role('button', name='Skip', exact=True).click()
+                        welcome.wait_for(state='detached')
+                        out = ROOT / 'local/ui-blocks/guided-setup'
+                        out.mkdir(parents=True, exist_ok=True)
+                        check_scrapers(page, opened, state, out)
+                        assert not errors, errors
+                        browser.close()
+                        print('PASS: live scraper categories, manual scripts, removal confirmation/payloads, unsupported platforms, playlist, CSV dialog and narrow layout')
+                        return
                     nav = welcome.get_by_role('navigation', name='Setup checklist')
                     assert nav.get_by_role('button').count() == 6
                     welcome.get_by_text('Step 1 of 6: Your library', exact=True).wait_for()
@@ -174,62 +379,8 @@ def main():
                     page.set_viewport_size({'width': 1280, 'height': 960})
                     page.keyboard.press('Escape')
                     setup.wait_for(state='detached')
-                    # 4. the unfocused Scrapers window from the File menu
-                    page.get_by_role('button', name='File', exact=True).click()
-                    page.get_by_role('menuitem', name='Scrapers').click()
-                    scraper = page.get_by_role('dialog', name='Scrapers', exact=True)
-                    assert scraper.get_by_role('button', name='Stop Playwright').count() == 0
-                    assert not scraper.get_by_label('Unsave each item', exact=False).is_checked()
-                    tutorial = scraper.get_by_role('region', name='Browser walkthrough')
-                    tutorial.get_by_role('heading', name='Browser walkthrough').wait_for()
-                    image = tutorial.get_by_role('img')
-                    image.scroll_into_view_if_needed()
-                    image.evaluate('e => e.decode()')
-                    assert image.evaluate('e => e.naturalWidth') == 1536
-                    assert tutorial.get_by_role('listitem').count() == 5
-                    copy = tutorial.get_by_role('button', name='Copy script', exact=True)
-                    for site in ('facebook', 'instagram', 'reddit', 'youtube'):
-                        tutorial.get_by_label('Script for', exact=True).select_option(site)
-                        with page.expect_response(f'**/api/scrapers/{site}.js?*') as response:
-                            copy.click()
-                        expected_script = response.value.text()
-                        page.wait_for_function('text => window.__copiedScript === text', arg=expected_script)
-                        assert not opened, 'Copy script opened an external site'
-                    scraper.get_by_label('Stop at title', exact=True).fill("Tutorial's saved title")
-                    tutorial.get_by_label('Script for', exact=True).select_option('facebook')
-                    copy.click()
-                    tutorial.get_by_role('status').get_by_text('Facebook script copied to clipboard.', exact=True).wait_for()
-                    page.wait_for_function("window.__copiedScript.includes(\"Tutorial\\\\'s saved title\")")
-                    page.evaluate('window.__clipboardFail = true')
-                    copy.click()
-                    tutorial.get_by_role('status').get_by_text('Clipboard access denied', exact=False).wait_for()
-                    assert not opened
-                    page.evaluate('window.__clipboardFail = false')
-                    copy.click()
-                    tutorial.get_by_role('status').get_by_text('Facebook script copied to clipboard.', exact=True).wait_for()
-                    for width in (1280, 390):
-                        page.set_viewport_size({'width': width, 'height': 960})
-                        tutorial.scroll_into_view_if_needed()
-                        assert scraper.evaluate('e => e.scrollWidth <= e.clientWidth + 1')
-                        assert tutorial.evaluate('e => e.scrollWidth <= e.clientWidth + 1')
-                        page.screenshot(path=str(ROOT / 'build' / f'manual-scraping-{width}.png'))
-                        image.scroll_into_view_if_needed()
-                        page.screenshot(path=str(ROOT / 'build' / f'manual-scraping-image-{width}.png'))
-                    page.set_viewport_size({'width': 1280, 'height': 960})
-                    scraper.get_by_label('Unsave each item', exact=False).check()
-                    page.evaluate("window.__copiedScript = 'cancelled copy sentinel'")
-                    copy.click()
-                    page.get_by_role('alertdialog', name='Unsave after export?').get_by_role('button', name='Cancel', exact=True).click()
-                    assert not opened and page.evaluate('window.__copiedScript') == 'cancelled copy sentinel'
-                    scraper.get_by_role('button', name='Facebook (saved, manual)', exact=True).click()
-                    page.get_by_role('alertdialog', name='Unsave after export?').get_by_role('button', name='Cancel', exact=True).click()
-                    assert scraper.get_by_text('script copied and page opened', exact=False).count() == 0
-                    assert page.evaluate('window.__copiedScript') == 'cancelled copy sentinel'
-                    copy.click()
-                    page.get_by_role('alertdialog', name='Unsave after export?').get_by_role('button', name='Continue', exact=True).click()
-                    page.wait_for_function("window.__copiedScript.includes('const UNSAVE_AFTER_SCRAPE = true;')")
-                    page.keyboard.press('Escape')
-                    scraper.wait_for(state='detached')
+                    # 4. nested scraper categories, supported unsaving and confirmation.
+                    check_scrapers(page, opened, state, out)
                     # 5. an answer picks the Get started task and the focused Scrapers guide
                     page.request.put(base + '/api/onboarding', headers={**headers, 'X-CM': '1'}, data={'answer': 'facebook'})
                     page.reload()
@@ -237,23 +388,22 @@ def main():
                     setup = page.get_by_role('dialog', name='Set up Brainamon', exact=True)
                     setup.get_by_role('button', name='Open manual import guide', exact=True).click()
                     scraper = page.get_by_role('dialog', name='Scrapers', exact=True)
-                    scraper.get_by_role('heading', name='Bring in your Facebook saves').wait_for()
-                    scraper.get_by_role('button', name='Copy script and open Facebook', exact=True).wait_for()
-                    expect(scraper.get_by_label('Script for', exact=True)).to_have_value('facebook')
+                    expect(scraper.locator('[data-site="facebook"]')).to_have_attribute('aria-expanded', 'true')
+                    expect(scraper.locator('[data-method="manual"]')).to_have_attribute('aria-selected', 'true')
                     scraper.get_by_role('button', name='Copy script', exact=True).click()
-                    scraper.get_by_role('status').get_by_text('Facebook script copied to clipboard.', exact=True).wait_for()
+                    scraper.get_by_text('Facebook script copied to clipboard.', exact=True).wait_for()
                     assert not opened
-                    scraper.get_by_role('button', name='Copy script and open Facebook', exact=True).click()
+                    scraper.locator('[data-run]').click()
                     scraper.get_by_text('script copied and page opened.', exact=False).wait_for()
                     assert len(opened) == 1 and '/facebook/open' in opened[0]
-                    assert scraper.get_by_role('tab', name='Manual', exact=True).get_attribute('aria-selected') == 'true'
+                    scraper.locator('[data-method="automatic"]').click()
                     assert scraper.get_by_label('Instagram username').count() == 0
-                    scraper.get_by_role('tab', name='Automatic', exact=True).click()
+                    scraper.locator('[data-site="instagram"]').click()
+                    scraper.locator('.scraper-options summary').click()
                     scraper.get_by_label('Instagram username').wait_for()
-                    assert scraper.get_by_role('button', name='Import a CSV manually').count() == 0
-                    assert scraper.get_by_role('region', name='Browser walkthrough').count() == 0
-                    scraper.get_by_role('tab', name='Automatic', exact=True).press('ArrowLeft')
-                    assert scraper.get_by_role('tab', name='Manual', exact=True).get_attribute('aria-selected') == 'true'
+                    scraper.locator('[data-method="manual"]').focus()
+                    page.keyboard.press('Enter')
+                    expect(scraper.locator('[data-method="manual"]')).to_have_attribute('aria-selected', 'true')
                     assert scraper.get_by_label('Instagram username').count() == 0
                     assert not errors, errors
                     if '--desktop-only' not in sys.argv:
@@ -266,7 +416,7 @@ def main():
                         mobile.context.route('https://**', lambda route: route.abort())
                         mobile.context.route('http://127.0.0.1:18766/**', lambda route: route.fulfill(status=503, json={'error': 'offline fixture'}))
                         mobile.goto(base + '/mobile.html#/more')
-                        mobile.get_by_text('Your phone', exact=True).wait_for()
+                        mobile.get_by_text('Backup & phones', exact=True).wait_for()
                         assert mobile.get_by_role('button', name='Install browser tools').count() == 0
                         assert mobile.get_by_role('button', name='Choose cookies.txt').count() == 0
                         assert mobile.get_by_text('Without a PC there are no thumbnails', exact=False).count() == 0
@@ -314,7 +464,7 @@ def main():
                     welcome.get_by_role('progressbar', name='Looking for tools and checking that they work…', exact=True).wait_for()
                     assert welcome.get_by_role('button', name='Check and set up', exact=True).is_disabled()
                     assert welcome.get_by_role('button', name='Browse for ffmpeg', exact=True).count() == 0
-                    welcome.get_by_text('Advanced details and tool folders', exact=True).click()
+                    welcome.get_by_text('More: tool folders, install by hand', exact=True).click()
                     for name in ('ffmpeg', 'ffprobe', 'yt-dlp', 'deno'):
                         assert welcome.get_by_role('button', name=f'Browse for {name}', exact=True).count() == 1
                     assert welcome.locator('.tool-status.pending').count() >= 4
@@ -326,7 +476,7 @@ def main():
                         if route.request.method == 'PUT': picked.append(route.request.post_data_json)
                         route.fulfill(json=tools)
                     fresh.context.route('**/api/settings/tools', tools_route)
-                    welcome.get_by_text('The required tools passed their local checks.', exact=False).wait_for()
+                    welcome.get_by_text('Video tools are ready.', exact=True).wait_for()
                     assert welcome.get_by_role('button', name='Install browser tools', exact=True).count() == 0
                     assert welcome.get_by_role('button', name='Remove browser tools…', exact=True).count() == 0
                     assert welcome.get_by_role('navigation', name='Setup checklist').get_by_role('button').count() == 6
@@ -350,7 +500,7 @@ def main():
                     assert settings.get_by_role('button', name='Browse for ffmpeg', exact=True).count() == 0
                     assert settings.get_by_text('YouTube EJS scripts', exact=True).count() == 0 or settings.get_by_text('YouTube EJS scripts', exact=True).is_hidden()
                     primary.focus(); fresh.keyboard.press('Enter')
-                    settings.get_by_text('Synthetic permission failure', exact=True).wait_for()
+                    expect(settings.get_by_role('region', name='Video tools', exact=True).get_by_role('alert')).to_have_text('Synthetic permission failure')
                     assert installs == ['install']
                     terminals = []
                     def terminal_route(route):
@@ -360,7 +510,7 @@ def main():
                     fresh.context.route('**/api/settings/tools/install/terminal', terminal_route)
                     terminal = settings.get_by_role('button', name='Open administrator terminal', exact=True)
                     terminal.click()
-                    settings.get_by_text('Synthetic elevation cancelled', exact=True).wait_for()
+                    expect(settings.get_by_role('region', name='Video tools', exact=True).get_by_role('alert').filter(has_text='Synthetic elevation cancelled')).to_be_visible()
                     terminal.click()
                     settings.get_by_text('Terminal opened.', exact=False).wait_for()
                     assert terminal.is_disabled()
@@ -374,7 +524,7 @@ def main():
                     primary.click()
                     fresh.get_by_text('Video tools are ready', exact=True).wait_for()
                     assert installs == ['install', 'install']
-                    settings.get_by_text('Advanced details and tool folders', exact=True).click()
+                    settings.get_by_text('More: tool folders, install by hand', exact=True).click()
                     settings.get_by_role('button', name='Browse for ffmpeg', exact=True).wait_for()
                     fresh.screenshot(path=str(ROOT / 'build' / 'setup-settings-tools-dark.png'))
                     settings.get_by_role('button', name='Back to Setup', exact=True).click()
@@ -403,7 +553,7 @@ def main():
                         assert json.load(r)['answer'] == 'files'
                     assert not errors, errors
                     browser.close()
-                print('PASS: welcome, shared setup checklist, tool loading/ready states, video setup/permission recovery/terminal retry, Help install/retry/skip, protected upload, desktop/narrow layout, scraper tabs and Unsave cancellation' + (' (mobile-only checks skipped)' if '--desktop-only' in sys.argv else ', mobile solo imports'))
+                print('PASS: welcome, shared setup checklist, tool loading/ready states, video setup/permission recovery/terminal retry, Help install/retry/skip, protected upload, desktop/narrow layout, nested scraper categories, method filtering and Unsave confirmation' + (' (mobile-only checks skipped)' if '--desktop-only' in sys.argv else ', mobile solo imports'))
             finally:
                 server.terminate(); server.wait(timeout=15)
 

@@ -70,6 +70,18 @@ class NotUploader(drive_client.DriveError):
         self.at = int(at or 0)
 
 
+class RecoveryBlocked(drive_client.DriveError):
+    """Local recovery state prevents uploads or saved cloud work."""
+
+
+class ResumeOffline(drive_client.DriveError):
+    """A failed Resume has no worker to retry when connectivity returns."""
+
+
+class OtherCopy(drive_client.DriveError):
+    """Another local app copy uses a different library key."""
+
+
 class ForeignBackup(drive_client.DriveError):
     """The account already holds a Brainamon backup this PC knows nothing about (T3): getting it back is the way on, a second
     library in the same account is not. `at`: the newest time Drive stamped on it (ms, 0 unknown)."""
@@ -109,6 +121,8 @@ def classify(exc: BaseException, *, account: str = '', used: int = 0, limit: int
     table (a raw Drive error), so the page keeps the sentence it showed before; `storage` does the same for a failure
     of this PC's protected files. Neither is ever filled from the exception, so a path or a token cannot reach a message
     through them unless the caller puts it there."""
+    if isinstance(exc, ResumeOffline):
+        return _result(OFFLINE, "Can't reach Google Drive. Backup stays paused; choose Resume backup again when the connection is back.", NONE)
     if isinstance(exc, WorkerStopping):
         return _result(WORKER_STOPPING, str(exc), WAIT)
     if isinstance(exc, Busy):
@@ -117,6 +131,10 @@ def classify(exc: BaseException, *, account: str = '', used: int = 0, limit: int
         return _result(WRONG_ACCOUNT, str(exc), SIGN_IN_AGAIN)
     if isinstance(exc, NotUploader):
         return _result(NOT_OWNER, str(exc), RECOVER)
+    if isinstance(exc, OtherCopy):
+        return _result(OTHER_COPY, str(exc), NONE)
+    if isinstance(exc, RecoveryBlocked):
+        return _result(OTHER, str(exc), NONE)
     if isinstance(exc, ForeignBackup):
         return _result(FOREIGN_BACKUP, FOREIGN_FOR.format(account=account) if account else FOREIGN, RECOVER)
     if isinstance(exc, drive_client.DriveError):

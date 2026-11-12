@@ -1,4 +1,5 @@
 """Setup height, selection and inline actions; disposable library, mocked credentials/Drive."""
+import argparse
 import copy
 import importlib.util
 import tempfile
@@ -49,7 +50,8 @@ class Review(shots.Run):
             route.fulfill(json=settings)
 
         cloud = self.api('GET', '/api/cloud')
-        cloud.update(configured=True, licensed=True, signed_in=False, state='off', rotation='complete', phone_keys=['openai'])
+        cloud.update(configured=True, licensed=True, signed_in=False, state='off', rotation='complete', phone_keys=['openai'],
+                     pair_ready=True, recovery_gate_active=False)
         recovery = dict(configured=False, enrolled=False, verified=False, account='', restored=False,
                         job={'state': 'idle'}, preview=None)
         calls = []
@@ -79,11 +81,15 @@ class Review(shots.Run):
                         return
                     cloud.update(signed_in=True, account='sample@example.com')
                 elif path == '/api/cloud/connect':
-                    cloud.update(running=True, state='idle')
+                    cloud.update(on=True, running=True, state='idle', paused_since=0, last_publish=1794290000000)
+                elif path == '/api/cloud/reauth':
+                    cloud.update(state='signing-in')
                 elif path == '/api/cloud/publish':
                     cloud.update(state='publishing', done=2, total=5)
                 elif path == '/api/cloud/stop':
-                    cloud.update(running=False, vault_running=False, state='off')
+                    cloud.update(on=False, running=False, vault_running=False, state='off', paused_since=1794290000000)
+                elif path == '/api/cloud/resume':
+                    cloud.update(on=True, running=True, state='idle', paused_since=0)
                 elif path == '/api/cloud/pair':
                     route.fulfill(json={'url': 'https://example.invalid/#synthetic', 'svg': '<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="black"/></svg>', 'fingerprint': 'test-check', 'keys': ['openai']})
                     return
@@ -95,6 +101,10 @@ class Review(shots.Run):
         ctx.route('**/api/settings', ai)
         ctx.route('**/api/cloud', drive)
         ctx.route('**/api/cloud/**', drive)
+        ctx.add_init_script('''window.__cloudStreams = [];
+            window.EventSource = class extends EventSource {
+                constructor(...args) { super(...args); window.__cloudStreams.push(this) }
+            };''')
         page = ctx.new_page()
         errors = []
         page.on('pageerror', lambda e: errors.append(str(e)))
@@ -238,27 +248,89 @@ class Review(shots.Run):
         expect(setup.get_by_text('Google Drive connected: sample@example.com', exact=True)).to_be_visible()
         assert not cloud['running']
         # recovery is chosen and checked on the Backup & phones page: Setup shows where it stands and points there
-        expect(setup.get_by_text('No recovery passphrase yet', exact=True)).to_be_visible()
+        expect(setup.locator('#setup-recovery').get_by_text('Not set up', exact=True)).to_be_visible()
         setup.get_by_role('button', name='Recovery in Backup & phones', exact=True).click()
         settings_window = page.get_by_role('dialog', name='Settings', exact=True)
         expect(settings_window.locator('.set-heading h2')).to_have_text('Backup & phones')
         expect(settings_window.locator('#set-s-sync-recovery')).to_be_focused()
         settings_window.get_by_role('button', name='Back to Setup', exact=True).click()
-        setup.get_by_role('button', name='Turn on uploads', exact=True).click()
-        expect(setup.get_by_role('button', name='Upload now', exact=True)).to_be_enabled()
-        setup.get_by_role('button', name='Upload now', exact=True).click()
+        # A worker can run a saved task while automatic backup is off.
+        cloud.update(on=False, running=True, seq=cloud['seq'] + 1)
+        visit('Your library'); visit('Drive & recovery')
+        expect(setup.get_by_text('Automatic backup is off.', exact=True)).to_be_visible()
+        setup.get_by_role('button', name='Turn on backup', exact=True).click()
+        expect(setup.get_by_role('button', name='Back up now', exact=True)).to_be_enabled()
+        setup.get_by_role('button', name='Back up now', exact=True).click()
         expect(setup.get_by_role('progressbar', name='Google Drive upload', exact=True)).to_have_attribute('aria-valuenow', '40')
         setup.get_by_role('button', name='Pause uploads and vault sync', exact=True).click()
-        expect(setup.get_by_text('Library uploads off', exact=True)).to_be_visible()
+        expect(setup.get_by_text('Automatic backup is off.', exact=True)).to_be_visible()
+        setup.get_by_role('button', name='Resume backup', exact=True).click()
+        assert calls[-1] == ('/api/cloud/resume', {})
+        expect(setup.get_by_text('Automatic backup is on.', exact=True)).to_be_visible()
+        # A new server's lower sequence replaces the previous server, including late old HTTP reads.
+        cloud.update(seq=5000)
+        visit('Your library'); visit('Drive & recovery')
+        self.settle(page)
+        old_cloud, pending_cloud = copy.deepcopy(cloud), []
+        def hold_old_cloud(route):
+            if route.request.method == 'GET' and not pending_cloud:
+                pending_cloud.append(route)
+            else:
+                drive(route)
+        ctx.route('**/api/cloud', hold_old_cloud)
+        page.evaluate("data => window.__cloudStreams.forEach(stream => stream.dispatchEvent(new MessageEvent('cloud', {data: JSON.stringify(data)})))", cloud)
+        page.wait_for_timeout(150)
+        assert pending_cloud
+        cloud.update(seq=1, on=False, running=False, state='off', paused_since=1794290000000)
+        hello = dict(jobs={'current': None, 'last': None, 'queue': [], 'request': None}, asks=0, cloud=cloud)
+        page.evaluate("data => window.__cloudStreams.forEach(stream => stream.dispatchEvent(new MessageEvent('hello', {data: JSON.stringify(data)})))", hello)
+        expect(setup.get_by_text('Automatic backup is off.', exact=True)).to_be_visible()
+        pending_cloud[0].fulfill(json=old_cloud)
+        ctx.unroute('**/api/cloud', hold_old_cloud)
+        page.wait_for_timeout(100)
+        expect(setup.get_by_text('Automatic backup is off.', exact=True)).to_be_visible()
+        expect(setup.get_by_role('button', name='Resume backup', exact=True)).to_be_enabled()
+        for changes, label in ((dict(key_missing=True), 'Unlock backup…'), (dict(key_missing=False, token_expired=True), 'Sign in again')):
+            cloud.update(changes, seq=cloud['seq'] + 1)
+            page.evaluate("data => window.__cloudStreams.forEach(stream => stream.dispatchEvent(new MessageEvent('cloud', {data: JSON.stringify(data)})))", cloud)
+            expect(setup.get_by_role('button', name='Resume backup', exact=True)).to_have_count(0)
+            expect(setup.get_by_role('button', name=label, exact=True)).to_be_enabled()
+        before = len(calls)
+        setup.get_by_role('button', name='Sign in again', exact=True).click()
+        assert calls[before:] == [('/api/cloud/reauth', {})]
+        cloud.update(token_expired=False, state='off', recovery_gate_active=True, seq=cloud['seq'] + 1,
+                     recovery_activity={'action': 'reconnect', 'state': 'running', 'step': 'Checking this folder', 'started': 1})
+        page.evaluate("data => window.__cloudStreams.forEach(stream => stream.dispatchEvent(new MessageEvent('cloud', {data: JSON.stringify(data)})))", cloud)
+        expect(setup.locator('#setup-uploads').get_by_role('button').first).to_be_disabled()
+        expect(setup.locator('#setup-upload-why')).to_contain_text('Checking this folder')
+        cloud.update(recovery_gate_active=False, recovery_activity=None, on=True, running=True, state='idle', paused_since=0, seq=cloud['seq'] + 1)
+        page.evaluate("data => window.__cloudStreams.forEach(stream => stream.dispatchEvent(new MessageEvent('cloud', {data: JSON.stringify(data)})))", cloud)
         self.shot(page, f'setup-{theme}-drive')
         setup.get_by_role('button', name='Advanced cloud settings', exact=True).click()
         expect(page.locator('#set-s-sync-recovery')).to_have_count(1)
         page.get_by_role('dialog', name='Settings', exact=True).get_by_role('button', name='Back to Setup', exact=True).click()
 
+        cloud.update(rotation='pending', pair_ready=False, recovery_gate_active=True,
+                     recovery_activity={'action': 'unpair', 'state': 'running', 'step': 'Locking phones out…', 'started': 1}, seq=cloud['seq'] + 1)
+        visit('Your library')
         visit('Connect your phone')
+        expect(setup.get_by_role('button', name='Show pairing QR', exact=True)).to_be_disabled()
+        expect(setup.get_by_text('Locking phones out… Wait for this step to finish.', exact=True)).to_be_visible()
+        cloud.update(pair_ready=True, recovery_gate_active=False, recovery_activity=None, seq=cloud['seq'] + 1)
+        visit('Your library'); visit('Connect your phone')
+        expect(setup.get_by_role('button', name='Show pairing QR', exact=True)).to_be_enabled()
         setup.get_by_role('button', name='Show pairing QR', exact=True).click()
         expect(setup.get_by_role('img', name='Phone pairing QR code')).to_be_visible()
         assert calls[-1] == ('/api/cloud/pair', {'keys': ['openai']})
+        cloud.update(pair_ready=False, recovery_gate_active=True,
+                     recovery_activity={'action': 'unpair', 'state': 'running', 'step': 'Locking phones out…', 'started': 1}, seq=cloud['seq'] + 1)
+        page.evaluate("data => window.__cloudStreams.forEach(stream => stream.dispatchEvent(new MessageEvent('cloud', {data: JSON.stringify(data)})))", cloud)
+        expect(setup.get_by_role('img', name='Phone pairing QR code')).to_have_count(0)
+        expect(setup.get_by_role('button', name='Show pairing QR', exact=True)).to_be_disabled()
+        cloud.update(pair_ready=True, recovery_gate_active=False, recovery_activity=None, seq=cloud['seq'] + 1)
+        page.evaluate("data => window.__cloudStreams.forEach(stream => stream.dispatchEvent(new MessageEvent('cloud', {data: JSON.stringify(data)})))", cloud)
+        setup.get_by_role('button', name='Show pairing QR', exact=True).click()
+        expect(setup.get_by_role('img', name='Phone pairing QR code')).to_be_visible()
         setup.get_by_role('button', name='Copy pairing link', exact=True).click()
         expect(setup.get_by_text('Could not copy the pairing link. Scan the QR instead.', exact=True)).to_be_visible()
         self.shot(page, f'setup-{theme}-phone')
@@ -292,7 +364,11 @@ class Review(shots.Run):
 
 
 if __name__ == '__main__':
-    args = SimpleNamespace(repo=str(ROOT), dist=str(ROOT / 'web/dist'), port=0,
-                           out=tempfile.mkdtemp(prefix='brainamon-browser-shots-'), only=None,
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--dist', default=str(ROOT / 'web/dist'))
+    parser.add_argument('--out')
+    options = parser.parse_args()
+    args = SimpleNamespace(repo=str(ROOT), dist=options.dist, port=0,
+                           out=options.out or tempfile.mkdtemp(prefix='brainamon-browser-shots-'), only=None,
                            root=None, themes='dark,light')
     Review(args).go()

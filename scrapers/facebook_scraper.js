@@ -5,7 +5,7 @@
 // 2. F12 → Console → paste → Enter
 //
 // STOP_AT            : stop at this title (empty = scrape all)
-// UNSAVE_AFTER_SCRAPE: unsave each item after scraping
+// UNSAVE_AFTER_SCRAPE: export each batch, then ask before unsaving it
 // CAPTURE_THUMBS     : save thumbnail as base64
 // ============================================================
 
@@ -16,6 +16,8 @@ const CAPTURE_THUMBS      = true;
 let scraped = [];
 let seen    = new Set();
 let running = true;
+let exportedCount = 0;
+let unsavedCount = 0;
 
 window.stopScraper = () => { running = false; };
 console.log('💡 Type stopScraper() to stop early');
@@ -136,6 +138,7 @@ function downloadCSV() {
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
   a.download = `fb_saved_${new Date().toISOString().slice(0,10)}.csv`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  exportedCount = scraped.length;
   console.log(`✅ Downloaded CSV: ${scraped.length} items`);
 }
 
@@ -160,6 +163,7 @@ async function run() {
     }
 
     emptyScrolls = 0;
+    const toUnsave = [];
 
     // Process ALL newly visible rows in one pass
     for (const { id, a, row } of rows) {
@@ -194,13 +198,24 @@ async function run() {
       scraped.push({ id, url, description, creator, type, thumb });
       console.log(`📥 [${scraped.length}] ${id} — ${description.slice(0, 60)}`);
 
-      // Unsave
-      if (UNSAVE_AFTER_SCRAPE) {
-        const ok = await unsave(row);
-        console.log(ok ? '   🗑 Unsaved' : '   ⚠ Could not unsave');
-      }
+      if (UNSAVE_AFTER_SCRAPE) toUnsave.push(row);
 
       await sleep(200);
+    }
+
+    if (toUnsave.length) {
+      try { downloadCSV(); }
+      catch (e) { alert('CSV download failed. This batch has not been unsaved. Keep this page open and export again.'); return; }
+      await sleep(100);
+      if (!confirm(`Verify that the CSV with ${scraped.length} collected posts has finished downloading and is saved on your computer.\n\nRemove this batch of ${toUnsave.length} posts from Facebook Saved? Cancel keeps this batch saved and stops the scraper.`)) {
+        running = false;
+        break;
+      }
+      for (const row of toUnsave) {
+        const ok = await unsave(row);
+        if (ok) unsavedCount++;
+        console.log(ok ? 'Unsaved after CSV confirmation' : 'Could not unsave');
+      }
     }
 
     // Scroll a bit to reveal more items
@@ -209,8 +224,8 @@ async function run() {
   }
 
   console.log(`\n✅ Done! ${scraped.length} items scraped.`);
-  downloadCSV();
-  alert(`✅ Done!\n${scraped.length} items scraped${UNSAVE_AFTER_SCRAPE ? ' and unsaved' : ''}.\n\nThe CSV will auto-import into Brainamon.`);
+  if (exportedCount !== scraped.length || !scraped.length) downloadCSV();
+  alert(`✅ Done!\n${scraped.length} items scraped${UNSAVE_AFTER_SCRAPE ? `; ${unsavedCount} unsaved` : ''}.\n\nThe CSV will auto-import into Brainamon.`);
 }
 
 run();

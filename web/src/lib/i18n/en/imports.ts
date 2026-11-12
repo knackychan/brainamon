@@ -1,4 +1,6 @@
 export const messages = {
+  "imports.unsave.label": "Unsave collected posts",
+  "imports.unsave.help": "Off by default. Remove newly collected posts from Saved only after their results are saved on this phone. Review and import the results afterward. Posts already in your library stay saved.",
   "imports.title": "Import saved posts",
   "imports.intro": "Posts you saved on these sites become cards in your library.",
   "imports.platforms": "Expandable platforms",
@@ -30,7 +32,8 @@ export const messages = {
   "imports.file.importing": "Importing file…",
   "imports.how.title": "How importing works",
   "imports.how.export": "Request export opens the official page. Submit the request on that platform and return when your file is ready.",
-  "imports.how.scan": "Instagram Saved ZIP / JSON can be imported with File. Instagram Scan reads saved posts and reels; Facebook Scan reads saved reels and videos; Threads Scan reads saved posts when the site browser is available. TikTok Scan currently opens the site for sign-in only.",
+  "imports.how.scan": "Instagram Saved ZIP / JSON can be imported with File. Instagram Scan reads saved posts and reels; Facebook Scan reads saved reels and videos; Threads Scan reads saved posts when the site browser is available. TikTok is coming soon.",
+  "imports.tiktok.comingSoon": "Coming soon",
   "imports.result.added": {"one": "Added {n} link", "other": "Added {n} links"},
   "imports.result.duplicates": {"one": "{n} already in the library", "other": "{n} already in the library"},
   "imports.result.skipped": {"one": "{n} without a link skipped", "other": "{n} without a link skipped"},

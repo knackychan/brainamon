@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Every engine entry is guarded by API 26 + isSupported; Android 7 keeps foreground sync. -->
+    <uses-sdk tools:overrideLibrary="androidx.javascriptengine" />
+
     <!-- The library copy, the pairing and the keys stay on this phone: no cloud backup, no device
          transfer (the Keystore key behind the secrets would not come along anyway). -->
     <application
@@ -43,6 +46,13 @@
             </intent-filter>
 
         </activity>
+
+        <activity
+            android:name=".SiteActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|uiMode|density"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- The ML Kit code scanner (pairing QR) ships its own activity locked to portrait; Android 16 ignores
              that lock on large screens and Play flags it, so the library's value is replaced with "unspecified". -->

@@ -255,7 +255,7 @@ def _copy_atomic(src, dst: Path) -> None:
     atomic_write(dst, Path(src).read_bytes())
 
 
-def apply_render(vault, man: dict, files: dict, track_removed: bool = False) -> dict:
+def apply_render(vault, man: dict, files: dict, track_removed: bool = False, progress=None) -> dict:
     """One pass. `files`: owner_pages.render's output. Writes listed-and-unchanged or new paths, removes
     listed-and-unchanged paths no longer rendered, adopts listed-and-changed paths, never touches unlisted
     ones. Saves the manifest with `pending` before the writes and without it after. `track_removed` (vault
@@ -271,7 +271,14 @@ def apply_render(vault, man: dict, files: dict, track_removed: bool = False) -> 
     else:
         man.pop('removed', None)
     writes, removals, adopted, unlisted = [], [], [], []
-    current = {rel: file_hash(root / rel) for rel in set(listed) | set(files)}
+    paths = set(listed) | set(files)
+    current = {}
+    if progress:
+        progress('checking', 0, len(paths))
+    for i, rel in enumerate(paths, 1):
+        current[rel] = file_hash(root / rel)
+        if progress:
+            progress('checking', i, len(paths))
     for rel, spec in files.items():
         new = data_hash(spec['data']) if 'data' in spec else file_hash(spec['src'])
         if new is None:
@@ -303,13 +310,18 @@ def apply_render(vault, man: dict, files: dict, track_removed: bool = False) -> 
         man['pending'] = ([{'path': r, 'old': o, 'new': n, 'source': s['source'], 'key': s['key']} for r, s, o, n in writes]
                           + [{'path': r, 'old': o, 'new': None, 'record_removed': track_removed} for r, o, _gone in removals])
         write_manifest(root, man)
-        for rel, spec, _old, new in writes:
+        total = len(writes) + len(removals)
+        if progress:
+            progress('saving', 0, total)
+        for i, (rel, spec, _old, new) in enumerate(writes, 1):
             if 'data' in spec:
                 atomic_write(root / rel, spec['data'])
             else:
                 _copy_atomic(spec['src'], root / rel)
             listed[rel] = {'hash': new, 'source': spec['source'], 'key': spec['key']}
-        for rel, old, gone in removals:
+            if progress:
+                progress('saving', i, total)
+        for i, (rel, old, gone) in enumerate(removals, len(writes) + 1):
             if not gone:
                 try:
                     (root / rel).unlink()
@@ -318,6 +330,8 @@ def apply_render(vault, man: dict, files: dict, track_removed: bool = False) -> 
             if track_removed:
                 record_removed(man, rel, old)
             listed.pop(rel, None)
+            if progress:
+                progress('saving', i, total)
         man.pop('pending', None)
     write_manifest(root, man)
     return {'written': len(writes), 'removed': len(removals), 'adopted': sorted(adopted), 'unlisted': sorted(unlisted)}

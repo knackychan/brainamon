@@ -39,6 +39,7 @@ class Intents:
         self.owner = owner
         self._lock = threading.RLock()
         self._items = None          # this process is the only writer: the list is read from disk once
+        self.on_change = lambda: None
 
     def _everything(self) -> list:
         if self._items is None:
@@ -60,7 +61,6 @@ class Intents:
 
     def _write(self, mine: list) -> None:
         items = [i for i in self._everything() if i.get('owner', '') != self.owner] + [dict(i) for i in mine]
-        self._items = items
         if items:
             private_storage.write(self.path, json.dumps(items).encode())
         else:
@@ -68,6 +68,11 @@ class Intents:
                 private_storage.remove(self.path)
             except FileNotFoundError:
                 pass
+        self._items = items
+        try:
+            self.on_change()
+        except Exception:
+            app_console.emit('log', 'Saved cloud task status could not be published.', level='warning')
 
     def all(self) -> list:
         with self._lock:
@@ -78,14 +83,14 @@ class Intents:
     def find(self, kind: str):
         return next((i for i in self.all() if i['kind'] == kind), None)
 
-    def add(self, kind: str, payload: dict | None = None) -> dict:
+    def add(self, kind: str, payload: dict | None = None, *, error: str = '', code: str = '') -> dict:
         """A second intent of the same kind is a double click: refused, nothing written (A19)."""
         with self._lock:
             items = [i for i in self._read() if not (i['kind'] == kind and i.get('error'))]      # a failed one is replaced by the retry
             if any(i['kind'] == kind for i in items):
                 raise Busy(BUSY_TEXT[kind])
             item = {'id': secrets.token_hex(8), 'owner': self.owner, 'kind': kind, 'stage': FIRST_STAGE[kind], 'created': int(time.time() * 1000),
-                    'payload': payload or {}, 'error': ''}
+                    'payload': payload or {}, 'error': error, 'code': code}
             self._write(items + [item])
             return item
 

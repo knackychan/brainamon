@@ -57,7 +57,37 @@ var SITE = {
     return ''
   },
 
+  rows: new Map(),
+
+  unsave: async function (doc, url, canRemove) {
+    var row = SITE.rows.get(url)
+    if (!row || !row.isConnected || !visible(row)) return false
+    var button = Array.from(row.querySelectorAll('[role="button"], button')).find(function (b) {
+      return visible(b) && (b.getAttribute('aria-label') || '').indexOf('More options') >= 0
+    })
+    if (!button) return false
+    button.click()
+    await sleep(800)
+    var menus = Array.from(doc.querySelectorAll('[role="menu"]')).filter(visible)
+    if (menus.length !== 1) return false
+    var item = Array.from(menus[0].querySelectorAll('[role="menuitem"]')).find(function (m) {
+      return visible(m) && /^(unsave|remove from saved)(\s|$)/i.test((m.innerText || '').trim())
+    })
+    if (!item) {
+      doc.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      return false
+    }
+    if (!await canRemove()) return false
+    item.click()
+    for (var i = 0; i < 20; i++) {
+      await sleep(300)
+      if (!row.isConnected || !visible(row)) return true
+    }
+    return false
+  },
+
   read: function (doc) {
+    SITE.rows.clear()
     var counts = new Map()
     function words(el) {
       if (counts.has(el)) return counts.get(el)
@@ -88,6 +118,7 @@ var SITE = {
       var url = '', a = null
       for (var j = 0; j < as.length && !url; j++) { url = SITE.canon(as[j].href); a = as[j] }
       if (!url) { out.push({ url: as[0].href, kind: 'Other', caption: '', creator: '', pic: '' }); return }
+      SITE.rows.set(url, row)
       var text = row.innerText || ''
       var m = /(?:Reels?|Videos?)\s*[•·]\s*([^\n]+)/i.exec(text)
       var creator = m ? m[1].trim() : ''

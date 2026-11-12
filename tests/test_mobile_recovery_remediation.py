@@ -259,6 +259,6 @@ class MobileRecoveryRemediation(unittest.TestCase):
           assert.deepEqual(P.pairing().ai,{openai:'openai-synthetic'})
           P.setAiKey(pair,'anthropic','anthropic-synthetic')
           assert.deepEqual(P.pairing().ai,{openai:'openai-synthetic',anthropic:'anthropic-synthetic'})
-          Net.setSyncPaused(true);assert.equal(Net.syncPaused(),true);assert.equal(mem.get('bp-sync-paused'),'on')
-          Net.setSyncPaused(false);assert.equal(mem.get('bp-sync-paused'),'off')
+          await Net.setSyncPaused(true);assert.equal(Net.syncPaused(),true);assert.equal(mem.get('bp-sync-paused'),'on')
+          await Net.setSyncPaused(false);assert.equal(mem.get('bp-sync-paused'),'off')
         """)

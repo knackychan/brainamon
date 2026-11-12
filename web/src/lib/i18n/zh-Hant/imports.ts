@@ -2,6 +2,8 @@ import type { messages as English } from '../en/imports.ts'
 import type { Localized } from '../en/index.ts'
 
 export const messages = {
+  "imports.unsave.label": "取消收藏已擷取的貼文",
+  "imports.unsave.help": "預設關閉。新擷取貼文的結果儲存到此手機後，才會取消收藏。請接著檢查並匯入結果。資料庫中已有的貼文會保留收藏。",
   "imports.title": "匯入已收藏的貼文",
   "imports.intro": "你在這些網站收藏的貼文會成為資料庫中的卡片。",
   "imports.platforms": "可展開的平台",
@@ -33,7 +35,8 @@ export const messages = {
   "imports.file.importing": "正在匯入檔案…",
   "imports.how.title": "匯入方式說明",
   "imports.how.export": "申請匯出會開啟官方網頁。請在該平台送出申請，檔案準備好後再回來。",
-  "imports.how.scan": "檔案功能可匯入 Instagram 收藏內容的 ZIP / JSON。網站瀏覽器可用時，Instagram 掃描會讀取收藏的貼文與 Reels；Facebook 掃描會讀取收藏的 Reels 與影片；Threads 掃描會讀取收藏的貼文。TikTok 掃描目前僅開啟網站供登入。",
+  "imports.how.scan": "檔案功能可匯入 Instagram 收藏內容的 ZIP / JSON。網站瀏覽器可用時，Instagram 掃描會讀取收藏的貼文與 Reels；Facebook 掃描會讀取收藏的 Reels 與影片；Threads 掃描會讀取收藏的貼文。TikTok 即將推出。",
+  "imports.tiktok.comingSoon": "即將推出",
   "imports.result.added": {"other": "已新增 {n} 個連結"},
   "imports.result.duplicates": {"other": "資料庫中已有 {n} 個"},
   "imports.result.skipped": {"other": "已略過 {n} 筆沒有連結的內容"},

@@ -22,7 +22,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * The Contributor build's SiteBridge (projects/phone-site-reader/plans/01-engine.md); BrainamonPlugin
+ * The phone's SiteBridge (projects/phone-site-reader); BrainamonPlugin
  * finds it by name. Logins stay in each site's WebView profile ("site-<id>"); this class only keeps
  * whether the login cookie was there ("signed-<id>") and the profiles to delete at the next start.
  * WebView refuses to delete a profile already loaded in the running app, so Forget wipes such a profile's

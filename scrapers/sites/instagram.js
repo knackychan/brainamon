@@ -69,6 +69,45 @@ var SITE = {
     return m ? m[1] : ''
   },
 
+  unsave: async function (doc, url, canRemove) {
+    var link = Array.from(doc.querySelectorAll('a[href]')).find(function (a) {
+      return visible(a) && SITE.canon(a.href) === url
+    })
+    if (!link) return false
+    link.click()
+    var scope = null
+    for (var i = 0; i < 20; i++) {
+      await sleep(500)
+      var dialogs = Array.from(doc.querySelectorAll('[role="dialog"]')).filter(visible)
+      if (SITE.canon(location.href) === url && dialogs.length === 1) { scope = dialogs[0]; break }
+    }
+    if (!scope) return false
+    function icon(label) {
+      return Array.from(scope.querySelectorAll('svg[aria-label]')).find(function (s) {
+        return visible(s) && s.getAttribute('aria-label') === label
+      })
+    }
+    var saved = icon('Remove'), ok = !!icon('Save') && !saved
+    if (saved) {
+      if (!await canRemove()) return false
+      var bookmark = saved.closest('[role="button"], button') || saved
+      bookmark.click()
+      for (var j = 0; j < 20; j++) {
+        await sleep(300)
+        if (!icon('Remove') && icon('Save')) { ok = true; break }
+      }
+    }
+    var close = Array.from(doc.querySelectorAll('[aria-label="Close"]')).find(visible)
+    if (!close) return false
+    var closeButton = close.closest('[role="button"], button') || close
+    closeButton.click()
+    for (var k = 0; k < 20; k++) {
+      await sleep(300)
+      if (SITE.onSaved(location) && !visible(scope)) return ok
+    }
+    return false
+  },
+
   read: function (doc) {
     var out = [], links = doc.querySelectorAll('a[href*="/p/"], a[href*="/reel/"], a[href*="/reels/"], a[href*="/tv/"]')
     for (var i = 0; i < links.length; i++) {

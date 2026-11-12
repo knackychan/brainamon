@@ -9,6 +9,21 @@ from server import desktop
 
 
 class DesktopLoadingTest(unittest.TestCase):
+    def test_recovery_picker_saves_a_named_json_file_and_handles_cancel(self):
+        window = mock.Mock()
+        api = desktop.Api()
+        with mock.patch.object(desktop.webview, 'windows', [window]), mock.patch.object(desktop.time, 'time_ns', return_value=123000000):
+            for answer, expected in [(('C:/safe/recovery.json',), ['C:/safe/recovery.json']),
+                                     ('C:/safe/recovery.json', ['C:/safe/recovery.json']), (None, None)]:
+                window.create_file_dialog.return_value = answer
+                self.assertEqual(api.pick('recovery-save'), expected)
+                window.create_file_dialog.assert_called_with(desktop.webview.FileDialog.SAVE,
+                    file_types=desktop.PICK_TYPES['json'], save_filename='Brainamon-recovery-123.json')
+            api.pick('folder')
+            window.create_file_dialog.assert_called_with(desktop.webview.FileDialog.FOLDER)
+            api.pick('json')
+            window.create_file_dialog.assert_called_with(desktop.webview.FileDialog.OPEN, file_types=desktop.PICK_TYPES['json'])
+
     def setUp(self):
         patch = mock.patch.object(desktop.local_auth, 'browser_url', side_effect=lambda url: url + '#cm-auth=synthetic')
         patch.start()

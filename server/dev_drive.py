@@ -182,7 +182,8 @@ class FakeDrive:
             return file_id
 
     def get(self, file_id: str) -> bytes:
-        return (self.root / f'{file_id}.bin').read_bytes()
+        with self.lock:
+            return (self.root / f'{file_id}.bin').read_bytes()
 
     def delete(self, file_id: str) -> bool:
         with self.lock:
@@ -333,6 +334,20 @@ def handler(drive: FakeDrive):
                 return self._ai(u.path)
             if not self._authed():
                 return
+            if u.path == '/batch/drive/v3':
+                msg = email.parser.BytesParser().parsebytes(
+                    b'Content-Type: ' + self.headers.get('Content-Type', '').encode() + b'\r\n\r\n' + self._body())
+                if not msg.is_multipart():
+                    return self._json(400, {'error': {'message': 'invalid batch'}})
+                replies = []
+                for part in msg.get_payload():
+                    identity = re.fullmatch(r'<delete-(\d+)>', part.get('Content-ID', ''))
+                    request = re.fullmatch(rb'DELETE /drive/v3/files/([\w-]+) HTTP/1\.1\r?\n', part.get_payload(decode=True) or b'')
+                    if not identity or not request:
+                        return self._json(400, {'error': {'message': 'invalid batch part'}})
+                    status = 204 if drive.delete(request[1].decode()) else 404
+                    replies.append(f'--fixture-batch\r\nContent-Type: application/http\r\nContent-ID: <response-delete-{identity[1]}>\r\n\r\nHTTP/1.1 {status} Result\r\n\r\n')
+                return self._send(200, (''.join(replies) + '--fixture-batch--\r\n').encode(), 'multipart/mixed; boundary=fixture-batch')
             q = dict(urllib.parse.parse_qsl(u.query))
             if u.path == '/upload/drive/v3/files' and q.get('uploadType') == 'multipart':
                 return self._multipart()
@@ -413,6 +428,7 @@ def main():
         from server.routes import cloud
         cloud.DEV_AI = base + '/ai'
     drive_client.API, drive_client.UPLOAD = base + '/drive/v3', base + '/upload/drive/v3'
+    drive_client.BATCH = base + '/batch/drive/v3'
     drive_client.sign_in = lambda *a, **k: {'access_token': 'dev', 'refresh_token': 'dev', 'expires_at': 4e9}
     drive_client.revoke = lambda tok: None
     config.google_client = lambda: ('dev', 'dev')

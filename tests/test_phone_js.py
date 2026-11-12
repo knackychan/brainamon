@@ -250,7 +250,7 @@ class PhoneJsTest(unittest.TestCase):
             kv.get = async k => structuredClone(cache.get(k))
             kv.set = async (k, v) => { cache.set(k, structuredClone(v)) }
             const src = fs.readFileSync('web/src/mobile/source/mirror.ts', 'utf8')
-            const method = src.match(/  async loadManifest\(\)[\s\S]*?\n  }/)[0]
+            const method = src.match(/  private async readManifest\(\)[\s\S]*?\n  }/)[0]
             const READER = Number(src.match(/export const READER = (\d+)/)[1])
             let warnings = 0, receipts = 0, prunes = 0
             class PhoneTooOld extends Error {}
@@ -258,6 +258,8 @@ class PhoneJsTest(unittest.TestCase):
               stripTypeScriptTypes('class Loader {\n' + method + '\n}') + ';return Loader')(
                 READER, PhoneTooOld, { fn: () => warnings++ }, kv, () => 'phone')
             const loader = new Loader()
+            loader.nativeReady = async () => false
+            loader.loadManifest = () => loader.readManifest()
             let incoming = { reader: READER + 1, files: { 'canvas-results.json': {} }, applied: { phone: 10 } }
             loader.manifest = structuredClone(old)
             loader.changes = new Changes()

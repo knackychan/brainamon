@@ -1,6 +1,6 @@
 // Portable recovery files contain key material. Download only after an explicit user action.
 // on an error `code` and `next` (the next step) are set: server/cloud_errors.py classified it and `step` is its sentence
-export interface RecoveryActivity { action: string; state: 'running' | 'error'; step: string; started: number; code?: string; next?: string }
+export interface RecoveryActivity { action: string; state: 'running' | 'error'; step: string; started: number; step_index?: number; step_count?: number; code?: string; next?: string }
 
 export function downloadRecovery(value: unknown, filename: string) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }))

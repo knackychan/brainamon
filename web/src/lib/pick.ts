@@ -4,7 +4,7 @@
 declare global {
   interface Window { pywebview?: { api?: { pick?: (kind: string) => Promise<string[] | null>; close?: () => Promise<void> } } }
 }
-export type PickKind = 'import' | 'csv' | 'json' | 'image' | 'video' | 'cookies' | 'folder' | 'claude'
+export type PickKind = 'import' | 'csv' | 'json' | 'image' | 'video' | 'cookies' | 'folder' | 'claude' | 'recovery-save'
 
 export const isDesktop = () => typeof window.pywebview?.api?.pick === 'function'
 

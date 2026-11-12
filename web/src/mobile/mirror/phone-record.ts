@@ -2,8 +2,8 @@
 // BackupPhonesPage.svelte) names it and says when it last synced. The other side is library/mirror.py seal_phone and
 // open_phone: the Drive name `ph-` + key.name('phones/<device>') is also the logical name the sealing authenticates, and
 // the body is {"device", "name", "seen", "v": 1} with `seen` in ms. A paired phone writes it after a complete read of
-// the library (source/mirror.ts), at most every 30 minutes (the PC counts a phone in sync while its record is under an
-// hour old) and at once when its name or its pairing changes, replacing it in place. Unpair removes it, best effort
+// the library (source/mirror.ts), at most every 30 minutes (the PC shows the last reported sync, not live connection
+// status) and at once when its name or its pairing changes, replacing it in place. Unpair removes it, best effort
 // within 3 s; Remove all phones on the PC removes the old key's records. A solo phone writes none.
 import { kv } from '../store'
 import type { MirrorKey } from './crypto'

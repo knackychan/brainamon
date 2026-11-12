@@ -89,9 +89,11 @@ export async function removeItem(id: number) {
   const done = beginLanguageWork()
   try {
     const s = await idb.getRequired(id)
-    if (s) await idb.putRequired({ ...s, saved: false, size: 0 })
     const c = await caches.open(OFFLINE)
-    await c.delete(videoKey(id)); await c.delete(thumbKey(id))
+    await c.delete(videoKey(id))
+    const canvases = await kv.getRequired<SavedCanvas[]>('saved-canvases') ?? []
+    if (!canvases.some(canvas => canvas.doc.items.some(item => item.item_id === id))) await c.delete(thumbKey(id))
+    if (s) await idb.putRequired({ ...s, saved: false, size: 0 })
     await offline.load()
   } finally { done() }
 }
@@ -145,8 +147,12 @@ export async function removeCanvas(id: string) {
   try {
     const all = (await kv.getRequired<SavedCanvas[]>('saved-canvases')) ?? []
     const gone = all.find(x => x.id === id)
-    await kv.setOfflineRequired('saved-canvases', all.filter(x => x.id !== id))
-    if (gone) { const c = await caches.open(OFFLINE); for (const n of gone.images) await c.delete(source.canvasImageUrl(n)) }
+    const kept = all.filter(x => x.id !== id)
+    if (gone) {
+      const c = await caches.open(OFFLINE)
+      for (const n of gone.images) if (!kept.some(canvas => canvas.images.includes(n))) await c.delete(source.canvasImageUrl(n))
+    }
+    await kv.setOfflineRequired('saved-canvases', kept)
     await offline.load()
   } finally { done() }
 }

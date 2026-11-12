@@ -13,7 +13,7 @@ from unittest import mock
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
-from tests.phone_groups import open_group  # noqa: E402  (This phone is a group on Backup & phones, projects/phone-settings)
+from tests.phone_pages import open_group  # noqa: E402  (This phone is a group on Backup & phones, projects/phone-settings)
 
 
 @unittest.skipUnless(importlib.util.find_spec('playwright'), 'requires Playwright and Edge')

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import sys
 import time
 from pathlib import Path
@@ -111,7 +112,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--unsave",
         action="store_true",
-        help="Attempt to unsave each item after scraping it.",
+        help="Attempt to unsave each collected item after its CSV checkpoint is written.",
     )
     parser.add_argument(
         "--no-thumbs",
@@ -415,7 +416,9 @@ UNSAVE_VISIBLE_JS = r"""
 
 
 def scrape_saved_items(page, stop_at: str, capture_thumbs: bool, unsave: bool,
-                       max_empty_scrolls: int, scroll_pause_ms: int) -> list[dict]:
+                       max_empty_scrolls: int, scroll_pause_ms: int, out_dir: Path | None = None) -> list[dict]:
+    if unsave and out_dir is None:
+        raise ValueError('A CSV output directory is required before unsaving.')
     scraped: list[dict] = []
     seen_ids: set[str] = set()
     empty_scrolls = 0
@@ -457,6 +460,8 @@ def scrape_saved_items(page, stop_at: str, capture_thumbs: bool, unsave: bool,
             print(f"[item {len(scraped):04d}] {item_id} {desc}")
 
         if unsave and batch_ids:
+            checkpoint = write_csv(scraped, out_dir)
+            print(f"[checkpoint] CSV written to {checkpoint}")
             unsaved = page.evaluate(UNSAVE_VISIBLE_JS, batch_ids)
             for item in scraped[-len(batch_ids):]:
                 item["unsaved"] = bool(unsaved.get(item["id"]))
@@ -467,15 +472,22 @@ def scrape_saved_items(page, stop_at: str, capture_thumbs: bool, unsave: bool,
     return scraped
 
 
-def write_csv(rows: list[dict], out_dir: Path) -> Path:
+def write_csv(rows: list[dict], out_dir: Path, filename: str | None = None) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"fb_saved_{time.strftime('%Y-%m-%d')}.csv"
+    out_path = out_dir / (filename or f"fb_saved_{time.strftime('%Y-%m-%d')}.csv")
     fields = ["id", "url", "description", "creator", "type", "thumb"]
-    with out_path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({field: row.get(field, "") for field in fields})
+    temporary = out_path.with_suffix('.csv.tmp')
+    try:
+        with temporary.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fields)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({field: row.get(field, "") for field in fields})
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, out_path)
+    finally:
+        temporary.unlink(missing_ok=True)
     return out_path
 
 
@@ -503,6 +515,7 @@ def main() -> int:
 
             page = context.pages[0] if context.pages else context.new_page()
             wait_for_saved_page(page, args.login_wait_seconds or (300 if args.headless else 0))
+            checkpoint_dir = args.output_dir / 'pending' / f'facebook-{time.time_ns()}' if args.unsave else None
 
             rows = scrape_saved_items(
                 page=page,
@@ -511,9 +524,17 @@ def main() -> int:
                 unsave=args.unsave,
                 max_empty_scrolls=args.max_empty_scrolls,
                 scroll_pause_ms=args.scroll_pause_ms,
+                out_dir=checkpoint_dir,
             )
 
-            out_path = write_csv(rows, args.output_dir)
+            out_path = write_csv(rows, args.output_dir, f"fb_saved_{time.strftime('%Y-%m-%d')}_{time.time_ns()}.csv")
+            if checkpoint_dir and checkpoint_dir.exists():
+                try:
+                    for checkpoint in checkpoint_dir.glob('fb_saved_*.csv'):
+                        checkpoint.unlink()
+                    checkpoint_dir.rmdir()
+                except OSError as exc:
+                    print(f"[warn] Could not clean up the published CSV checkpoint: {exc}")
             print(f"[done] Scraped {len(rows)} items")
             print(f"[done] CSV written to {out_path}")
             return 0

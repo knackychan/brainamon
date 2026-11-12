@@ -173,23 +173,23 @@ def unchanged(client, key, snap):
     return current
 
 
-def destination(path, forbidden):
+def destination(path, forbidden, *, kind='folder'):
     if not isinstance(path, str) or not path or len(path) > 1000:
-        raise RecoveryError('Choose an absolute path for a new recovery folder.')
+        raise RecoveryError(f'Choose an absolute path for a new recovery {kind}.')
     target = Path(path)
     if not target.is_absolute():
-        raise RecoveryError('The recovery folder must use an absolute path.')
+        raise RecoveryError(f'The recovery {kind} must use an absolute path.')
     safe_rel(target.name)
     for ancestor in (target, *target.parents):
         if ancestor.is_symlink() or getattr(ancestor, 'is_junction', lambda: False)():
-            raise RecoveryError('Recovery folders cannot contain links or junctions.')
+            raise RecoveryError(f'Recovery {kind} paths cannot contain links or junctions.')
     resolved = target.resolve()
     for blocked in forbidden:
         blocked = Path(blocked).resolve()
         if resolved == blocked or resolved.is_relative_to(blocked) or blocked.is_relative_to(resolved):
-            raise RecoveryError('Choose a new folder outside the active library and app settings.')
+            raise RecoveryError(f'Choose a new {kind} outside the active library and app settings.')
     if target.exists() or not target.parent.is_dir():
-        raise RecoveryError('Choose a folder name that does not exist inside an existing parent folder.')
+        raise RecoveryError(f'Choose a {kind} name that does not exist inside an existing parent folder.')
     return resolved
 
 
@@ -416,6 +416,8 @@ def materialize(client, key, snap, stage, cancel, progress):
             db.save_sync_state(state)
             db.set_setting('cloud_upload', '')
             db.set_setting('cloud_vault', 'off')
+            db.set_setting('cloud_paused_at', '')
+            db.set_setting('cloud_pause_restore', '')
             db.set_setting('onboard_answer', 'recover')
             db.reindex_notes()
         writer.call(populate)

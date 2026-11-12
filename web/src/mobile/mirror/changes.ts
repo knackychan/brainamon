@@ -298,6 +298,47 @@ export class Changes {
     return this.busy
   }
 
+  private document(out: ChangeEntry[], device: string, numbered: boolean): { format: number; device: string; at: number; previous?: string; stream?: string; seq?: number; acked?: number; legacy?: boolean; changes: unknown[] } {
+    const first = out[0], d = this.stream()
+    // A PC-requested resend keeps its delivery number but must not reuse a completed native receipt.
+    const previous = first.chg ? { previous: first.chg } : {}
+    return numbered ? { format: CHANGE_FORMAT, device, at: first.sentAt ?? 0, ...previous, stream: first.stream, seq: first.seq,
+      acked: first.stream === d.stream ? d.acked : 0, ...(first.legacy ? { legacy: true } : {}),
+      changes: out.map(({ id: _id, state: _s, sentAt: _a, chg: _c, canvasLocal: _l, stream: _t, seq: _q, legacy: _g, resend: _r, plain: _p, ...c }) => c) }
+      : { format: CHANGE_FORMAT, device, at: first.sentAt ?? 0, ...previous,
+        changes: out.map(({ id: _id, state: _s, sentAt: _a, chg: _c, canvasLocal: _l, plain: _p, ...c }) => c) }
+  }
+
+  // Freeze the whole backlog before native execution. Staging is not delivery; entries stay "sending".
+  async prepareUploads(stage: (doc: unknown) => Promise<void>, device: string, allowCanvas = true, numbered = false) {
+    const docs = await this.serial(async () => {
+      await this.load()
+      if (numbered && requeueWaiting()) return []
+      if (numbered) await this.number()
+      const queued = this.list.filter(e => e.state === 'queued' && (allowCanvas || e.op !== 'canvas') && !settled(e))
+      for (let i = 0; i < queued.length;) {
+        const batch: ChangeEntry[] = []
+        let size = 0
+        while (i < queued.length && batch.length < 250) {
+          const length = JSON.stringify(queued[i]).length
+          if (batch.length && size + length > 512 * 1024) break
+          batch.push(queued[i++]); size += length
+        }
+        if (numbered) await this.freeze(batch)
+        else {
+          const at = this.list.reduce((at, e) => Math.max(at, (e.sentAt ?? 0) + 1), Math.max(Date.now(), this.floor + 1))
+          await this.commit(batch, e => { e.state = 'sending'; e.sentAt = at })
+        }
+      }
+      const batches = numbered ? this.batches() : [...new Set(this.list.filter(e => e.state === 'sending').map(e => e.sentAt))]
+        .map(at => this.list.filter(e => e.state === 'sending' && e.sentAt === at))
+      if (this.volatile.size || this.volatileMeta.size || this.volatileDrops.size || this.pendingDeletes.size || this.list.some(e => e.id === undefined))
+        throw Object.assign(new Error('Phone storage could not save the queued changes. Reopen Brainamon to retry.'), { displayKey: 'common.error.journalPrepare' })
+      return batches.filter(batch => allowCanvas || !batch.some(e => e.op === 'canvas')).map(batch => this.document(batch, device, numbered))
+    })
+    for (const doc of docs) await stage(doc)
+  }
+
   private async flushAll(send: (doc: unknown) => Promise<string>, device: string, allowCanvas: boolean, numbered: boolean): Promise<number> {
     await this.load()
     if (numbered && requeueWaiting()) throw Object.assign(new Error('This phone has not prepared its saved changes for this PC. Reopen Brainamon to retry.'), { displayKey: 'common.error.journalPrepare' })
@@ -305,7 +346,8 @@ export class Changes {
     let n = 0
     for (;;) {
       const out = await this.serial(async () => {
-        let batch = this.list.filter(e => e.state === 'sending')
+        const first = this.list.find(e => e.state === 'sending')
+        let batch = first ? this.list.filter(e => e.state === 'sending' && e.sentAt === first.sentAt) : []
         if (batch.some(e => e.op === 'canvas') && !allowCanvas) return []
         if (batch.length) return batch
         batch = this.list.filter(e => e.state === 'queued' && (allowCanvas || e.op !== 'canvas') && !settled(e))
@@ -318,7 +360,7 @@ export class Changes {
       })
       if (!out.length) return n
       const at = out[0].sentAt ?? 0
-      const doc = { format: CHANGE_FORMAT, device, at, changes: out.map(({ id: _id, state: _s, sentAt: _a, chg: _c, canvasLocal: _l, plain: _p, ...c }) => c) }
+      const doc = this.document(out, device, false)
       const chg = await send(doc)
       await this.serial(() => this.commit(out.filter(e => this.list.includes(e) && e.state === 'sending' && e.sentAt === at), e => { e.state = 'sent'; e.chg = chg }))
       n += out.length
@@ -337,10 +379,7 @@ export class Changes {
           out = await this.freeze(queued)
         }
         if (out.some(e => e.op === 'canvas') && !allowCanvas) return null
-        const d = this.stream(), first = out[0]
-        const doc = { format: CHANGE_FORMAT, device, at: first.sentAt ?? 0, stream: first.stream, seq: first.seq,
-          acked: first.stream === d.stream ? d.acked : 0, ...(first.legacy ? { legacy: true } : {}),
-          changes: out.map(({ id: _id, state: _s, sentAt: _a, chg: _c, canvasLocal: _l, stream: _t, seq: _q, legacy: _g, resend: _r, plain: _p, ...c }) => c) }
+        const doc = this.document(out, device, true)
         return { out, doc }
       })
       if (!batch) return n
@@ -362,7 +401,7 @@ export class Changes {
   // went back since); the number and the batch are saved together
   private async freeze(out: ChangeEntry[]): Promise<ChangeEntry[]> {
     const d = this.stream(), next = { ...d, next: d.next + 1 }
-    const at = Math.max(Date.now(), this.floor + 1, ...this.list.map(e => (e.sentAt ?? 0) + 1))
+    const at = this.list.reduce((at, e) => Math.max(at, (e.sentAt ?? 0) + 1), Math.max(Date.now(), this.floor + 1))
     await this.commit(out, e => { e.state = 'sending'; e.sentAt = at; e.stream = d.stream; e.seq = d.next }, [], { delivery: next })
     this.delivery = next
     return out

@@ -94,12 +94,17 @@ export async function savePhoneKit(pair: Pairing): Promise<'saved' | 'downloaded
   if (!isApp) { downloadRecovery(kit, filename); downloadAsked(kit.record.header.generation); return 'downloaded' }
   let folder: { uri: string }
   try { folder = await vaultPick() } catch (e) { if ((e as Error).message === 'cancelled') return 'cancelled'; throw e }
-  await vaultFs(folder.uri).write(filename, new TextEncoder().encode(recoveryJSON(kit)))
   reconnectGate()
+  cloudCheckpoint(revision)
+  if (pairing()?.k !== pair.k || pair.recovery !== r) throw Object.assign(new Error('The phone library or its recovery changed while saving. Save the recovery file again.'), { code: 'changed-while-saving' })
+  beginCloudChange()
+  try {
+  await vaultFs(folder.uri).write(filename, new TextEncoder().encode(recoveryJSON(kit)))
   cloudCheckpoint(revision)
   if (pairing()?.k !== pair.k || pair.recovery !== r) throw Object.assign(new Error('The phone library or its recovery changed while saving. Save the recovery file again.'), { code: 'changed-while-saving' })
   pair.recovery = { ...r, saved: Date.now() }
   secrets.set('bp-pair', JSON.stringify(pair))
   await secretsSaved()
   return 'saved'
+  } finally { endCloudChange() }
 }

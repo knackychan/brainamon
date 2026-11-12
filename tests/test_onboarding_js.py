@@ -182,17 +182,17 @@ class OnboardingJsTest(unittest.TestCase):
         self.assertEqual(run("o.phoneEmpty('phone', false)"), {'pc': False, 'line': 'Share a post to Brainamon from any app, or add one here.', 'key': 'Add your first save'})
 
     def test_the_scrapers_guide(self):
-        for site, name in (('instagram', 'Instagram'), ('facebook', 'Facebook'), ('reddit', 'Reddit'), ('youtube', 'YouTube')):
+        for site, name in (('instagram', 'Instagram'), ('facebook', 'Facebook'), ('reddit', 'Reddit'), ('youtube', 'YouTube'), ('threads', 'Threads')):
             manual = run(f"o.scrapeGuide('{site}', false)")
             self.assertEqual(len(manual['steps']), 3, site)
             self.assertEqual(manual['key'], f'Copy script and open {name}')
             self.assertIn('F12', manual['steps'][1])
             self.assertIn(name, manual['steps'][0])
         self.assertIn('Saved, then All posts', run("o.scrapeGuide('instagram', false)")['steps'][1])
-        for site in ('facebook', 'reddit'):
+        for site in ('facebook', 'reddit', 'threads'):
             self.assertIn('Saved page that opens', run(f"o.scrapeGuide('{site}', false)")['steps'][1])
         self.assertIn('playlist', run("o.scrapeGuide('youtube', false)")['steps'][1])
-        for site, name in (('instagram', 'Instagram'), ('facebook', 'Facebook'), ('reddit', 'Reddit')):
+        for site, name in (('instagram', 'Instagram'), ('facebook', 'Facebook'), ('reddit', 'Reddit'), ('threads', 'Threads')):
             helper = run(f"o.scrapeGuide('{site}', true)")
             self.assertEqual(helper['key'], f'Start the {name} helper')
             self.assertIn(name, helper['steps'][1])

@@ -51,8 +51,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * The site window of the phone site reader (projects/phone-site-reader/plans/01-engine.md), in the
- * Contributor (debug) build only. One site per window, in that site's own WebView profile ("site-<id>":
+ * The site window of the phone site reader (projects/phone-site-reader). One site per window,
+ * in that site's own WebView profile ("site-<id>":
  * its cookies, storage and cache, apart from the Brainamon page and the other sites), with a desktop
  * Chrome identity (Facebook refuses logins in a WebView's own). The window shows only the site's hosts;
  * other links open in the system browser on a tap. No file access, permissions, downloads, popups or
@@ -71,7 +71,7 @@ public class SiteActivity extends AppCompatActivity {
 
     private static final int MAX_MESSAGE = 256 * 1024, MAX_BATCH = 25, MAX_COUNT = 1000000;
     private static final List<String> PHASES = Arrays.asList("signin", "check", "open", "read", "wait");
-    private static final List<String> ENDS = Arrays.asList("end", "known", "empty", "cap", "failure");
+    private static final List<String> ENDS = Arrays.asList("end", "known", "empty", "cap", "failure", "unsave-failed");
     private static final Pattern CHROME = Pattern.compile("Chrome/(\\d+)\\.");
     private static final Pattern MAJOR = Pattern.compile("^(\\d+)\\.");
 
@@ -83,7 +83,7 @@ public class SiteActivity extends AppCompatActivity {
     private JSONArray knownHashes = new JSONArray();
     private final Set<String> stored = new HashSet<>();
     private final String runId = Long.toHexString(System.currentTimeMillis()) + Long.toHexString(System.nanoTime());
-    private boolean reader, signed, finished, active;
+    private boolean reader, signed, finished, active, unsave;
     private String phase = "signin";
     private int added, known, other, dropped;
 
@@ -135,7 +135,16 @@ public class SiteActivity extends AppCompatActivity {
         });
         checkSigned();
         showBar();
-        web.loadUrl(site.start);
+        if (getIntent().getBooleanExtra("unsave", false) && reader
+                && ("facebook".equals(site.id) || "instagram".equals(site.id))) {
+            new android.app.AlertDialog.Builder(this)
+                .setTitle("Unsave collected posts?")
+                .setMessage("Remove collected posts from " + site.name + " Saved after saving their results on this phone? This changes your original account. Review and import the saved results afterward. Posts already in your library are left saved.")
+                .setNegativeButton("Cancel", (dialog, which) -> finishWith("stop"))
+                .setPositiveButton("Continue", (dialog, which) -> { unsave = true; web.loadUrl(site.start); })
+                .setOnCancelListener(dialog -> finishWith("stop"))
+                .show();
+        } else web.loadUrl(site.start);
     }
 
     private LinearLayout layout() {
@@ -328,6 +337,7 @@ public class SiteActivity extends AppCompatActivity {
             switch (m.optString("t")) {
                 case "hello":
                     reply.postMessage(new JSONObject().put("t", "init").put("run", runId).put("known", knownHashes)
+                        .put("unsave", unsave)
                         .put("full", getIntent().getBooleanExtra(EXTRA_FULL, false))
                         .put("complete", getIntent().getBooleanExtra(EXTRA_COMPLETE, false))
                         .put("signed", checkSigned()).put("active", active).toString());
@@ -339,7 +349,17 @@ public class SiteActivity extends AppCompatActivity {
                     status(m);
                     break;
                 case "batch":
-                    batch(m.optJSONArray("items"));
+                    JSONArray items = m.optJSONArray("items");
+                    batch(items);
+                    JSONArray saved = new JSONArray();
+                    if (!finished && items != null && items.length() <= MAX_BATCH) {
+                        for (int i = 0; i < items.length(); i++) {
+                            JSONObject item = SiteRunFile.shape(items.opt(i));
+                            if (item != null && stored.contains(item.optString("url"))) saved.put(item.optString("url"));
+                        }
+                    }
+                    reply.postMessage(new JSONObject().put("t", "stored").put("batch", m.optInt("batch", -1))
+                        .put("urls", saved).toString());
                     break;
                 case "end":
                     if (ENDS.contains(m.optString("reason"))) finishWith(m.optString("reason"));

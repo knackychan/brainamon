@@ -644,6 +644,161 @@ class Hub:
 
 
 class ServiceTest(Library):
+    def test_failed_intent_write_never_publishes_or_executes_rejected_reset(self):
+        from server import intents
+        drive_client.save_token(self.svc.token_path, {'refresh_token': 'synthetic'})
+        with mock.patch.object(intents.private_storage, 'write', side_effect=PermissionError('synthetic sharing lock')):
+            with self.assertRaises(PermissionError):
+                self.svc.reset_backup(replace_existing=True)
+        self.assertEqual(self.svc.intents.all(), [])
+        with mock.patch.object(self.svc, '_reset_begin') as reset:
+            self.svc._run_intents(threading.Event())
+        reset.assert_not_called()
+        self.svc.intents.add(intents.ONE_SHOT)
+        before = self.svc.intents.all()
+        for operation, method in ((lambda: self.svc.intents.update(intents.ONE_SHOT, stage='running'), 'write'),
+                                  (lambda: self.svc.intents.finish(intents.ONE_SHOT), 'remove')):
+            with mock.patch.object(intents.private_storage, method, side_effect=PermissionError('synthetic sharing lock')):
+                with self.assertRaises(PermissionError):
+                    operation()
+            self.assertEqual(self.svc.intents.all(), before)
+
+    def test_enrollment_is_the_active_task_while_one_shot_waits(self):
+        self.svc.intents.add('one_shot_publish')
+        self.svc.intents.add('enroll', {'synthetic': 'payload'})
+        self.svc._set(done=7, total=12)
+        def enrolling(*args, **kwargs):
+            status = self.svc.status()
+            self.assertEqual(status['task']['kind'], 'enroll')
+            self.assertEqual((status['task']['done'], status['task']['total']), (0, 0))
+            self.assertEqual([t['kind'] for t in status['tasks']], ['one_shot_publish', 'enroll'])
+        with mock.patch.object(self.svc.recovery, '_enroll', side_effect=enrolling) as enroll:
+            self.svc._run_intents(threading.Event())
+        enroll.assert_called_once()
+        self.assertIsNone(self.svc.intents.find('enroll'))
+        self.assertEqual(self.svc.status()['task']['kind'], 'one_shot_publish')
+
+    def test_offline_resume_explicitly_requires_another_resume(self):
+        drive_client.save_token(self.svc.token_path, {'refresh_token': 'synthetic'})
+        self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        self.svc._set(on=True)
+        self.svc.turn_off()
+        def offline(*args, **kwargs):
+            raise drive_client.DriveError('synthetic offline') from OSError('synthetic network failure')
+        with mock.patch.object(self.svc.recovery, 'guard', side_effect=offline), mock.patch.object(self.svc, 'start') as start:
+            with self.assertRaises(drive_client.DriveError) as caught:
+                self.svc.resume()
+        start.assert_not_called()
+        self.assertTrue(self.svc.status()['paused_since'])
+        classified = self.svc.classified(caught.exception)
+        self.assertEqual(classified['code'], 'offline')
+        self.assertIn('choose Resume backup again', classified['message'])
+        self.assertEqual(self.svc.status()['error'], classified['message'])
+
+    def test_confirmation_account_is_checked_before_acceptance_and_execution(self):
+        drive_client.save_token(self.svc.token_path, {'refresh_token': 'synthetic'})
+        self.svc._set(account='fred@example.com')
+        actions = (lambda: self.svc.reset_backup(True, expected_account='other@example.com'),
+                   lambda: self.svc.request_disconnect(True, expected_account='other@example.com'),
+                   lambda: self.svc.switch(True, expected_account='other@example.com'),
+                   lambda: self.svc.unpair(expected_account='other@example.com'))
+        with mock.patch('core.config.google_client', return_value=('synthetic', 'synthetic')):
+            for action in actions:
+                with self.assertRaisesRegex(drive_client.DriveError, 'account changed'):
+                    action()
+        self.assertEqual(self.svc.intents.all(), [])
+        with mock.patch.object(self.svc, '_start_intent'), mock.patch.object(self.svc, 'ensure_running'):
+            self.svc.reset_backup(True, expected_account='fred@example.com')
+        self.assertEqual(self.svc.intents.find('reset_backup')['payload']['expected_account'], 'fred@example.com')
+        self.drive.about = lambda: {'email': 'other@example.com', 'used': 0, 'limit': 0}
+        with mock.patch.object(self.svc, '_desktop_backup_ids') as listing:
+            self.svc._run_intents(threading.Event())
+        listing.assert_not_called()
+        self.assertIn('account changed', self.svc.intents.find('reset_backup')['error'])
+        self.assertIsNone(mirror.MirrorKey.load(self.svc.key_path))
+
+    def test_queued_disconnect_and_switch_refuse_a_different_remote_account(self):
+        drive_client.save_token(self.svc.token_path, {'refresh_token': 'synthetic'})
+        self.svc._set(account='fred@example.com')
+        for kind in ('disconnect', 'switch_account'):
+            with self.subTest(kind=kind):
+                self.svc.intents.add(kind, {'expected_account': 'fred@example.com', 'delete_mirror': True, 'delete_old': True})
+                self.drive.about = lambda: {'email': 'other@example.com', 'used': 0, 'limit': 0}
+                with mock.patch.object(self.svc, '_desktop_backup_ids') as listing, mock.patch.object(drive_client, 'revoke') as revoke:
+                    self.svc._run_intents(threading.Event())
+                listing.assert_not_called()
+                revoke.assert_not_called()
+                self.assertIn('account changed', self.svc.intents.find(kind)['error'])
+                self.assertIsNotNone(drive_client.load_token(self.svc.token_path))
+                self.assertEqual(self.drive.calls, [])
+                self.svc.intents.finish(kind)
+
+    def test_bound_reset_cleanup_and_phone_lockout_check_remote_account(self):
+        drive_client.save_token(self.svc.token_path, {'refresh_token': 'synthetic'})
+        self.svc._set(account='fred@example.com')
+        self.svc.intents.add('reset_backup', {'expected_account': 'fred@example.com', 'ids': ['other-file']})
+        self.svc.intents.update('reset_backup', stage='cleanup')
+        self.drive.about = lambda: {'email': 'other@example.com', 'used': 0, 'limit': 0}
+        with self.assertRaisesRegex(drive_client.DriveError, 'account changed'):
+            self.svc._finish_reset(threading.Event())
+        with self.assertRaisesRegex(drive_client.DriveError, 'account changed'):
+            self.svc._lock_out(self.drive, {'expected_account': 'fred@example.com'}, [])
+        self.assertEqual(self.drive.calls, [])
+
+    def test_bound_disconnect_survives_restart_and_rejects_new_token_account(self):
+        drive_client.save_token(self.svc.token_path, {'refresh_token': 'original-synthetic'})
+        self.svc._set(account='fred@example.com')
+        with mock.patch.object(self.svc, 'ensure_running'):
+            self.svc.request_disconnect(True, True, expected_account='fred@example.com')
+        drive_client.save_token(self.svc.token_path, {'refresh_token': 'replacement-synthetic'})
+        other = AccountDrive('other@example.com')
+        untouched = other.put('a' * 32, b'synthetic backup')
+        restarted = sync_mod.SyncService(self.writer, Hub(), self.data, self.cloud, client_factory=lambda tok: other)
+        self.addCleanup(restarted.shutdown)
+        restarted._run_intents(threading.Event())
+        self.assertIn('account changed', restarted.intents.find('disconnect')['error'])
+        self.assertIn(untouched, other.files)
+        self.assertEqual(other.calls, [])
+        self.assertTrue(restarted.signed_in())
+
+    def test_matching_bound_disconnect_only_deletes_desktop_files(self):
+        drive_client.save_token(self.svc.token_path, {'refresh_token': 'synthetic'})
+        self.svc._set(account='fred@example.com')
+        desktop = self.drive.put('a' * 32, b'synthetic desktop backup')
+        phone = self.drive.put('solo-synthetic', b'synthetic phone backup')
+        with mock.patch.object(self.svc, 'ensure_running'), mock.patch.object(drive_client, 'revoke'):
+            self.svc.request_disconnect(True, True, expected_account='FRED@example.com')
+            self.svc._run_intents(threading.Event())
+        self.assertNotIn(desktop, self.drive.files)
+        self.assertIn(phone, self.drive.files)
+        self.assertFalse(self.svc.signed_in())
+        self.assertIsNone(self.svc.intents.find('disconnect'))
+
+    def test_bound_disconnect_finishes_local_cleanup_after_token_was_removed(self):
+        self.svc.intents.add('disconnect', {'expected_account': 'fred@example.com', 'delete_mirror': True})
+        self.svc.intents.update('disconnect', stage='signing-out')
+        self.svc._run_intents(threading.Event())
+        self.assertIsNone(self.svc.intents.find('disconnect'))
+        self.assertEqual(self.drive.calls, [])
+
+    def test_bound_switch_cleanup_checks_old_account_not_new_account(self):
+        drive_client.save_token(self.svc.token_path, {'refresh_token': 'new-synthetic'})
+        drive_client.save_token(self.svc.previous_token_path, {'refresh_token': 'old-synthetic'})
+        self.svc._set(account='bob@example.com')
+        old_file = self.drive.put('a' * 32, b'old synthetic backup')
+        current = AccountDrive('bob@example.com')
+        new_file = current.put('b' * 32, b'new synthetic backup')
+        self.svc.intents.add('switch_account', {'expected_account': 'fred@example.com', 'account': 'fred@example.com',
+                                              'delete_old': True, 'ids': [old_file]})
+        self.svc.intents.update('switch_account', stage='signing-in')
+        with mock.patch.object(self.svc, '_raw_factory', side_effect=lambda tok: self.drive if tok['refresh_token'] == 'old-synthetic' else current), \
+             mock.patch.object(drive_client, 'revoke'):
+            self.svc._finish_switch(threading.Event())
+        self.assertNotIn(old_file, self.drive.files)
+        self.assertIn(new_file, current.files)
+        self.assertEqual(drive_client.load_token(self.svc.token_path)['refresh_token'], 'new-synthetic')
+        self.assertIsNone(self.svc.intents.find('switch_account'))
+
     def setUp(self):
         super().setUp()
         from tests.license_fixture import activate
@@ -694,6 +849,997 @@ class ServiceTest(Library):
     def cloud_events(self) -> list[dict]:
         return [d for k, d in self.svc.hub.events if k == 'cloud']
 
+    def test_switch_facts_are_shared_by_status_and_events(self):
+        self.writer.call(lambda db: (db.set_setting('cloud_upload', 'on'),
+                                     db.set_setting('cloud_vault', 'on'),
+                                     db.set_setting('obsidian_vault', 'test vault')))
+        with mock.patch.object(self.svc, '_start_control'), mock.patch.object(self.svc, 'start'), mock.patch.object(self.svc, 'start_vault'):
+            self.svc.boot()
+        self.assertEqual((self.svc.status()['on'], self.svc.status()['vault']),
+                         (True, {'on': True, 'folder': 'test vault'}))
+        self.svc.turn_off()
+        status = self.svc.status()
+        event = self.cloud_events()[-1]
+        self.assertEqual((status['on'], status['vault']), (False, {'on': False, 'folder': 'test vault'}))
+        self.assertEqual((event['seq'], event['on'], event['vault']), (status['seq'], status['on'], status['vault']))
+        self.assertEqual(event['configured'], status['configured'])
+        with mock.patch.object(self.svc, 'start'):
+            self.svc.turn_on()
+            self.svc._emit()
+        self.assertTrue(self.cloud_events()[-1]['on'])
+        with mock.patch.object(self.svc, 'start_vault'):
+            self.svc.turn_vault_on()
+        self.assertTrue(self.cloud_events()[-1]['vault']['on'])
+        self.svc.turn_vault_off()
+        self.assertFalse(self.cloud_events()[-1]['vault']['on'])
+
+    def test_recovery_pause_does_not_acquire_a_stopping_vault(self):
+        self.svc._set(state='off', vault_state='stopping')
+        before = self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', ''),
+                                               db.get_setting('cloud_vault', '')))
+        with mock.patch.object(type(self.svc), 'vault_running', new_callable=mock.PropertyMock, return_value=True):
+            seq = self.svc.status()['seq']
+            self.assertIsNone(self.svc.turn_off('recovery'))
+            self.assertEqual(self.svc.status()['seq'], seq)
+        self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', ''),
+                                                      db.get_setting('cloud_vault', ''))), before)
+        self.assertFalse(self.svc._vault_stop.is_set())
+
+    def test_pause_resume_restores_switches_and_rejects_stale_owner(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        for upload, vault in ((False, False), (True, False), (False, True), (True, True)):
+            with self.subTest(upload=upload, vault=vault):
+                self.writer.call(lambda db: (db.set_setting('cloud_upload', 'on' if upload else ''),
+                                             db.set_setting('cloud_vault', 'on' if vault else 'off')))
+                self.svc._set(on=upload, vault={'on': vault, 'folder': ''}, paused_since=0, state='idle', vault_state='idle')
+                if not upload and not vault:
+                    self.svc.intents.add('one_shot_publish')
+                with mock.patch.object(type(self.svc), 'running', new_callable=mock.PropertyMock, return_value=True):
+                    token = self.svc.turn_off('recovery')
+                    self.assertIsNotNone(token)
+                    self.assertIsNone(self.svc.turn_off('recovery'))
+                self.svc.turn_off()  # an explicit Pause supersedes the Recover window
+                self.svc.resume(token)
+                self.assertTrue(self.svc.status()['paused_since'])
+                with mock.patch.object(self.svc, 'start') as start, mock.patch.object(self.svc, 'start_vault') as start_vault, mock.patch.object(self.svc, 'ensure_running') as ensure:
+                    self.svc.resume()
+                self.assertEqual(ensure.called, not upload and not vault)
+                self.svc.intents.finish('one_shot_publish')
+                self.assertEqual((self.svc.status()['on'], self.svc.status()['vault']['on']), (upload, vault))
+                self.assertEqual((start.called, start_vault.called), (upload, vault))
+                self.assertEqual(self.svc.status()['paused_since'], 0)
+
+    def test_pause_bad_record_refuses_resume_and_vault_off_supersedes_token(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        self.writer.call(lambda db: (db.set_setting('cloud_upload', 'on'), db.set_setting('cloud_vault', 'on')))
+        self.svc._set(on=True, vault={'on': True, 'folder': ''})
+        with mock.patch.object(type(self.svc), 'running', new_callable=mock.PropertyMock, return_value=True):
+            token = self.svc.turn_off('recovery')
+        self.svc.turn_vault_off()
+        self.svc.resume(token)
+        self.assertTrue(self.svc.status()['paused_since'])
+        self.writer.call(lambda db: db.set_setting('cloud_pause_restore', '{bad'))
+        with self.assertRaises(drive_client.DriveError):
+            self.svc.resume()
+        self.assertTrue(self.svc.status()['paused_since'])
+
+    def test_paused_task_retains_counts_only_for_matching_stage(self):
+        self.svc.intents.add('one_shot_publish')
+        self.svc._set(done=7, total=12, bytes_done=70, bytes_total=120)
+        self.svc.turn_off()
+        task = self.svc.status()['task']
+        self.assertEqual((task['done'], task['total'], task['paused_snapshot']), (7, 12, True))
+        self.svc.intents.update('one_shot_publish', stage='running')
+        task = self.svc.status()['task']
+        self.assertEqual((task['done'], task['total']), (0, 0))
+        self.assertNotIn('paused_snapshot', task)
+
+    def test_repeated_pause_keeps_the_first_task_counts_and_timestamp(self):
+        self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        self.svc.intents.add('one_shot_publish')
+        self.svc._set(on=True, state='publishing', done=7, total=12, bytes_done=70, bytes_total=120)
+        with mock.patch.object(type(self.svc), 'running', new_callable=mock.PropertyMock, return_value=True):
+            self.svc.turn_off()
+            first = self.svc.status()
+            original_record = json.loads(self.writer.read(lambda db: db.get_setting('cloud_pause_restore', '')))
+            # An outstanding request reports later, but another Pause must not recapture it as a new snapshot.
+            self.svc._set(done=9, total=12, bytes_done=90, bytes_total=120)
+            self.svc.turn_off()
+            again = self.svc.status()
+            record = json.loads(self.writer.read(lambda db: db.get_setting('cloud_pause_restore', '')))
+        self.assertEqual(again['paused_since'], first['paused_since'])
+        self.assertNotEqual(record['token'], original_record['token'])
+        self.assertEqual((record['upload'], record['vault'], record['owner']), (True, False, 'user'))
+        self.assertEqual((again['task']['done'], again['task']['total'], again['task']['bytes_done'],
+                          again['task']['bytes_total'], again['task']['paused_snapshot']), (7, 12, 70, 120, True))
+
+    def test_task_completing_while_stopping_does_not_lend_counts_to_next_task(self):
+        self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        self.svc.intents.add('one_shot_publish')
+        self.svc._set(on=True, state='publishing', done=7, total=12, bytes_done=70, bytes_total=120)
+        with mock.patch.object(type(self.svc), 'running', new_callable=mock.PropertyMock, return_value=True):
+            self.svc.turn_off()
+            before = self.svc.status()
+            self.assertEqual((before['state'], before['task']['done'], before['task']['total']), ('stopping', 7, 12))
+            self.svc.intents.finish('one_shot_publish')
+            self.assertIsNone(self.svc.status()['task'])
+            self.svc.intents.add('reset_backup')
+            after = self.svc.status()
+        self.assertEqual(after['state'], 'stopping')
+        self.assertNotEqual(after['task']['id'], before['task']['id'])
+        self.assertEqual((after['task']['done'], after['task']['total'], after['task']['bytes_done'],
+                          after['task']['bytes_total']), (0, 0, 0, 0))
+        self.assertNotIn('paused_snapshot', after['task'])
+
+    def test_pause_rechecks_before_scheduling_and_keeps_legacy_or_bad_record_safe(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        self.writer.call(lambda db: (db.set_setting('cloud_paused_at', '123'), db.set_setting('cloud_pause_restore', '')))
+        self.svc._set(paused_since=123)
+        with mock.patch.object(self.svc, '_start_worker') as mirror, mock.patch.object(self.svc, '_start_vault_worker') as vault:
+            self.svc.start()
+            self.svc.start_vault()
+            mirror.assert_not_called()
+            vault.assert_not_called()
+        self.svc.resume('0' * 32)
+        self.assertEqual(self.svc.status()['paused_since'], 123)
+        with mock.patch.object(self.svc, 'start') as start:
+            self.svc.resume()
+        start.assert_called_once()
+        self.assertEqual((self.svc.status()['on'], self.svc.status()['vault']['on']), (True, False))
+        self.writer.call(lambda db: (db.set_setting('cloud_paused_at', '456'), db.set_setting('cloud_pause_restore', 'invalid')))
+        self.svc._set(paused_since=456, on=False)
+        with self.assertRaises(drive_client.DriveError):
+            self.svc.resume()
+        self.assertEqual(self.svc.status()['paused_since'], 456)
+
+    def test_resume_while_stopping_says_pause_remains(self):
+        self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        self.svc._set(on=True)
+        self.svc.turn_off()
+        self.svc._set(state='stopping')
+        with mock.patch.object(type(self.svc), 'running', new_callable=mock.PropertyMock, return_value=True):
+            with self.assertRaises(sync_mod.WorkerStopping) as caught:
+                self.svc.resume()
+        self.assertIn('stays paused', str(caught.exception))
+        self.assertIn('Resume again', str(caught.exception))
+        self.assertNotIn('by themselves', str(caught.exception))
+        self.assertEqual(self.svc.classified(caught.exception)['action'], 'wait')
+        self.assertTrue(self.svc.status()['paused_since'])
+
+    def test_resume_without_sign_in_skips_unrunnable_tasks(self):
+        for kind, stage, error in (('enroll', 'queued', 'Earlier failure'),
+                                   ('update_folder', 'downloaded', ''),
+                                   ('update_folder', 'swap', ''),
+                                   ('disconnect', 'queued', 'Earlier failure')):
+            with self.subTest(kind=kind, stage=stage):
+                self.svc.intents.add(kind)
+                self.svc.intents.update(kind, stage=stage, error=error)
+                if kind == 'disconnect':
+                    self.svc.intents.add('one_shot_publish')
+                self.svc.turn_off()
+                self.assertTrue(self.svc.status()['paused_since'])
+                with mock.patch.object(self.svc, 'ensure_running') as ensure:
+                    self.svc.resume()
+                ensure.assert_not_called()
+                self.assertFalse(self.svc.status()['paused_since'])
+                self.assertFalse(self.svc.status()['on'])
+                self.assertFalse(self.svc.status()['vault']['on'])
+                self.assertIsNotNone(self.svc.intents.find(kind))
+                self.svc.intents.finish(kind)
+                self.svc.intents.finish('one_shot_publish')
+
+    def test_resume_with_only_waiting_task_does_not_start_control(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        self.svc.intents.add('update_folder')
+        self.svc.intents.update('update_folder', stage='downloaded')
+        self.svc.turn_off()
+        with mock.patch.object(self.svc, '_start_control') as control, mock.patch.object(self.svc, 'ensure_running') as ensure:
+            self.svc.resume()
+        control.assert_not_called()
+        ensure.assert_not_called()
+        self.assertFalse(self.svc.status()['paused_since'])
+
+    def test_pending_activation_blocks_stale_recovery_resume_even_for_repair_task(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        self.svc._set(on=True, state='idle')
+        with mock.patch.object(type(self.svc), 'running', new_callable=mock.PropertyMock, return_value=True):
+            token = self.svc.turn_off('recovery')
+        self.svc.intents.add('reset_backup')
+        sync_mod.private_storage.write(self.svc.recovery.journal, b'{}')
+        before = self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', '')))
+        with mock.patch.object(self.svc.recovery, 'guard', side_effect=AssertionError('recovery gate bypassed')), \
+             mock.patch.object(self.svc, 'ensure_running') as ensure:
+            with self.assertRaises(sync_mod.cloud_errors.RecoveryBlocked) as caught:
+                self.svc.resume(token)
+        self.assertEqual(self.svc.classified(caught.exception)['action'], 'none')
+        ensure.assert_not_called()
+        self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', ''))), before)
+        self.assertFalse(self.svc.status()['on'])
+
+    def test_resume_remote_ownership_refusal_keeps_pause_without_holding_control_lock(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        self.svc._set(on=True)
+        self.svc.turn_off()
+        before = self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', '')))
+        def guard(client, **kwargs):
+            self.assertFalse(self.svc._pause_control._is_owned())
+            raise sync_mod.cloud_errors.NotUploader('Another PC became the backup PC.', at=123)
+        with mock.patch.object(self.svc.recovery, 'guard', side_effect=guard), mock.patch.object(self.svc, 'start') as start:
+            with self.assertRaises(sync_mod.cloud_errors.NotUploader):
+                self.svc.resume()
+        start.assert_not_called()
+        self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', ''))), before)
+        status = self.svc.status()
+        self.assertTrue(status['paused_since'])
+        self.assertEqual((status['error_code'], status['error_action'], status['error_at']), ('not_owner', 'recover', 123))
+
+    def test_new_user_pause_supersedes_in_flight_resume_preflight(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        self.svc._set(on=True, state='idle')
+        with mock.patch.object(type(self.svc), 'running', new_callable=mock.PropertyMock, return_value=True):
+            token = self.svc.turn_off('recovery')
+        entered, release = threading.Event(), threading.Event()
+        errors = []
+        def guard(client, **kwargs):
+            self.assertFalse(self.svc._pause_control._is_owned())
+            entered.set()
+            if not release.wait(5):
+                raise RuntimeError('test timed out')
+        def resume():
+            try:
+                self.svc.resume(token)
+            except Exception as exc:
+                errors.append(exc)
+        with mock.patch.object(self.svc.recovery, 'guard', side_effect=guard), mock.patch.object(self.svc, 'start') as start:
+            thread = threading.Thread(target=resume)
+            thread.start()
+            try:
+                self.assertTrue(entered.wait(5))
+                self.svc.turn_off()
+                record = json.loads(self.writer.read(lambda db: db.get_setting('cloud_pause_restore', '')))
+                self.assertEqual(record['owner'], 'user')
+                self.assertNotEqual(record['token'], token)
+            finally:
+                release.set()
+            thread.join(5)
+            start.assert_not_called()
+        self.assertFalse(thread.is_alive())
+        self.assertFalse(errors)
+        self.assertTrue(self.svc.status()['paused_since'])
+        self.assertFalse(self.svc.status()['on'])
+        self.assertIsNone(self.svc._resume_check_stop)
+
+    def test_priority_disconnect_supersedes_in_flight_resume_preflight(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        self.svc._set(on=True)
+        self.svc.turn_off()
+        entered, release = threading.Event(), threading.Event()
+        errors = []
+        def guard(client, **kwargs):
+            entered.set()
+            if not release.wait(5):
+                raise RuntimeError('test timed out')
+        def resume():
+            try:
+                self.svc.resume()
+            except Exception as exc:
+                errors.append(exc)
+        with mock.patch.object(self.svc.recovery, 'guard', side_effect=guard), \
+             mock.patch.object(self.svc, 'start') as start, mock.patch.object(self.svc, 'ensure_running'):
+            thread = threading.Thread(target=resume)
+            thread.start()
+            try:
+                self.assertTrue(entered.wait(5))
+                self.svc.request_disconnect(delete_mirror=True)
+            finally:
+                release.set()
+            thread.join(5)
+            start.assert_not_called()
+        self.assertFalse(thread.is_alive())
+        self.assertFalse(errors)
+        task = self.svc.intents.find('disconnect')
+        self.assertTrue(task['payload']['delete_mirror'])
+        self.assertEqual(self.svc.status()['state'], 'disconnecting')
+        self.assertFalse(self.svc.status()['on'])
+
+    def test_resume_update_task_can_repair_known_non_owner_without_guard(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        self.svc.intents.add('update_folder')
+        self.svc._set(state='error', error='Another PC became the backup PC.', error_code='not_owner', error_action='recover')
+        self.svc.turn_off()
+        with mock.patch.object(self.svc.recovery, 'guard', side_effect=AssertionError('repair was blocked by upload guard')), \
+             mock.patch.object(self.svc, 'ensure_running') as ensure, mock.patch.object(self.svc, '_start_control'):
+            self.svc.resume()
+        ensure.assert_called_once_with(_control=False)
+        self.assertFalse(self.svc.status()['paused_since'])
+        self.assertFalse(self.svc.status()['on'])
+
+    def test_resume_refuses_known_ownership_blockers_without_consuming_pause(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        for code, action in (('not_owner', 'recover'), ('foreign_backup', 'recover'),
+                             ('wrong_account', 'sign_in_again'), ('other_copy', 'none')):
+            with self.subTest(code=code):
+                self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+                self.svc._set(on=True, state='error', error='Known blocker', error_code=code, error_action=action,
+                              account='expected@example.invalid', error_account='other@example.invalid')
+                self.svc.turn_off()
+                before = self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', '')))
+                self.assertEqual(self.svc.status()['error_code'], code)
+                with mock.patch.object(self.svc, 'start') as start, mock.patch.object(self.svc, 'ensure_running') as ensure:
+                    with self.assertRaises(drive_client.DriveError) as caught:
+                        self.svc.resume()
+                self.assertEqual((self.svc.classified(caught.exception)['code'], self.svc.classified(caught.exception)['action']), (code, action))
+                self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', ''))), before)
+                start.assert_not_called()
+                ensure.assert_not_called()
+                self.svc.clear_pause()
+                self.svc._set(error='', state='off')
+
+    def test_resume_checks_local_key_conflict_before_consuming_pause(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        key = mirror.MirrorKey.generate()
+        key.save(self.svc.key_path)
+        self.writer.call(lambda db: (db.set_setting('cloud_upload', 'on'), db.set_setting(sync_mod.S_EPOCH, 'a' * 64)))
+        self.svc._set(on=True)
+        self.svc.turn_off()
+        before = self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', '')))
+        with mock.patch.object(self.svc, 'start') as start:
+            with self.assertRaises(sync_mod.cloud_errors.OtherCopy) as caught:
+                self.svc.resume()
+        self.assertEqual((self.svc.classified(caught.exception)['code'], self.svc.classified(caught.exception)['action']), ('other_copy', 'none'))
+        self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', ''))), before)
+        self.assertEqual(self.svc.status()['error_code'], 'other_copy')
+        start.assert_not_called()
+
+    def test_resume_without_sign_in_keeps_pause_and_offers_sign_in(self):
+        self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        self.svc._set(on=True)
+        self.svc.turn_off()
+        with self.assertRaises(drive_client.DriveError) as caught:
+            self.svc.resume()
+        self.assertEqual(self.svc.classified(caught.exception)['action'], 'sign_in_again')
+        self.assertTrue(self.svc.status()['paused_since'])
+        self.assertFalse(self.svc.status()['on'])
+
+    def test_failed_resume_keeps_pause_and_restore_record(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        self.svc._set(on=True)
+        self.svc.turn_off()
+        before = self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', '')))
+        with mock.patch.object(self.svc, 'start', side_effect=RuntimeError('cannot schedule')):
+            with self.assertRaisesRegex(RuntimeError, 'cannot schedule'):
+                self.svc.resume()
+        self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', ''))), before)
+        self.assertFalse(self.svc.status()['on'])
+        self.assertEqual(self.svc.status()['paused_since'], int(before[0]))
+
+    def test_resume_scheduling_failure_stops_worker_before_network(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        self.writer.call(lambda db: (db.set_setting('cloud_upload', 'on'), db.set_setting('cloud_vault', 'on')))
+        self.svc._set(on=True, vault={'on': True, 'folder': ''})
+        self.svc.turn_off()
+        before = self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', '')))
+        with mock.patch.object(self.svc, '_run_intents') as run, \
+             mock.patch.object(self.svc, 'start_vault', side_effect=RuntimeError('cannot schedule')):
+            with self.assertRaisesRegex(RuntimeError, 'cannot schedule'):
+                self.svc.resume()
+            self.assertTrue(self.wait(lambda: not self.svc.running))
+            run.assert_not_called()
+        self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', ''))), before)
+        self.assertEqual((self.svc.status()['on'], self.svc.status()['vault']['on']), (False, False))
+
+    def test_worker_control_gate_is_never_acquired_under_pause_lock(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        calls = []
+        def control():
+            self.assertFalse(self.svc._pause_control._is_owned())
+            calls.append(True)
+        with mock.patch.object(self.svc, '_start_control', side_effect=control), \
+             mock.patch.object(self.svc, '_start_worker'), mock.patch.object(self.svc, '_start_vault_worker'):
+            self.svc.turn_on()
+            self.svc.turn_vault_on()
+            self.svc.turn_off()
+            self.svc.resume()
+        self.assertEqual(len(calls), 3)
+
+    def test_account_reset_disconnect_invalidate_recovery_pause_tokens(self):
+        for kind in ('switch_account', 'reset_backup', 'disconnect'):
+            with self.subTest(kind=kind):
+                self.writer.call(lambda db: (db.set_setting('cloud_upload', 'on'), db.set_setting('cloud_vault', 'on')))
+                self.svc._set(on=True, vault={'on': True, 'folder': ''}, paused_since=0, state='idle', vault_state='idle')
+                with mock.patch.object(type(self.svc), 'running', new_callable=mock.PropertyMock, return_value=True):
+                    token = self.svc.turn_off('recovery')
+                self.assertTrue(token)
+                with mock.patch.object(self.svc, 'ensure_running'):
+                    if kind == 'disconnect':
+                        self.svc.request_disconnect()
+                    else:
+                        self.svc.intents.add(kind)
+                        self.svc._start_intent(kind)
+                self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', ''))), ('', ''))
+                self.svc.resume(token)
+                self.assertFalse(self.svc.status()['paused_since'])
+                self.svc.intents.finish(kind)
+
+    def test_rejected_account_switch_retains_pause(self):
+        self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        self.svc._set(on=True)
+        self.svc.turn_off()
+        before = self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', '')))
+        with mock.patch('core.config.google_client', return_value=('', '')):
+            with self.assertRaises(drive_client.DriveError):
+                self.svc.switch(delete_old=False)
+        self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', ''))), before)
+
+    def test_pause_after_saved_switch_or_reset_wins_acceptance_race(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        for kind in ('switch_account', 'reset_backup'):
+            with self.subTest(kind=kind):
+                self.writer.call(lambda db: (db.set_setting('cloud_upload', 'on'), db.set_setting('cloud_vault', 'on')))
+                self.svc._set(on=True, vault={'on': True, 'folder': ''}, paused_since=0, state='idle', vault_state='idle')
+                entered, release, pause_done = threading.Event(), threading.Event(), threading.Event()
+                errors = []
+                original_add = self.svc.intents.add
+                def add(k, payload=None):
+                    result = original_add(k, payload)
+                    entered.set()
+                    if not release.wait(5):
+                        raise RuntimeError('test timed out')
+                    return result
+                def accept():
+                    try:
+                        self.svc.switch(delete_old=False) if kind == 'switch_account' else self.svc.reset_backup()
+                    except Exception as exc:
+                        errors.append(exc)
+                def pause():
+                    try:
+                        self.svc.turn_off()
+                    except Exception as exc:
+                        errors.append(exc)
+                    finally:
+                        pause_done.set()
+                with mock.patch('core.config.google_client', return_value=('cid', 'secret')), \
+                     mock.patch.object(self.svc, 'ensure_running'), mock.patch.object(self.svc.intents, 'add', side_effect=add):
+                    action = threading.Thread(target=accept)
+                    action.start()
+                    try:
+                        self.assertTrue(entered.wait(5))
+                        pauser = threading.Thread(target=pause)
+                        pauser.start()
+                        self.assertFalse(pause_done.wait(.1))
+                    finally:
+                        release.set()
+                    action.join(5)
+                    pauser.join(5)
+                self.assertFalse(errors)
+                self.assertFalse(action.is_alive() or pauser.is_alive())
+                record = json.loads(self.writer.read(lambda db: db.get_setting('cloud_pause_restore', '')))
+                self.assertEqual(record['owner'], 'user')
+                self.assertTrue(self.svc.status()['paused_since'])
+                self.svc.intents.finish(kind)
+
+    def test_switch_scheduling_failure_keeps_saved_task(self):
+        with mock.patch('core.config.google_client', return_value=('cid', 'secret')), \
+             mock.patch.object(self.svc, 'ensure_running', side_effect=RuntimeError('cannot schedule')):
+            self.svc.switch(delete_old=False)
+        self.assertIsNotNone(self.svc.intents.find('switch_account'))
+        self.assertIn('task was saved', self.svc.status()['error'])
+
+    def test_rejected_duplicate_switch_preserves_pending_update_and_pause(self):
+        self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        self.svc._set(on=True)
+        self.svc.turn_off()
+        before = self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', '')))
+        self.svc.intents.add('switch_account')
+        self.svc.intents.add('update_folder')
+        with mock.patch('core.config.google_client', return_value=('cid', 'secret')), \
+             mock.patch.object(self.svc.recovery, 'cancel_update') as cancel:
+            with self.assertRaises(sync_mod.cloud_errors.Busy):
+                self.svc.switch(delete_old=False)
+        cancel.assert_not_called()
+        self.assertIsNotNone(self.svc.intents.find('update_folder'))
+        self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', ''))), before)
+
+    def test_control_start_failure_after_turn_on_keeps_switches(self):
+        with mock.patch.object(self.svc, 'start'), mock.patch.object(self.svc, 'start_vault'), \
+             mock.patch.object(self.svc, '_start_control', side_effect=RuntimeError('failure')):
+            self.svc.turn_on()
+            self.assertTrue(self.svc.status()['on'])
+            self.assertIn('Phone access checks could not start', self.svc.status()['error'])
+            self.svc.turn_vault_on()
+        self.assertTrue(self.svc.status()['vault']['on'])
+        self.assertIn('Phone access checks could not start', self.svc.status()['error'])
+
+    def test_control_start_failure_after_resume_reports_saved_outcome(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        self.svc._set(on=True)
+        self.svc.turn_off()
+        with mock.patch.object(self.svc, 'start'), mock.patch.object(self.svc, '_start_control', side_effect=RuntimeError('failure')):
+            self.svc.resume()
+        self.assertTrue(self.svc.status()['on'])
+        self.assertFalse(self.svc.status()['paused_since'])
+        self.assertIn('Phone access checks could not start', self.svc.status()['error'])
+        self.assertEqual(self.writer.read(lambda db: db.get_setting('cloud_pause_restore', '')), '')
+
+    def test_status_and_boot_do_not_wait_for_writer_under_state_lock(self):
+        original_read, original_call = self.writer.read, self.writer.call
+        def read(fn):
+            self.assertFalse(self.svc._lock.locked())
+            return original_read(fn)
+        def call(fn):
+            self.assertFalse(self.svc._lock.locked())
+            return original_call(fn)
+        with mock.patch.object(self.writer, 'read', side_effect=read), mock.patch.object(self.writer, 'call', side_effect=call), \
+                mock.patch.object(self.svc, '_start_control'):
+            self.svc.boot()
+            self.svc.status()
+            self.svc._emit()
+
+    def test_task_queue_is_ordered_safe_and_library_scoped(self):
+        self.assertEqual(self.svc.status()['tasks'], [])
+        first_seq = self.svc.status()['seq']
+        self.svc.intents.add('one_shot_publish', {'secret': 'never expose'})
+        self.assertGreater(self.cloud_events()[-1]['seq'], first_seq)
+        self.svc.intents.add('enroll', {'owner_path': 'private'})
+        previous = self.cloud_events()[-1]['seq']
+        self.svc.intents.update('enroll', error='secret path and key', code='offline')
+        self.assertGreater(self.cloud_events()[-1]['seq'], previous)
+        self.svc.intents.add('disconnect', {'key': 'never expose'})
+        self.svc._set(done=5, total=9)
+        status = self.svc.status()
+        self.assertEqual([task['kind'] for task in status['tasks']], ['disconnect', 'one_shot_publish', 'enroll'])
+        self.assertEqual(status['task']['kind'], 'disconnect')
+        for task in status['tasks']:
+            self.assertEqual(set(task), {'id', 'kind', 'title', 'stage', 'error', 'code'})
+        self.assertEqual(status['tasks'][-1]['error'], sync_mod.cloud_errors.OFFLINE_TEXT)
+        self.assertNotIn('secret', json.dumps(status['tasks']))
+        self.assertEqual(self.cloud_events()[-1]['tasks'], status['tasks'])
+        restarted = sync_mod.SyncService(self.writer, Hub(), self.data, self.cloud, client_factory=lambda tok: self.drive)
+        self.assertEqual(restarted.status()['tasks'], status['tasks'])
+        other = sync_mod.SyncService(self.writer, Hub(), self.root / 'other', self.cloud, client_factory=lambda tok: self.drive)
+        self.assertEqual(other.status()['tasks'], [])
+
+    def test_pair_readiness_tracks_gate_and_owned_rotation(self):
+        with mock.patch.object(self.svc, '_start_control'):
+            self.svc.boot()
+        self.assertTrue(self.svc.status()['pair_ready'])
+        with self.svc.recovery.gate():
+            self.assertFalse(self.svc.status()['pair_ready'])
+            with self.svc.recovery.gate():
+                self.assertFalse(self.svc.status()['pair_ready'])
+            self.assertFalse(self.svc.status()['pair_ready'])
+        self.assertTrue(self.svc.status()['pair_ready'])
+        self.assertTrue(self.cloud_events()[-1]['pair_ready'])
+        candidate = mirror.MirrorKey.generate()
+        record = {'stage': 'prepared', 'new': candidate.text()}
+        sync_mod.private_storage.write(self.cloud / 'rotation.json', json.dumps(record).encode())
+        self.assertFalse(self.svc.status()['pair_ready'])
+        with self.assertRaises(drive_client.DriveError):
+            self.svc.mirror_key()
+        self.svc.intents.add('remove_phones', {'new': candidate.fingerprint})
+        self.assertTrue(self.svc.status()['pair_ready'])
+        self.assertEqual(self.svc.mirror_key().fingerprint, candidate.fingerprint)
+        self.svc.intents.finish('remove_phones')
+        sync_mod.private_storage.remove(self.cloud / 'rotation.json')
+        self.writer.call(lambda db: db.set_setting('cloud_epoch', 'old-key'))
+        self.svc._set(key_missing=True)
+        self.assertFalse(self.svc.status()['pair_ready'])
+        with self.assertRaises(drive_client.DriveError):
+            self.svc.mirror_key()
+
+    def test_pair_readiness_refreshes_after_signer_changes(self):
+        with mock.patch.object(self.svc, '_start_control'):
+            self.svc.boot()
+        self.svc.mirror_key()
+        self.assertTrue(self.svc.status()['pair_ready'])
+        sync_mod.private_storage.write(self.svc.control_key_path, b'invalid signer')
+        self.assertFalse(self.svc.status()['pair_ready'])
+        sync_mod.private_storage.remove(self.svc.control_key_path)
+        self.assertTrue(self.svc.status()['pair_ready'])
+
+    def test_pair_readiness_and_pairing_refuse_a_different_library_key(self):
+        key = mirror.MirrorKey.generate()
+        key.save(self.svc.key_path)
+        self.writer.call(lambda db: db.set_setting('cloud_epoch', 'a' * 64))
+        with mock.patch.object(self.svc, '_start_control'):
+            self.svc.boot()
+        with mock.patch.object(self.writer, 'read', side_effect=AssertionError('status waited for Writer')):
+            self.assertFalse(self.svc.status()['pair_ready'])
+        with self.assertRaisesRegex(drive_client.DriveError, 'different key'):
+            self.svc.mirror_key()
+        self.assertEqual(mirror.MirrorKey.load(self.svc.key_path).fingerprint, key.fingerprint)
+        self.writer.call(lambda db: db.set_setting(sync_mod.S_ADOPT, key.fingerprint))
+        with mock.patch.object(self.svc, '_start_control'):
+            self.svc.boot()
+        self.assertTrue(self.svc.status()['pair_ready'])
+        self.assertEqual(self.svc.mirror_key().fingerprint, key.fingerprint)
+
+    def test_pair_identity_writes_are_serialized_and_fail_closed(self):
+        with mock.patch.object(self.svc, '_start_control'):
+            self.svc.boot()
+        entered, release = threading.Event(), threading.Event()
+        original_call = self.writer.call
+        def slow_first(fn):
+            result = original_call(fn)
+            if threading.current_thread().name == 'identity-first':
+                entered.set()
+                if not release.wait(5):
+                    raise RuntimeError('test timed out')
+            return result
+        errors = []
+        def write(value):
+            try:
+                self.svc._write_identity(lambda db: db.set_setting(sync_mod.S_EPOCH, value))
+            except Exception as exc:
+                errors.append(exc)
+        with mock.patch.object(self.writer, 'call', side_effect=slow_first):
+            first = threading.Thread(target=write, args=('first',), name='identity-first')
+            second = threading.Thread(target=write, args=('second',), name='identity-second')
+            first.start()
+            try:
+                self.assertTrue(entered.wait(5))
+                second.start()
+                self.assertIsNone(self.svc._pair_identity)
+            finally:
+                release.set()
+            first.join(5)
+            second.join(5)
+        self.assertFalse(errors)
+        self.assertEqual(self.svc._pair_identity[0], self.writer.read(lambda db: db.get_setting(sync_mod.S_EPOCH, '')))
+        def fail(db):
+            db.set_setting(sync_mod.S_EPOCH, 'partly committed')
+            raise RuntimeError('failed identity write')
+        with self.assertRaisesRegex(RuntimeError, 'failed identity write'):
+            self.svc._write_identity(fail)
+        self.assertIsNone(self.svc._pair_identity)
+        self.assertFalse(self.svc.status()['pair_ready'])
+
+    def test_pair_readiness_gate_excludes_concurrent_changes(self):
+        with mock.patch.object(self.svc, '_start_control'):
+            self.svc.boot()
+        entered, release = threading.Event(), threading.Event()
+        def hold_gate():
+            with self.svc.recovery.gate():
+                entered.set()
+                release.wait(5)
+        thread = threading.Thread(target=hold_gate)
+        thread.start()
+        try:
+            self.assertTrue(entered.wait(5))
+            self.assertFalse(self.svc.status()['pair_ready'])
+            with self.assertRaises(sync_mod.cloud_errors.Busy):
+                with self.svc.recovery.gate():
+                    pass
+        finally:
+            release.set()
+            thread.join(5)
+        self.assertFalse(thread.is_alive())
+        self.assertTrue(self.svc.status()['pair_ready'])
+        self.assertTrue(self.cloud_events()[-1]['pair_ready'])
+
+    def test_simultaneous_user_and_recovery_pauses_keep_original_switches(self):
+        self.writer.call(lambda db: (db.set_setting('cloud_upload', 'on'), db.set_setting('cloud_vault', 'on')))
+        self.svc._set(on=True, vault={'on': True, 'folder': ''}, state='idle')
+        barrier = threading.Barrier(3)
+        failures = []
+        def pause(source):
+            try:
+                barrier.wait(5)
+                self.svc.turn_off(source)
+            except Exception as exc:
+                failures.append(exc)
+        with mock.patch.object(type(self.svc), 'running', new_callable=mock.PropertyMock, return_value=True):
+            workers = [threading.Thread(target=pause, args=(source,)) for source in ('user', 'recovery')]
+            for worker in workers:
+                worker.start()
+            barrier.wait(5)
+            for worker in workers:
+                worker.join(5)
+        self.assertFalse(failures)
+        self.assertTrue(all(not worker.is_alive() for worker in workers))
+        record = json.loads(self.writer.read(lambda db: db.get_setting('cloud_pause_restore', '')))
+        self.assertEqual((record['upload'], record['vault'], record['owner']), (True, True, 'user'))
+        self.assertTrue(self.svc.status()['paused_since'])
+
+    def test_status_publish_failure_does_not_undo_a_saved_task_or_strand_gate(self):
+        with mock.patch.object(self.svc.hub, 'publish', side_effect=RuntimeError('closed stream')):
+            self.svc.intents.add('one_shot_publish')
+            with self.svc.recovery.gate():
+                self.assertTrue(self.svc.st['recovery_gate_active'])
+        self.assertFalse(self.svc.st['recovery_gate_active'])
+        self.assertEqual(self.svc.intents.all()[0]['kind'], 'one_shot_publish')
+        with self.svc.recovery.gate():
+            pass
+
+    def test_restarted_pause_retains_stage_but_not_live_counts(self):
+        self.svc.intents.add('one_shot_publish')
+        self.svc.intents.update('one_shot_publish', stage='running')
+        self.svc._set(done=7, total=12)
+        self.svc.turn_off()
+        self.assertEqual(self.svc.status()['task']['done'], 7)
+        fresh = sync_mod.SyncService(self.writer, Hub(), self.data, self.cloud, client_factory=lambda tok: self.drive)
+        with mock.patch.object(fresh, '_start_control'):
+            fresh.boot()
+        task = fresh.status()['task']
+        self.assertEqual((task['stage'], task['done'], task['total']), ('running', 0, 0))
+        self.assertNotIn('paused_snapshot', task)
+        self.assertFalse(fresh.running)
+
+    def test_restart_priority_disconnect_disables_both_old_switches_before_workers(self):
+        self.writer.call(lambda db: (db.set_setting('cloud_upload', 'on'), db.set_setting('cloud_vault', 'on')))
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'synthetic'})
+        self.svc.intents.add('disconnect', {'delete_mirror': False})
+        fresh = sync_mod.SyncService(self.writer, Hub(), self.data, self.cloud, client_factory=lambda tok: self.drive)
+        called = threading.Event()
+        def disconnect(*args, **kwargs):
+            fresh.intents.finish('disconnect')
+            called.set()
+        with mock.patch.object(fresh, '_start_control'), mock.patch.object(fresh, '_disconnect', side_effect=disconnect), \
+             mock.patch.object(fresh, 'start_vault', side_effect=AssertionError('vault started during disconnect')), \
+             mock.patch.object(fresh, '_publish', side_effect=AssertionError('backup started during disconnect')):
+            fresh.boot()
+            self.assertTrue(called.wait(5))
+            self.assertTrue(self.wait(lambda: not fresh.running))
+        self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_upload', ''), db.get_setting('cloud_vault', ''))), ('', 'off'))
+        self.assertEqual((fresh.status()['on'], fresh.status()['vault']['on']), (False, False))
+
+    def test_restart_runs_priority_disconnect_while_paused_without_uploading(self):
+        self.writer.call(lambda db: (db.set_setting('cloud_upload', ''), db.set_setting('cloud_vault', 'off'),
+                                     db.set_setting('cloud_paused_at', '123')))
+        self.svc.intents.add('one_shot_publish')
+        self.svc.intents.add('disconnect', {'delete_mirror': False})
+        fresh = sync_mod.SyncService(self.writer, Hub(), self.data, self.cloud, client_factory=lambda tok: self.drive)
+        called = threading.Event()
+        def disconnect(*args, **kwargs):
+            fresh.intents.finish('disconnect')
+            called.set()
+        with mock.patch.object(fresh, '_start_control'), mock.patch.object(fresh, '_disconnect', side_effect=disconnect), \
+             mock.patch.object(fresh, '_publish', side_effect=AssertionError('paused backup uploaded')), \
+             mock.patch.object(fresh, '_tick_intake', side_effect=AssertionError('paused intake ran')):
+            fresh.boot()
+            self.assertTrue(called.wait(5))
+            self.assertTrue(self.wait(lambda: not fresh.running))
+        self.assertIsNotNone(fresh.intents.find('one_shot_publish'))
+        self.assertEqual(fresh.status()['paused_since'], 123)
+
+    def test_failed_removal_verification_retains_phase_and_vault_counts_in_memory(self):
+        vault = self.root / 'synthetic-vault'
+        vault.mkdir()
+        self.writer.call(lambda db: db.set_setting('obsidian_vault', str(vault)))
+        key = mirror.MirrorKey.generate()
+        self.svc.intents.add('remove_phones', {'new': key.fingerprint})
+        self.svc.intents.update('remove_phones', stage='publishing')
+        record = {'stage': 'publishing', 'owned': []}
+        def fail_vault(*args, **kwargs):
+            self.svc._set(vault_state='syncing', vault_step='Sending to Drive', vault_done=3, vault_total=9)
+            raise drive_client.DriveError('synthetic verification failure')
+        with mock.patch('library.restore.manifests', return_value=[(None, None, None, {'files': {}})]), \
+             mock.patch.object(self.svc, '_rotation_vault_round', side_effect=fail_vault):
+            with self.assertRaises(drive_client.DriveError):
+                self.svc._rotation_finish(mock.Mock(), key, record, threading.Event())
+        self.svc._set(state='error', error='synthetic verification failure')
+        task = self.svc.status()['task']
+        self.assertEqual((task['stage'], task['step'], task['done'], task['total']), ('publishing', 4, 3, 9))
+        fresh = sync_mod.SyncService(self.writer, Hub(), self.data, self.cloud, client_factory=lambda tok: self.drive)
+        restarted = fresh.status()['task']
+        self.assertEqual((restarted['stage'], restarted['step'], restarted['done'], restarted['total']), ('publishing', 3, 0, 0))
+        self.assertFalse(self.svc._publish(threading.Event()))
+        self.assertIsNone(self.svc._failed_task)
+        self.svc.intents.update('remove_phones', stage='cleanup')
+        advanced = self.svc.status()['task']
+        self.assertEqual((advanced['stage'], advanced['step'], advanced['done'], advanced['total']), ('cleanup', 5, 0, 0))
+
+    def test_vault_failure_retains_last_reported_counters(self):
+        calls = 0
+        def tick():
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                self.svc._set(vault_state='syncing', vault_step='Sending to Drive', vault_done=3, vault_total=9, vault_since=123)
+                raise drive_client.DriveError('synthetic vault failure')
+            self.svc._vault_stop.wait(5)
+        with mock.patch.object(sync_mod, 'POLL', .05), mock.patch.object(self.svc, '_vault_tick', side_effect=tick):
+            self.svc.turn_vault_on()
+            self.assertTrue(self.wait(lambda: self.svc.status()['vault_state'] == 'error'))
+            status = self.svc.status()
+            self.assertEqual((status['vault_step'], status['vault_done'], status['vault_total'], status['vault_since']),
+                             ('Sending to Drive', 3, 9, 123))
+            self.assertIn('synthetic vault failure', status['vault_reason'])
+            self.svc.turn_vault_off()
+
+    def test_pause_and_resume_switch_writes_roll_back_as_one_transaction(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        self.writer.call(lambda db: (db.set_setting('cloud_upload', 'on'), db.set_setting('cloud_vault', 'on')))
+        self.svc._set(on=True, vault={'on': True, 'folder': ''})
+        def fields(db):
+            return tuple(db.get_setting(key, '') for key in ('cloud_upload', 'cloud_vault', 'cloud_paused_at', 'cloud_pause_restore'))
+        def fail_vault(db):
+            db.conn.execute("CREATE TEMP TRIGGER fail_pause_vault BEFORE INSERT ON settings WHEN NEW.key = 'cloud_vault' BEGIN SELECT RAISE(ABORT, 'injected failure'); END")
+        def clear_trigger(db):
+            db.conn.execute('DROP TRIGGER fail_pause_vault')
+        before = self.writer.read(fields)
+        self.writer.call(fail_vault)
+        try:
+            with self.assertRaises(Exception):
+                self.svc.turn_off()
+        finally:
+            self.writer.call(clear_trigger)
+        self.assertEqual(self.writer.read(fields), before)
+        self.assertEqual((self.svc.status()['on'], self.svc.status()['vault']['on']), (True, True))
+        self.svc.turn_off()
+        paused = self.writer.read(fields)
+        self.writer.call(fail_vault)
+        try:
+            with self.assertRaises(Exception):
+                self.svc.resume()
+        finally:
+            self.writer.call(clear_trigger)
+        self.assertEqual(self.writer.read(fields), paused)
+        self.assertTrue(self.svc.status()['paused_since'])
+        self.assertEqual((self.svc.status()['on'], self.svc.status()['vault']['on']), (False, False))
+
+    def test_disconnect_accepts_and_clears_damaged_pause_record(self):
+        self.writer.call(lambda db: (db.set_setting('cloud_paused_at', '123'), db.set_setting('cloud_pause_restore', '{bad')))
+        self.svc._set(paused_since=123)
+        with mock.patch.object(self.svc, 'ensure_running'):
+            self.svc.request_disconnect(delete_mirror=True, delete_existing=True)
+        task = self.svc.intents.find('disconnect')
+        self.assertTrue(task['payload']['delete_mirror'])
+        self.assertTrue(task['payload']['delete_existing'])
+        self.assertFalse(task['error'])
+        self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', ''))), ('', ''))
+        self.assertEqual(self.svc.status()['state'], 'disconnecting')
+
+    def test_bad_signer_blocks_pairing_during_owned_rotation(self):
+        with mock.patch.object(self.svc, '_start_control'):
+            self.svc.boot()
+        candidate = mirror.MirrorKey.generate()
+        sync_mod.private_storage.write(self.cloud / 'rotation.json', json.dumps({'stage': 'prepared', 'new': candidate.text()}).encode())
+        self.svc.intents.add('remove_phones', {'new': candidate.fingerprint})
+        self.assertTrue(self.svc.status()['pair_ready'])
+        sync_mod.private_storage.write(self.svc.control_key_path, b'invalid signer')
+        self.assertFalse(self.svc.status()['pair_ready'])
+
+    def test_turn_on_scheduling_failure_retains_pause_and_token(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        for vault in (False, True):
+            with self.subTest(vault=vault):
+                self.writer.call(lambda db: (db.set_setting('cloud_upload', 'on'), db.set_setting('cloud_vault', 'on')))
+                self.svc._set(on=True, vault={'on': True, 'folder': ''}, paused_since=0, state='idle', vault_state='idle')
+                with mock.patch.object(type(self.svc), 'running', new_callable=mock.PropertyMock, return_value=True):
+                    token = self.svc.turn_off('recovery')
+                self.svc._set(state='off', vault_state='off')
+                before = self.writer.read(lambda db: tuple(db.get_setting(k, '') for k in ('cloud_upload', 'cloud_vault', 'cloud_paused_at', 'cloud_pause_restore')))
+                method = 'start_vault' if vault else 'start'
+                with mock.patch.object(self.svc, method, side_effect=drive_client.DriveError('synthetic scheduling failure')):
+                    with self.assertRaises(drive_client.DriveError):
+                        self.svc.turn_vault_on() if vault else self.svc.turn_on()
+                self.assertEqual(self.writer.read(lambda db: tuple(db.get_setting(k, '') for k in ('cloud_upload', 'cloud_vault', 'cloud_paused_at', 'cloud_pause_restore'))), before)
+                self.assertEqual(json.loads(before[-1])['token'], token)
+                self.assertTrue(self.svc.status()['paused_since'])
+                self.svc.clear_pause()
+
+    def test_boot_repairs_interrupted_old_pause_before_starting_workers(self):
+        self.writer.call(lambda db: (db.set_setting('cloud_upload', 'on'), db.set_setting('cloud_vault', 'on'),
+                                     db.set_setting('cloud_paused_at', '123')))
+        with mock.patch.object(self.svc, '_start_control'), mock.patch.object(self.svc, 'start') as start, \
+             mock.patch.object(self.svc, 'start_vault') as start_vault:
+            self.svc.boot()
+        start.assert_not_called()
+        start_vault.assert_not_called()
+        self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_upload', ''), db.get_setting('cloud_vault', ''))), ('', 'off'))
+        self.assertEqual((self.svc.status()['on'], self.svc.status()['vault']['on'], self.svc.status()['paused_since']), (False, False, 123))
+
+    def test_switch_write_failure_keeps_saved_task_failed_and_pause(self):
+        self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        self.svc._set(on=True)
+        self.svc.turn_off()
+        before = self.writer.read(lambda db: tuple(db.get_setting(k, '') for k in ('cloud_upload', 'cloud_vault', 'cloud_paused_at', 'cloud_pause_restore')))
+        self.writer.call(lambda db: db.conn.execute("CREATE TEMP TRIGGER fail_switch_vault BEFORE INSERT ON settings WHEN NEW.key = 'cloud_vault' BEGIN SELECT RAISE(ABORT, 'injected failure'); END"))
+        try:
+            with mock.patch('core.config.google_client', return_value=('cid', 'secret')), \
+                 mock.patch.object(self.svc, 'ensure_running') as ensure:
+                self.svc.switch(delete_old=False)
+            ensure.assert_not_called()
+        finally:
+            self.writer.call(lambda db: db.conn.execute('DROP TRIGGER fail_switch_vault'))
+        self.assertTrue(self.svc.intents.find('switch_account')['error'])
+        self.assertEqual(self.writer.read(lambda db: tuple(db.get_setting(k, '') for k in ('cloud_upload', 'cloud_vault', 'cloud_paused_at', 'cloud_pause_restore'))), before)
+        self.assertTrue(self.svc.status()['paused_since'])
+
+    def test_disconnect_write_failure_keeps_saved_task_failed(self):
+        self.writer.call(lambda db: (db.set_setting('cloud_upload', 'on'), db.set_setting('cloud_vault', 'on')))
+        self.svc._set(on=True, vault={'on': True, 'folder': ''})
+        self.writer.call(lambda db: db.conn.execute("CREATE TEMP TRIGGER fail_disconnect_vault BEFORE INSERT ON settings WHEN NEW.key = 'cloud_vault' BEGIN SELECT RAISE(ABORT, 'injected failure'); END"))
+        try:
+            with mock.patch.object(self.svc, 'ensure_running') as ensure:
+                self.svc.request_disconnect(delete_mirror=True)
+            ensure.assert_not_called()
+        finally:
+            self.writer.call(lambda db: db.conn.execute('DROP TRIGGER fail_disconnect_vault'))
+        task = self.svc.intents.find('disconnect')
+        self.assertTrue(task['payload']['delete_mirror'])
+        self.assertTrue(task['error'])
+        self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_upload', ''), db.get_setting('cloud_vault', ''))), ('on', 'on'))
+        self.assertEqual(self.svc.status()['state'], 'error')
+
+    def test_disconnect_intent_cannot_run_before_off_state_is_committed(self):
+        entered, release = threading.Event(), threading.Event()
+        self.svc._set(done=7, total=10, bytes_done=70, bytes_total=100, items_done=2, items_total=5,
+                      vault_state='syncing', vault_done=3, vault_total=9)
+        errors = []
+        original_call = self.writer.call
+        def block_off_write(fn):
+            if threading.current_thread().name == 'disconnect-request':
+                entered.set()
+                if not release.wait(5):
+                    raise RuntimeError('test timed out')
+            return original_call(fn)
+        def request():
+            try:
+                self.svc.request_disconnect(delete_mirror=True)
+            except Exception as exc:
+                errors.append(exc)
+        with mock.patch.object(self.writer, 'call', side_effect=block_off_write), \
+             mock.patch.object(self.svc, 'ensure_running'), mock.patch.object(self.svc, '_disconnect') as disconnect:
+            worker = threading.Thread(target=request, name='disconnect-request')
+            worker.start()
+            try:
+                self.assertTrue(entered.wait(5))
+                self.assertEqual(self.svc.intents.find('disconnect')['error'], sync_mod.DISCONNECT_PREPARING)
+                task = self.svc.status()['task']
+                self.assertEqual((task['done'], task['total'], task['bytes_done'], task['bytes_total'], task['items_done'], task['items_total']), (0, 0, 0, 0, 0, 0))
+                self.svc._run_intents(threading.Event())
+                disconnect.assert_not_called()
+            finally:
+                release.set()
+            worker.join(5)
+        self.assertFalse(worker.is_alive())
+        self.assertFalse(errors)
+        self.assertFalse(self.svc.intents.find('disconnect')['error'])
+        status = self.svc.status()
+        self.assertEqual((status['done'], status['total'], status['items_done'], status['items_total'], status['vault_done'], status['vault_total']), (0, 0, 0, 0, 0, 0))
+        self.assertEqual(status['vault_state'], 'off')
+
+    def test_restart_finishes_prepared_disconnect_without_uploading(self):
+        self.writer.call(lambda db: (db.set_setting('cloud_upload', 'on'), db.set_setting('cloud_vault', 'on'),
+                                     db.set_setting('cloud_paused_at', '123'), db.set_setting('cloud_pause_restore', '{bad')))
+        self.svc.intents.add('disconnect', {'delete_mirror': True}, error=sync_mod.DISCONNECT_PREPARING, code='busy')
+        fresh = sync_mod.SyncService(self.writer, Hub(), self.data, self.cloud, client_factory=lambda tok: self.drive)
+        called = threading.Event()
+        def disconnect(*args, **kwargs):
+            fresh.intents.finish('disconnect')
+            called.set()
+        with mock.patch.object(fresh, '_start_control'), mock.patch.object(fresh, '_disconnect', side_effect=disconnect), \
+             mock.patch.object(fresh, '_publish', side_effect=AssertionError('backup started during disconnect')), \
+             mock.patch.object(fresh, 'start_vault', side_effect=AssertionError('vault started during disconnect')):
+            fresh.boot()
+            self.assertTrue(called.wait(5))
+            self.assertTrue(self.wait(lambda: not fresh.running))
+        self.assertEqual(self.writer.read(lambda db: tuple(db.get_setting(k, '') for k in ('cloud_upload', 'cloud_vault', 'cloud_paused_at', 'cloud_pause_restore'))), ('', 'off', '', ''))
+
+    def test_reset_retry_scheduling_failure_restores_pause_and_task_error(self):
+        drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
+        self.svc.intents.add('reset_backup')
+        self.svc.intents.update('reset_backup', stage='backing-up', error='Earlier failure', code='other')
+        self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        self.svc._set(on=True)
+        self.svc.turn_off()
+        before = self.writer.read(lambda db: tuple(db.get_setting(k, '') for k in ('cloud_paused_at', 'cloud_pause_restore')))
+        with mock.patch.object(self.svc, 'ensure_running', side_effect=RuntimeError('cannot schedule')):
+            with self.assertRaisesRegex(RuntimeError, 'cannot schedule'):
+                self.svc.reset_backup()
+        self.assertEqual(self.writer.read(lambda db: tuple(db.get_setting(k, '') for k in ('cloud_paused_at', 'cloud_pause_restore'))), before)
+        task = self.svc.intents.find('reset_backup')
+        self.assertEqual((task['stage'], task['error'], task['code']), ('backing-up', 'Earlier failure', 'other'))
+        self.assertTrue(self.svc.status()['paused_since'])
+
     def test_start_shows_starting_until_the_first_publish_ends(self):
         drive_client.save_token(self.cloud / 'google_token.json', {'refresh_token': 'r'})
         gate = threading.Event()
@@ -718,7 +1864,7 @@ class ServiceTest(Library):
             self.assertTrue(self.wait(lambda: self.svc.status()['last_publish'] > 0))
         ev = self.cloud_events()
         states = [d['state'] for d in ev]
-        self.assertEqual(states[0], 'starting')
+        self.assertIn('starting', states)
         self.assertLess(states.index('starting'), states.index('publishing'))
         self.assertGreater(ev[states.index('publishing')]['seq'], ev[0]['seq'])
         self.assertGreater(ev[0]['seq'], s0)
@@ -773,7 +1919,7 @@ class ServiceTest(Library):
                         self.svc.turn_off()
                         st = self.svc.status()
                         self.assertEqual((st['state'], st['vault_state']), ('stopping', 'stopping'))
-                        self.assertEqual((st['done'], st['total'], st['vault_done'], st['vault_total']), (0, 0, 0, 0))
+                        self.assertEqual((st['done'], st['total'], st['vault_done'], st['vault_total']), (2, 10, 438, 6349))
                         self.assertTrue(self.svc._stop.is_set() and self.svc._vault_stop.is_set())
                         self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_upload'), db.get_setting('cloud_vault'))), ('', 'off'))
                         with self.assertRaises(drive_client.DriveError):
@@ -810,6 +1956,15 @@ class ServiceTest(Library):
             self.assertIn('publishing', [d['state'] for d in self.cloud_events()[-3:]])
             self.assertTrue(self.wait(lambda: self.svc.status()['last_publish'] > first))
         self.svc.turn_off()
+
+    def test_sign_in_answer_cannot_undo_a_newer_pause(self):
+        self.svc._set(state='signing-in')
+        self.svc.turn_off()
+        since = self.svc.status()['paused_since']
+        self.assertTrue(since)
+        self.svc._turn_on('mirror', after_sign_in=True)
+        self.svc._turn_on('vault', after_sign_in=True)
+        self.assertEqual((self.svc.status()['paused_since'], self.svc.status()['on'], self.svc.status()['vault']['on']), (since, False, False))
 
     def test_cancel_sign_in_is_at_once_and_connect_works_again(self):
         def waits(cid, secret, cancel=None):
@@ -1086,8 +2241,10 @@ class ServiceTest(Library):
         self.assertEqual(seen, ['disconnecting'])
         ev = self.cloud_events()[n:]
         states = [d['state'] for d in ev]
-        self.assertEqual((states[0], states[-1]), ('disconnecting', 'off'))
-        self.assertNotIn('off', states[:-1])        # no 'off' between: Disconnect shows until it is done
+        self.assertIn('disconnecting', states)
+        active = states[states.index('disconnecting'):]
+        self.assertEqual(active[-1], 'off')
+        self.assertTrue(all(state == 'off' for state in active[active.index('off'):]))
         counts = [(d['done'], d['total']) for d in ev if d['state'] == 'disconnecting' and d['total']]
         total = counts[0][1]
         self.assertEqual(counts, [(i, total) for i in range(total + 1)])     # the mirror delete counts up
@@ -2302,6 +3459,18 @@ class ServiceTest(Library):
 
 
 class RoutesTest(unittest.TestCase):
+    def test_confirmation_account_validation_and_stale_confirmation(self):
+        sync = self.c.app.state.sync
+        sync._set(account='current@example.com')
+        for route in ('reset', 'sign-out', 'switch', 'unpair'):
+            for value in ('', None, 1, [], 'x' * 321):
+                response = self.c.post('/api/cloud/' + route, json={'expected_account': value}, headers={'X-CM': '1'})
+                self.assertEqual(response.status_code, 400, response.text)
+            response = self.c.post('/api/cloud/' + route, json={'expected_account': 'old@example.com'}, headers={'X-CM': '1'})
+            self.assertEqual(response.status_code, 409, response.text)
+            self.assertIn('account changed', response.json()['detail'])
+        self.assertEqual(sync.intents.all(), [])
+
     def setUp(self):
         from tests.auth_client import TestClient
         from server.app import create_app
@@ -2316,6 +3485,34 @@ class RoutesTest(unittest.TestCase):
     def tearDown(self):
         self.client.__exit__(None, None, None)
         shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_vault_option_failure_preserves_pause(self):
+        sync = self.c.app.state.sync
+        drive_client.save_token(sync.token_path, {'refresh_token': 'synthetic'})
+        self.c.app.state.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        sync._set(on=True)
+        sync.turn_off()
+        keys = ('cloud_upload', 'cloud_vault', 'cloud_paused_at', 'cloud_pause_restore', 'cloud_videos', 'cloud_canvases', 'cloud_phone_url')
+        before = self.c.app.state.writer.read(lambda db: tuple(db.get_setting(k, None) for k in keys))
+        with mock.patch.object(sync, 'start_vault', side_effect=drive_client.DriveError('synthetic scheduling failure')):
+            response = self.c.put('/api/cloud/options', json={'vault': True, 'videos': 'all', 'canvases': False,
+                                                               'phone_url': 'https://example.invalid'}, headers={'X-CM': '1'})
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(self.c.app.state.writer.read(lambda db: tuple(db.get_setting(k, None) for k in keys)), before)
+        self.assertTrue(sync.status()['paused_since'])
+
+    def test_pause_request_validation(self):
+        headers = {'X-CM': '1'}
+        for body in ([], {'source': None}, {'source': 'user'}, {'source': 'other'}):
+            self.assertEqual(self.c.post('/api/cloud/pause', json=body, headers=headers).status_code, 400)
+        for body in ([], {'pause_token': None}, {'pause_token': 'bad'}, {'extra': True}):
+            self.assertEqual(self.c.post('/api/cloud/resume', json=body, headers=headers).status_code, 400)
+        for route in ('pause', 'resume'):
+            self.assertEqual(self.c.post('/api/cloud/' + route, content='null', headers={**headers, 'content-type': 'application/json'}).status_code, 400)
+            self.assertEqual(self.c.post('/api/cloud/' + route, content='{', headers={**headers, 'content-type': 'application/json'}).status_code, 400)
+        response = self.c.post('/api/cloud/pause', json={'source': 'recovery'}, headers=headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()['pause_token'])
 
     def test_cloud_endpoints(self):
         W = {'X-CM': '1'}

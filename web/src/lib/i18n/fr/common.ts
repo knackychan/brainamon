@@ -2,6 +2,9 @@ import type { messages as English } from '../en/common.ts'
 import type { Localized } from '../en/index.ts'
 
 export const messages = {
+  "common.showMore": "Afficher plus",
+  "common.showLess": "Afficher moins",
+  "common.step": "Étape {n} sur {total}",
   "common.error.canvasProposalObject": "Fournissez un objet de proposition de Canvas.",
   "common.error.canvasFrames": "Les images extraites ne sont pas disponibles dans la bibliothèque du téléphone. Utilisez des vignettes ou du texte.",
   "common.error.canvasFields": "Champs d’ajout au Canvas invalides.",

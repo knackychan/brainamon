@@ -91,6 +91,8 @@ class RestoreTest(Library):
                 self.assertTrue((recovered.item_dir(row['id']) / 'thumb.jpg').is_file())
             self.assertEqual(recovered.get_setting('cloud_upload'), '')
             self.assertEqual(recovered.get_setting('cloud_vault'), 'off')
+            self.assertEqual(recovered.get_setting('cloud_paused_at'), '')
+            self.assertEqual(recovered.get_setting('cloud_pause_restore'), '')
             self.assertTrue(recovered.fts_ids('knee'))
         finally:
             recovered.close()
@@ -816,7 +818,7 @@ class RecoveryServiceTest(Library):
         path = self.root / 'saved-kit.json'
         self.service.save_kit(str(path))
         self.assertEqual(json.loads(path.read_bytes()), kit)
-        with self.assertRaises(R.RecoveryError):
+        with self.assertRaisesRegex(R.RecoveryError, 'Choose a file name'):
             self.service.save_kit(str(path))
         self.assertEqual(json.loads(path.read_bytes()), kit)
 
@@ -889,10 +891,12 @@ class RecoveryServiceTest(Library):
         self.assertEqual(self.service.status()['job']['state'], 'complete', self.service.status())
         self.assertTrue((target / 'content_manager.db').is_file())
         self.assertEqual(self.drive.files, before)
+        self.writer.call(lambda db: (db.set_setting('cloud_paused_at', '123'), db.set_setting('cloud_pause_restore', 'old')))
         with mock.patch('core.app_paths.set_data_dir') as pointer, mock.patch.dict('os.environ', {'CM_DATA_DIR': ''}):
             result = self.service.activate()
             pointer.assert_called_once_with(target)
         self.assertTrue(result['restart'])
+        self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_paused_at'), db.get_setting('cloud_pause_restore'))), ('', ''))
         self.assertEqual(self.drive.files, before)
         with self.assertRaises(drive_client.DriveError):
             self.service.guard(self.drive)
@@ -1081,8 +1085,7 @@ class RecoveryServiceTest(Library):
         self.assertEqual(self.svc._rotation()['stage'], 'complete')
 
     def test_rotation_task_stays_on_step_four_while_the_vault_is_uploaded_and_read_back(self):
-        """The page must not fall back to "Re-encrypting" (step 3) once the library's files are checked: the vault's part of the
-        check is still step 4, and the step goes back only when the check ends (a failure here retries from the upload)."""
+        """Vault verification stays on step 4 while running and after failure; a new attempt starts fresh."""
         self.setup_recovery()
         self.assertTrue(self.svc._publish())
         self.svc.unpair(PASSWORD)
@@ -1097,7 +1100,7 @@ class RecoveryServiceTest(Library):
         with mock.patch.object(self.svc, '_rotation_vault_round', side_effect=vault):
             self.assertFalse(self.svc._publish())
         self.assertEqual(seen, [('Uploading and verifying the vault with the replacement key…', 4)])
-        self.assertEqual(self.svc.status()['task']['step'], 3)
+        self.assertEqual(self.svc.status()['task']['step'], 4)
 
     def rotation_download_peak(self):
         """The most downloads in flight at once in the check's own workers while a removal checks the new copy."""
@@ -1151,18 +1154,22 @@ class RecoveryServiceTest(Library):
         self.assertTrue(self.svc._publish(), self.svc.status())
         self.assertEqual(self.svc._rotation()['stage'], 'complete')
 
-    def test_rotation_failed_parallel_delete_records_successes_then_resumes(self):
+    def test_rotation_failed_batch_delete_records_successes_then_resumes(self):
         self.setup_recovery()
         self.assertTrue(self.svc._publish())
         self.svc.unpair(PASSWORD)
         owned = self.svc._rotation_prepare(self.svc._factory({}), threading.Event())['owned']
         self.assertGreaterEqual(len(owned), 4)
-        original = self.drive.delete
-        def remove(fid):
-            if fid == owned[0]:
-                raise drive_client.DriveError('synthetic interrupted deletion')
-            original(fid)
-        with mock.patch.object(self.drive, 'delete', side_effect=remove):
+        client = drive_client.DriveClient('synthetic', 'synthetic', {})
+        def remove_batch(ids):
+            for fid in ids:
+                if fid != owned[0]:
+                    self.drive.delete(fid)
+            return {i: 403 if fid == owned[0] else 204 for i, fid in enumerate(ids)}
+        with mock.patch.object(self.drive, 'delete_many', client.delete_many, create=True), \
+                mock.patch.object(client, '_delete_batch', side_effect=remove_batch), \
+                mock.patch.object(client, 'delete', side_effect=drive_client.DriveError('synthetic interrupted deletion')), \
+                mock.patch.object(drive_client, 'DELETE_BATCH_SIZE', 4), mock.patch.object(drive_client, 'DELETE_WORKERS', 1):
             self.assertFalse(self.svc._publish())
         remaining = self.svc._rotation()['owned']
         self.assertIn(owned[0], remaining)
@@ -1170,6 +1177,34 @@ class RecoveryServiceTest(Library):
         self.assertTrue(all(fid in remaining for fid in owned[4:]))
         self.assertTrue(self.svc._publish(), self.svc.status())
         self.assertEqual(self.svc._rotation()['stage'], 'complete')
+
+    def test_activation_remains_accepted_if_pause_clear_fails(self):
+        kit = self.setup_recovery()
+        self.assertTrue(self.svc._publish())
+        self.service.preview(material=R.dump(kit).decode())
+        target = self.root / 'activation-pause-failure'
+        self.service.start_restore(str(target))
+        self.service.thread.join(15)
+        self.assertEqual(self.service.job['state'], 'complete', self.service.job)
+        self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        self.svc._set(on=True, state='idle')
+        with mock.patch.object(type(self.svc), 'running', new_callable=mock.PropertyMock, return_value=True):
+            token = self.svc.turn_off('recovery')
+        self.svc.intents.add('reset_backup')
+        before = self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', '')))
+        with mock.patch.dict('os.environ', {'CM_DATA_DIR': ''}), mock.patch('core.app_paths.set_data_dir') as pointer, \
+             mock.patch.object(self.svc, 'clear_pause', side_effect=OSError('synthetic Writer failure')):
+            result = self.service.activate()
+        self.assertTrue(result['restart'])
+        pointer.assert_called_once_with(target)
+        self.assertTrue(self.service.status()['restart_required'])
+        with mock.patch.object(self.svc.recovery, 'guard', side_effect=AssertionError('recovery gate bypassed')), \
+             mock.patch.object(self.svc, 'ensure_running') as ensure:
+            with self.assertRaises(sync_mod.cloud_errors.RecoveryBlocked):
+                self.svc.resume(token)
+        ensure.assert_not_called()
+        self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', ''))), before)
+        self.assertFalse(self.svc.status()['on'])
 
     def test_interrupted_activation_keeps_a_journal_and_retries_without_cloud_writes(self):
         kit = self.setup_recovery()
@@ -1181,8 +1216,9 @@ class RecoveryServiceTest(Library):
         self.assertEqual(self.service.job['state'], 'complete', self.service.job)
         before = dict(self.drive.files)
         with mock.patch.dict('os.environ', {'CM_DATA_DIR': ''}), mock.patch('core.app_paths.set_data_dir', side_effect=OSError('synthetic interruption')):
-            with self.assertRaises(OSError):
-                self.service.activate()
+            result = self.service.activate()
+        self.assertTrue(result['restart'] and result['pending'])
+        self.assertTrue(self.service.status()['restart_required'])
         journal = self.service._optional(self.service.journal)
         self.assertTrue(journal)
         backup = self.svc.cloud_dir / ('recovery-before-' + journal['activation'] + '.json')
@@ -1823,8 +1859,13 @@ class ReconnectTest(Library):
         view = self.service.preview(password=PASSWORD)
         self.assertTrue(view['preview']['reconnect']['ok'])
         self.assertNotIn(PASSWORD, json.dumps(self.service.status()))
+        with mock.patch.object(self.svc, '_start_control'):
+            self.svc.boot()
+        self.assertTrue(self.svc.status()['key_missing'])
         kit = self.service.reconnect('', '')                                    # nothing typed again
         self.assertEqual(R.unlock(kit['record'], password=PASSWORD).master, self.key.master)
+        self.assertFalse(self.svc.status()['key_missing'])
+        self.assertTrue(self.svc.status()['pair_ready'])
 
     def test_d3_a_backup_found_with_a_kit_has_no_passphrase_to_reuse(self):
         self.service.preview(material=R.dump(self.kit).decode())
@@ -1834,6 +1875,28 @@ class ReconnectTest(Library):
 
     def eligibility(self, **material):
         return self.service.preview(**(material or {'material': R.dump(self.kit).decode()}))['preview']['reconnect']
+
+    def test_reconnect_reports_four_numeric_steps_and_keeps_failed_step(self):
+        self.assertTrue(self.eligibility()['ok'])
+        reported = []
+        set_status = self.svc._set
+
+        def capture(**changes):
+            activity = changes.get('recovery_activity')
+            if activity:
+                reported.append(dict(activity))
+            return set_status(**changes)
+
+        with mock.patch.object(self.svc, '_set', side_effect=capture), \
+             mock.patch.object(self.service, '_save', side_effect=OSError('synthetic local failure')):
+            with self.assertRaises(R.RecoveryError):
+                self.service.reconnect(PASSWORD, PASSWORD)
+        self.assertEqual([(a['step_index'], a['step_count']) for a in reported],
+                         [(1, 4), (2, 4), (3, 4), (4, 4), (4, 4)])
+        self.assertEqual(reported[-1]['state'], 'error')
+        self.assertTrue(reported[-1]['code'])
+        self.assertIn('next', reported[-1])
+        self.assertEqual(self.service.status()['activity'], reported[-1])
 
     def test_preview_offers_reconnect_without_writing_anything(self):
         before, local = dict(self.drive.files), self.cloud_files()
@@ -2403,7 +2466,7 @@ class ReconnectTest(Library):
         for case in ('missing key', 'wrong key'):
             with self.subTest(case=case):
                 if case == 'wrong key':
-                    self.svc.mirror_key()           # the recreated home made its own key
+                    mirror.MirrorKey.generate().save(self.svc.key_path)   # simulate a recreated home with a different key
                 self.assertFalse(self.svc._publish())
                 if case == 'wrong key':
                     self.assertEqual(self.svc.status()['error'], sync_mod.KEY_CONFLICT)

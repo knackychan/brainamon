@@ -33,7 +33,9 @@
   <Label for="z">Alone</Label><Label as="span" class="wide">Group</Label>
   <SectionTitle class="set-section">Search</SectionTitle><SectionTitle as="p">Plain</SectionTitle>
   <Status on /><Status>Missing</Status><Status on as="span" role="status">Ready</Status>
+  <Status state="busy">Working</Status>
   <Progress label="Checking" /><Progress label="Copying" pct={50} /><Hint as="pre" class="set-cmd">winget</Hint><Disclosure summary="More"><Hint>Body</Hint></Disclosure>
+  <Progress label="Paused" pct={50} paused /><Progress label="Waiting" paused />
 </div>
 <div id="phone">
   <MButton>Go</MButton><MButton variant="pri" size="sm" type="submit">Send</MButton><MButton as="a" href="/x" variant="dk">Open</MButton>

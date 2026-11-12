@@ -27,7 +27,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from tests.phone_groups import open_group  # noqa: E402  (the group rows, projects/phone-settings)
+from tests.phone_pages import open_group  # noqa: E402  (the group rows, projects/phone-settings)
 
 ART = ROOT / 'local/ui-blocks/phone-states'
 VIEW = {'width': 360, 'height': 780}
@@ -220,7 +220,7 @@ def fixture(root):
       const backend = {target: process.argv[3], changeOrigin: true}
       const proxy = Object.fromEntries(JSON.parse(process.argv[4]).map(prefix => [prefix, backend]))
       const s = await createServer({configFile: 'vite.config.ts', logLevel: 'error', define: {__LICENSE_PUBLIC_KEYS__: process.argv[2]},
-        server: {host: '127.0.0.1', port: Number(process.argv[1]), strictPort: true, proxy}})
+        server: {host: '127.0.0.1', port: Number(process.argv[1]), strictPort: true, hmr: false, proxy}})
       await s.listen()""", str(vport), json.dumps(license.PUBLIC_KEYS), f'http://127.0.0.1:{port}', json.dumps(PROXIED)],
         cwd=ROOT / 'web', stdout=vite_log, stderr=vite_log,
         creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
@@ -306,6 +306,7 @@ def fixture(root):
 
     with mock.patch.object(drive_client, 'API', base + '/drive/v3'), \
             mock.patch.object(drive_client, 'UPLOAD', base + '/upload/drive/v3'), \
+            mock.patch.object(drive_client, 'BATCH', base + '/batch/drive/v3'), \
             mock.patch('core.config.google_client', return_value=(DESKTOP_CLIENT, 'fixture')), \
             mock.patch('core.config.google_web_client', return_value=WEB_CLIENT), \
             mock.patch.object(socket.socket, 'connect', loopback_only), \
@@ -362,7 +363,7 @@ def fixture(root):
                     drives.append(d)
                     ctx = browser.new_context(viewport=VIEW, is_mobile=True, has_touch=True, accept_downloads=True,
                                               service_workers='block', timezone_id='UTC', locale='en-GB')
-                    ctx.add_init_script("localStorage.setItem('bp-lang','en')")
+                    ctx.add_init_script("if (location.protocol === 'http:') localStorage.setItem('bp-lang','en')")
 
                     def other(route):
                         u = route.request.url
@@ -484,9 +485,9 @@ def fixture(root):
                     files = []
                     for screen, scope in (('more', '#m-status'), ('backup', '#m-backup-status')):
                         p.evaluate(f"location.hash = '#/{screen}'")
-                        box = p.locator(scope).locator('.m-status')
+                        box = p.locator(scope).locator('.m-status, .m-page-status')
                         expect(box.locator('b')).to_have_text(words(want['text']))
-                        expect(box.locator('.m-status-dot')).to_have_class(re.compile(rf"\b{want['tone']}\b"))
+                        expect(box.locator('.m-badge').first).to_have_class(re.compile(r'\bk-' + ('failed' if want['id'] in ('unreachable','access-invalid') else 'paused' if want['id']=='paused' else 'waiting' if want['id'] in ('offline','wifi','confirming','waiting-pc') and want['tone']=='todo' else {'done':'done','busy':'working','next':'attention','todo':'empty'}[want['tone']]) + r'\b'))
                         if screen == 'backup':
                             if detail:
                                 expect(box.locator('small')).to_have_text(words(detail))
@@ -795,7 +796,7 @@ def fixture(root):
                     recovery = p.locator('#m-recovery')
                     recovery.get_by_role('button', name='Generate passphrase', exact=True).click()
                     recovery.get_by_role('button', name='Save passphrase', exact=True).click()
-                    expect(recovery.locator('.m-status b')).to_have_text(re.compile('^Passphrase set '), timeout=60000)
+                    expect(recovery.locator('.m-steps li').first.locator('b')).to_have_text(re.compile('^Passphrase set '), timeout=60000)
                     shows(p, 'solo: passphrase set, no recovery file')
                     p.evaluate("location.hash = '#/backup'")
                     open_group(p, 'Recovery')                      # shows() left the page: the group is closed again

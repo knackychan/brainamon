@@ -86,7 +86,7 @@ def wait_for_login(page, login_wait_seconds: int) -> str:
 
 def write_csv(rows: list[dict], out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"reddit_saved_{time.strftime('%Y-%m-%d')}.csv"
+    out_path = out_dir / f"reddit_saved_{time.strftime('%Y-%m-%d')}_{time.time_ns()}.csv"
     with out_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=FIELDS)
         writer.writeheader()

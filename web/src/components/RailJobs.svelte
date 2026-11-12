@@ -9,7 +9,7 @@
   // phones, another long task, or a pause that waits for Resume. A small change upload stays out of it.
   import { onMount } from 'svelte'
   import { api } from '../lib/api'
-  import { hm, long, num } from '../lib/backup'
+  import { backupState } from '../lib/backup-state'
   import { runCmd } from '../lib/commands'
   import { JOB_SHORT, live } from '../lib/events.svelte'
   import { openSettings } from '../lib/io-commands.svelte'
@@ -33,24 +33,23 @@
   const cl = $derived(live.cloud)
   let now = $state(Date.now())
   onMount(() => { const t = setInterval(() => { now = Date.now() }, 15000); return () => clearInterval(t) })
-  const drive = $derived.by((): { row: string; step: string; pct: number | null; kind: 'paused' | 'pausing' | 'busy' | 'error' } | null => {
+  const backup = $derived(backupState(cl, null, now))
+  const drive = $derived.by((): { row: string; step: string; pct: number | null; kind: 'paused' | 'pausing' | 'busy' | 'error'; action?: 'pause' | 'resume' } | null => {
     if (!cl?.signed_in) return null
-    const task = cl.task ?? null
-    if (task?.kind === 'disconnect' && task.error) return { row: `${task.title} stopped`, step: task.error, pct: null, kind: 'error' }
-    if (task?.kind === 'disconnect' || cl.state === 'disconnecting') return null
-    if ((cl.paused_since ?? 0) > 0 && !cl.running) return { row: `Backup paused · ${long(Math.max(0, now - cl.paused_since!))}`, step: `Changes since ${hm(cl.last_publish || cl.paused_since!)} are only on this PC.`, pct: null, kind: 'paused' }
+    const task = backup.task
+    if (cl.task?.kind === 'disconnect' && !cl.task.error || cl.state === 'disconnecting') return null
     if (cl.state === 'stopping') return { row: 'Pausing after the current upload request', step: '', pct: null, kind: 'pausing' }
-    if (task?.error || (task && task.kind !== 'update_folder' && cl.state === 'error')) return { row: `${task.title} stopped`, step: task.error || cl.error, pct: null, kind: 'error' }
-    if (task && task.kind !== 'enroll') {
-      const frac = task.total ? task.done / task.total : 0
-      if (task.kind === 'remove_phones') return task.step >= 3 ? { row: `Removing phones · step ${task.step} of 5`, step: '', pct: task.step === 3 ? 70 * frac : task.step === 4 ? 70 + 30 * frac : 100, kind: 'busy' } : null
-      // Update this folder: a row while it downloads; Downloaded waits for Restart now in Backup & phones
-      if (task.kind === 'update_folder') return ['queued', 'downloading'].includes(task.stage) && !task.error ? { row: 'Updating this folder', step: '', pct: task.bytes_total ? 100 * task.bytes_done / task.bytes_total : null, kind: 'busy' } : null
-      return { row: `${task.title} · step ${task.step} of ${task.of}`, step: '', pct: task.bytes_total ? 100 * (task.bytes_done / task.bytes_total) : 100 * frac, kind: 'busy' }
+    if (task) {
+      const kind = task.kind === 'paused' ? 'paused' : task.kind === 'failed' ? 'error' : 'busy'
+      const action = task.primary?.id === 'resume' ? 'resume' : task.quiet.some(a => a.id === 'pause') ? 'pause' : undefined
+      return { row: `${task.title} · step ${task.step} of ${task.of}`, step: task.error || task.steps.find(s => s.state === 'active')?.label || '',
+        pct: task.pct ?? null, kind, action }
     }
+    if (backup.kind === 'paused') return { row: backup.hero.text, step: backup.hero.detail || '', pct: null, kind: 'paused',
+      action: backup.hero.primary?.id === 'resume' ? 'resume' : undefined }
     if (!cl.last_publish && ['starting', 'publishing'].includes(cl.state)) {
       const pct = cl.bytes_total ? 100 * (cl.bytes_done ?? 0) / cl.bytes_total : cl.total ? 100 * cl.done / cl.total : null
-      return { row: cl.total ? `First backup · ${num(cl.done)}/${num(cl.total)}` : 'First backup · checking what to send', step: '', pct, kind: 'busy' }
+      return { row: backup.hero.text, step: backup.hero.detail || '', pct, kind: 'busy', action: 'pause' }
     }
     return null
   })
@@ -68,9 +67,9 @@
   }
 </script>
 
-{#snippet segBar(label: string, pct: number)}
+{#snippet segBar(label: string, pct: number, held = false)}
   <div class="prog" role="progressbar" aria-label={label} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(pct)}>
-    {#each { length: 12 } as _, i (i)}<i class:lit={i < seg(pct)} class:lead={i === seg(pct)}></i>{/each}
+    {#each { length: 12 } as _, i (i)}<i class:lit={i < seg(pct)} class:lead={!held && i === seg(pct)}></i>{/each}
   </div>
 {/snippet}
 
@@ -105,12 +104,12 @@
   {/if}
   {#if drive}
     <p class="rj-row"><b class="rj-k">DRIVE</b><span class="l">{drive.row}</span>{#if drive.pct !== null}<span class="c">{Math.round(drive.pct)}%</span>{/if}</p>
-    {#if drive.pct !== null}{@render segBar(drive.row, drive.pct)}{/if}
+    {#if drive.pct !== null}{@render segBar(drive.row, drive.pct, drive.kind !== 'busy')}{/if}
     {#if drive.step}<p class="rj-step">{drive.step}</p>{/if}
     {#if drive.kind !== 'pausing'}
       <div class="rj-keys">
-        {#if drive.kind === 'paused'}<Button onclick={() => call('resume')}><KeyIcon name="play" />Resume backup</Button>
-        {:else if drive.kind === 'busy'}<Button onclick={() => call('pause')}><KeyIcon name="pause" />Pause backup</Button>{/if}
+        {#if drive.action === 'resume'}<Button onclick={() => call('resume')}><KeyIcon name="play" />Resume backup</Button>
+        {:else if drive.action === 'pause'}<Button onclick={() => call('pause')}><KeyIcon name="pause" />Pause backup</Button>{/if}
         <Button onclick={() => openSettings('backup', 'set-s-sync-uploads')}>Progress</Button>
       </div>
     {/if}

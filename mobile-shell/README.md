@@ -48,6 +48,10 @@ key. No shared repository keystore, official upload key or Google registration i
 needed to compile. This is a separate installation, not an update over official
 Play or historical debug installs; their local data stays in the old app.
 
+The phone site reader is shared by Contributor and release builds. Its named page
+scripts are copied into both APKs; `payload_guard.py --release-mobile` checks that
+the release includes them and the reader classes.
+
 Run `./gradlew signingReport` (Windows: `gradlew.bat signingReport`) to see the
 actual debug key location and SHA-1/SHA-256. CI generates its own ephemeral key;
 its certificate is not proof of official identity.

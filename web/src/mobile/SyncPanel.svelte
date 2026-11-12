@@ -3,6 +3,7 @@
   // key, a card under the top bar with a notch at the key. An owner-fixable state first (its sentence, Backup &
   // phones as the main key); else the steps of a Sync now run (state.svelte.ts syncNow), or the state in words at
   // rest; then the lanes of lanes.ts; then the keys.
+  import { backup } from './backup.svelte'
   import { onMount } from 'svelte'
   import { scale } from 'svelte/transition'
   import { lampLabel } from './settings-words'
@@ -13,6 +14,7 @@
   import { syncLanes } from './lanes'
   import { shell } from './shell.svelte'
   import MButton from './ui/MButton.svelte'
+  import MHint from './ui/MHint.svelte'
 
   let { label }: { label: string } = $props()
   const MARK = { wait: '·', run: '…', ok: '✓', err: '!' }
@@ -68,15 +70,15 @@
     <p class="m-syncp-why">{t('shell.sync.labelItems', { n: phone.rows.length, label, items })}<small>{uploaded ? t('shell.sync.readUploaded', { ago: fmtAgo(phone.synced), uploaded: fmtAgo(uploaded) }) : t('shell.sync.read', { ago: fmtAgo(phone.synced) })}</small></p>
   {/if}
   {#each lanes as l (l.key)}
-    <div class="m-syncp-lane"><b>{l.name}</b> · {l.tag === 'running' || l.key === 'network' ? '' : `${lampLabel(l.tag)} · `}{l.text}{#if l.active && l.pct !== null}<span class="m-syncp-bar"><b style:width={`${l.pct}%`}></b></span>{/if}</div>
+    <div class="m-syncp-lane"><b>{l.name}</b> · {l.tag === 'running' || l.key === 'network' ? '' : `${lampLabel(l.tag)} · `}{l.text}{#if l.files}<MHint>{t('backup.vault.verified', l.files)}</MHint>{/if}{#if l.active && l.pct !== null}<span class="m-syncp-bar"><b style:width={`${l.pct}%`}></b></span>{/if}</div>
   {/each}
   <div class="m-syncp-btns">
     {#if owner}
       <MButton as="a" size="sm" variant="dk" href="#/backup">{t('shell.sync.backupLink')}</MButton>
       <MButton size="sm" disabled>{t('shell.sync.now')}</MButton>
     {:else}
-      <MButton size="sm" variant="dk" disabled={busy || paused} onclick={() => syncNow()}>{t('shell.sync.now')}</MButton>
-      {#if mirrorSource}<MButton size="sm" onclick={() => setSyncPaused(!network.manualPause)}>{network.manualPause ? t('shell.sync.resume') : t('shell.sync.pause')}</MButton>{/if}
+      <MButton size="sm" variant="dk" disabled={busy || paused || !!backup.task || backup.busy} onclick={() => syncNow()}>{t('shell.sync.now')}</MButton>
+      {#if mirrorSource}<MButton size="sm" disabled={network.pausePending} onclick={() => setSyncPaused(network.pauseFailed || !network.manualPause)}>{network.pausePending ? t('settings.sync.savingPolicy') : network.pauseFailed ? t('common.retry') : t(network.manualPause ? 'shell.sync.resume' : 'shell.sync.pause')}</MButton>{/if}
       <MButton as="a" size="sm" href={backupHere ? '#/backup' : '#/more'}>{backupHere ? t('shell.sync.backupLink') : t('shell.sync.settingsLink')}</MButton>
     {/if}
   </div>

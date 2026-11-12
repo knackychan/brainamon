@@ -171,7 +171,9 @@ OPEN = r"""
     registerHooks({ resolve: (s, c, n) => s in stub ? { url: 'data:text/javascript,' + encodeURIComponent(stub[s]), shortCircuit: true } : n(s, c) })
     const set = []
     globalThis.location = { get hash() { return '#/x' }, set hash(v) { set.push(v) } }
-    globalThis.document = { getElementById: () => ({ scrollIntoView() {} }) }
+    globalThis.HTMLDetailsElement = class {}
+    globalThis.matchMedia = () => ({matches:false});
+      globalThis.document = { getElementById: () => ({ getClientRects: () => [{}], matches: () => true, hasAttribute: () => true, focus() {}, scrollIntoView() {} }) }
     globalThis.requestAnimationFrame = f => setTimeout(f, 0)
     globalThis.__phone = { route: { tab: 'lib' } }
     const { openBackupBox, openMoreBox, openPairing } = await import('./web/src/mobile/onboard.svelte.ts')
@@ -241,15 +243,15 @@ class PhoneScreensTest(unittest.TestCase):
         """))
         self.assertEqual(back, ['#/more', '#/cap', '#/lib', '#/backup'])      # Import goes back to Add; recovery to Backup & phones
         out = json.loads(test_phone_js.node(test_phone_js.TS_RESOLVE + OPEN))
-        self.assertEqual(out, {'moreFromLibrary': ['#/more'], 'moreFromMore': [], 'moreFromImport': ['#/more'],
-                               'moreFromBackup': ['#/more'], 'backupFromMore': ['#/backup'], 'backupFromBackup': [],
-                               'moreFromRecover': ['#/more'], 'backupFromRecover': ['#/backup'],
+        self.assertEqual(out, {'moreFromLibrary': ['#/more/wiskit'], 'moreFromMore': ['#/more/wiskit'], 'moreFromImport': ['#/more/wiskit'],
+                               'moreFromBackup': ['#/more/wiskit'], 'backupFromMore': ['#/backup'], 'backupFromBackup': [],
+                               'moreFromRecover': ['#/more/wiskit'], 'backupFromRecover': ['#/backup'],
                                'pairingNotSolo': ['#/more'], 'pairingSolo': ['#/backup']})
 
     def test_the_screens_show_the_one_status(self):
         state, shell, strip, more = source('state.svelte.ts'), source('Mobile.svelte'), source('OwnerLine.svelte'), source('screens/More.svelte')
         backup, card = source('screens/Backup.svelte'), source('StatusCard.svelte')
-        self.assertIn("case 'backup': return backupHere ? { tab: 'more', backup: true } : { tab: 'more' }", state)
+        self.assertIn("case 'backup': return backupHere ? { tab: 'more', backup: true, ...(p[1] === 'manage' ? { manage: true } : {}) } : { tab: 'more' }", state)
         self.assertIn('export const backupHere = !!mirrorSource\n', state)
         self.assertIn('mirrorSource.changes.watch(() => { void measurePend() })', state)
         self.assertEqual(state.count("location.replace(location.pathname + '#/backup')"), 2)    # pairFrom and useWithoutPc
@@ -268,10 +270,11 @@ class PhoneScreensTest(unittest.TestCase):
         for gone in ('id="m-pair-setup"', '<h3>Google Drive<', 'id="m-recovery"', 'Retry access and library', 'let pend',
                      '<h3>Without a PC', '<PhoneRecovery', 'changesDb'):
             self.assertNotIn(gone, more)
-        for kept in ('id="m-conn"', "kicker={t('settings.pair.pc')}", "title={t('settings.group.pc')}", "title={t('settings.sync.wifi')}", 'id="m-ai"', 'id="m-desktop"', 'href="#/recover"'):
-            self.assertIn(kept, more)
+        settings = more + source('screens/settings/Sync.svelte') + source('screens/settings/Wiskit.svelte') + source('screens/settings/About.svelte')
+        for kept in ('id="m-conn"', "kicker={t('settings.pair.pc')}", "kicker={t('settings.group.pc')}", "title={t('settings.sync.wifi')}", 'id="m-ai"', 'id="m-desktop"', 'href="#/recover"'):
+            self.assertIn(kept, settings)
         self.assertEqual([english('settings.pair.pc'), english('settings.group.pc'), english('settings.sync.wifi')], ['Pair with your PC', 'Your PC', 'Wi-Fi only'])
-        self.assertIn('href="#/backup"', card)
+        self.assertIn("kicker={t('backup.state.title')}", card)
         self.assertIn('look="hero"', card)
         self.assertNotIn('detail=', card)                                  # the card never shows the detail
         order = [backup.index(f'id="{i}"') for i in ('m-backup-status', 'm-pair-setup', 'm-conn', 'm-phone', 'm-pair', 'm-recovery')]
@@ -284,7 +287,7 @@ class PhoneScreensTest(unittest.TestCase):
         remove = backup[backup.index('async function removeSolo()'):]
         remove = remove[:remove.index('\n  }\n')]
         self.assertLess(remove.index('await stopCloudWork()'), remove.index('unpairPhone()'))
-        self.assertIn('await Promise.all([wipe(), changesDb.clear()])', remove)   # Remove takes the phone's own library
+        self.assertIn('await removeLocalLibrary()', remove)   # Remove takes the phone's own library
 
     def test_the_phone_without_a_pc_has_backup_and_recover(self):
         state, shell, backup = source('state.svelte.ts'), source('Mobile.svelte'), source('screens/Backup.svelte')

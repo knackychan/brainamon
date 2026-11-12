@@ -10,6 +10,7 @@
 .m-import-screen .m-import-toggle.m-btn:active{transform:none}
 .m-import-screen .m-import-toggle.m-btn:focus-visible{outline-offset:-2px}
 .m-import-screen .m-import-toggle>span:first-child{flex:1;display:flex;align-items:center;gap:12px;min-width:0;font:700 15px/1.2 var(--display);color:var(--wg-ink)}
+.m-import-screen .m-import-soon{font:600 11px/1.2 var(--mono);color:var(--case-dim);white-space:nowrap}
 .m-import-screen .m-import-glyph{flex:none;display:grid;place-items:center;box-sizing:border-box;width:38px;height:38px;border:1px solid var(--wg-edge);border-radius:11px;background:var(--wg);color:var(--wg-ink);transition:background-color 220ms cubic-bezier(.2,.8,.2,1),border-color 220ms cubic-bezier(.2,.8,.2,1),color 220ms cubic-bezier(.2,.8,.2,1)}
 .m-import-screen .m-import-glyph svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .m-import-screen .m-import-toggle[aria-expanded="true"] .m-import-glyph{border-color:var(--ink);background:var(--ink);color:var(--wg)}

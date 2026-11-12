@@ -15,7 +15,7 @@ export const messages = {
   "shell.sync.readDriveStep": "Lire le miroir Drive",
   "shell.sync.libraryStep": "Mettre à jour la bibliothèque",
   "shell.sync.readPcStep": "Lire le PC",
-  "shell.sync.setupFirst": "Configurez d’abord Brainamon dans Plus : associez votre PC ou utilisez-le sans PC.",
+  "shell.sync.setupFirst": "Configurez d’abord Brainamon dans Paramètres : associez votre PC ou utilisez-le sans PC.",
   "shell.sync.offlineCopy": "Hors ligne : le téléphone garde sa copie jusqu’au retour de la connexion.",
   "shell.sync.connectQueue": "Connectez Google Drive dans Sauvegarde et téléphones pour envoyer les modifications en attente.",
   "shell.sync.waitingSignIn": "attente de connexion Google",

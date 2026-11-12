@@ -12,7 +12,7 @@ export const messages = {
   "shell.sync.readDriveStep": "Read the Drive mirror",
   "shell.sync.libraryStep": "Update the library",
   "shell.sync.readPcStep": "Read the PC",
-  "shell.sync.setupFirst": "Set up Brainamon in More first: pair with your PC, or use it without a PC.",
+  "shell.sync.setupFirst": "Set up Brainamon in Settings first: pair with your PC, or use it without a PC.",
   "shell.sync.offlineCopy": "Offline: the phone keeps its copy until it has signal.",
   "shell.sync.connectQueue": "Connect Google Drive on Backup & phones to send the queued changes.",
   "shell.sync.waitingSignIn": "waiting for Google sign-in",

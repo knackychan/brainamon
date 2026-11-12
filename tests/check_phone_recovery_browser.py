@@ -21,7 +21,7 @@ from playwright.sync_api import expect, sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from library import mirror  # noqa: E402  (the fixture's batch file is sealed by the desktop's MirrorKey)
-from tests.phone_groups import open_group  # noqa: E402  (the Recovery group, projects/phone-settings)
+from tests.phone_pages import open_group  # noqa: E402  (the Recovery group, projects/phone-settings)
 
 ART = Path(tempfile.mkdtemp(prefix='brainamon-phone-recovery-shots-'))
 RAW = bytes([7]) * 32
@@ -103,7 +103,7 @@ def main():
                     button = lambda name: box.get_by_role('button', name=name, exact=True)
                     page.wait_for_function("async()=> !(await import('/src/mobile/state.svelte.ts')).phone.refreshing")
                     open_group(page, 'Recovery')
-                    guide = box.locator('details').first
+                    guide = box.locator('details:has(> summary:text-is("Forgot passphrase?"))')
                     guide.locator('summary').first.focus()
                     page.keyboard.press('Enter')
                     for situation in ('I can still open my library', 'I have a recovery file', 'I have a recovery code or a paired phone', 'I have none of these'):
@@ -195,7 +195,7 @@ def main():
                     kit_path = Path(folder) / 'kit.json'
                     download.value.save_as(kit_path)
                     kit = json.loads(kit_path.read_text())
-                    expect(box.get_by_text('Recovery file saved, not checked', exact=True)).to_be_visible()
+                    expect(box.locator('.m-card-line')).to_have_text('File saved, not checked')
                     expect(box.get_by_text('Download requested. A browser download is not confirmed until you open the file.', exact=True)).to_be_visible()
                     expect(status.get_by_text('Recovery file saved, not checked yet.', exact=True)).to_be_visible()
                     discovery = page.evaluate("""async kit => {
@@ -224,9 +224,8 @@ def main():
                     with page.expect_file_chooser() as chooser:
                         status.get_by_role('button', name='Check recovery file…', exact=True).click()
                     chooser.value.set_files(str(kit_path))
-                    checked = re.compile(r'^Passphrase set \d{1,2} \w+ · recovery file checked$')
-                    expect(box.get_by_text(checked)).to_be_visible()
-                    expect(box.get_by_text('Recovery file checked against your backup.', exact=True)).to_be_visible()
+                    checked = 'Recovery file checked against your backup.'
+                    expect(box.locator('.m-steps li').last.locator('b')).to_have_text(checked)
                     page.reload()
                     open_group(page, 'Recovery')
                     expect(box.get_by_text(checked)).to_be_visible()
@@ -410,7 +409,7 @@ def main():
                     expect(card.get_by_role('button',name='Connect',exact=True)).to_be_enabled()
                     assert paired_page.locator('#m-desktop').count()==0
                     assert paired_page.locator('#m-pair-setup').count()==0
-                    card.get_by_role('link',name='Backup & phones').click()
+                    paired_page.locator('a[href="#/backup"]').click()
                     expect(paired_page).to_have_url(base+'/mobile.html#/backup')
                     recovery_guide = open_group(paired_page, 'Recovery').locator('details').first
                     recovery_guide.locator('summary').first.click()
@@ -435,7 +434,7 @@ def main():
                     expect(guide.get_by_text('Google Drive connected: sample@example.com.',exact=True)).to_be_visible()
                     # the access words come from the status model (mirror/phone-state.ts), never the raw refusal text
                     expect(status.get_by_text('Waiting for your PC to confirm this phone.',exact=True)).to_be_visible()
-                    expect(guide.get_by_text('Waiting for your PC to confirm this phone.',exact=True)).to_be_visible()
+                    expect(guide.get_by_text('access pending',exact=True)).to_be_visible()
                     expect(status.get_by_role('button',name='Retry',exact=True)).to_be_enabled()
                     assert guide.get_by_role('button').count()==0          # the Status holds the one Retry
                     assert paired_page.get_by_text('to confirm this phone: keep Brainamon open',exact=False).count()==0

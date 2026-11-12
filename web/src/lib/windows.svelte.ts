@@ -19,6 +19,7 @@ export interface WinSpec {
   body: Component<any>
   props?: Record<string, unknown>
   onClose?: () => void
+  beforeClose?: () => boolean
 }
 export interface Win extends WinSpec { n: number; from: Element | null }
 
@@ -41,6 +42,7 @@ export function closeWin(w?: Win, quiet = false) {
   if (!target) return
   const i = wins.findIndex(x => x.n === target.n)   // $state proxies: compare by n, not identity
   if (i < 0) return
+  if (target.beforeClose && !target.beforeClose()) return
   const [gone] = wins.splice(i, 1)
   gone.onClose?.()
   const from = gone.from

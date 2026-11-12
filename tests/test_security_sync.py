@@ -67,6 +67,51 @@ class Rotation(unittest.TestCase):
         self.assertTrue(self.svc._publish())
         self.assertEqual(self.svc.mirror_key().fingerprint, candidate)
 
+    def test_batched_cleanup_checkpoints_confirmed_ids_and_resumes_its_count(self):
+        import re
+        from tests.test_drive_batch import response
+        self.assertTrue(self.svc._publish())
+        self.svc.unpair()
+        client = drive_client.DriveClient('synthetic', 'synthetic', {})
+        client.stop = self.svc._stop
+        refused, snapshots, saves = [], [], []
+        save = self.svc._save_rotation
+        def checkpoint(record):
+            save(record)
+            if record['stage'] == 'cleanup':
+                saves.append(list(record['owned']))
+        def call(*args, **kwargs):
+            ids = re.findall(rb'DELETE /drive/v3/files/([^ ]+)', args[2])
+            if not refused:
+                refused.append(ids[0].decode())
+            statuses = []
+            for raw in ids:
+                fid = raw.decode()
+                statuses.append(403 if fid in refused else 204)
+                if fid not in refused:
+                    self.drive.delete(fid)
+            return response(statuses)
+        with mock.patch.object(self.drive, 'delete_many', client.delete_many, create=True), \
+                mock.patch.object(client, '_call', side_effect=call) as batch, \
+                mock.patch.object(client, 'delete', side_effect=drive_client.DriveError('refused', 403)), \
+                mock.patch.object(self.svc, '_save_rotation', side_effect=checkpoint), \
+                mock.patch.object(self.svc.hub, 'publish', side_effect=lambda kind, data: snapshots.append(data) if kind == 'cloud' else None):
+            self.assertFalse(self.svc._publish())
+            saved = self.svc._rotation()
+            self.assertEqual(saved['owned'], refused)
+            self.assertGreater(saved['cleanup_total'], 1)
+            self.assertEqual(batch.call_count, 1)
+            self.assertEqual(len(saves), 3)  # enter cleanup, reconcile missing files, one confirmed batch
+            cleanup = [s['task'] for s in snapshots if (s.get('task') or {}).get('step') == 5 and s['task']['total'] == saved['cleanup_total']]
+            self.assertEqual(cleanup[-1]['done'], saved['cleanup_total'] - 1)
+            snapshots.clear()
+            refused[:] = ['never-a-file']
+            self.assertTrue(self.svc._publish())
+        counts = [(s['task']['done'], s['task']['total']) for s in snapshots if s.get('task') and s['task']['step'] == 5 and s['task']['total'] == saved['cleanup_total']]
+        self.assertIn((saved['cleanup_total'] - 1, saved['cleanup_total']), counts)
+        self.assertIn((saved['cleanup_total'], saved['cleanup_total']), counts)
+        self.assertEqual(self.svc._rotation()['stage'], 'complete')
+
     def test_rotation_rejects_account_replacement_and_keeps_master(self):
         old = self.svc.mirror_key().master
         self.svc.unpair()
@@ -103,7 +148,14 @@ class Rotation(unittest.TestCase):
         self.assertNotIn(pending, self.drive.files)
         self.assertTrue(self.svc.writer.read(lambda db: db.get_item(self.fixture.ids[1])['favourite']))
         self.assertTrue(any(n == old.name(mirror.MANIFEST) for n, _ in self.drive.files.values()))
-        self.assertTrue(self.svc._publish())
+        snapshots = []
+        with mock.patch.object(self.svc.hub, 'publish', side_effect=lambda kind, data: snapshots.append(data) if kind == 'cloud' else None):
+            self.assertTrue(self.svc._publish())
+        sending = [s for s in snapshots if s.get('vault_state') == 'syncing' and s.get('vault_total') and (s.get('task') or {}).get('step') == 4]
+        self.assertTrue(sending)
+        self.assertTrue(all((s['task']['done'], s['task']['total']) == (s['vault_done'], s['vault_total']) for s in sending))
+        checking = [s['task'] for s in snapshots if s.get('upload_step') == 'Verifying the uploaded Obsidian vault…' and (s.get('task') or {}).get('step') == 4]
+        self.assertEqual([(t['done'], t['total']) for t in checking], [(0, 1), (1, 1)])
         key = self.svc.mirror_key()
         index = next(b for n, b in self.drive.files.values() if n == vault_sync.index_name(key, 'pc'))
         _, files = vault_sync.decode_index(key.open(vault_sync.INDEX_LOGICAL, index))

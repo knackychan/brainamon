@@ -4,8 +4,9 @@
   import type { Snippet } from 'svelte'
   import type { HTMLDetailsAttributes } from 'svelte/elements'
 
-  type Props = HTMLDetailsAttributes & { summary: string; open?: boolean; children?: Snippet }
-  let { summary, open = false, class: cls, children, ...rest }: Props = $props()
+  type Props = HTMLDetailsAttributes & { summary: string; less?: string; open?: boolean; foot?: boolean; children?: Snippet }
+  let expanded = $state(false)
+  let { summary, less = '', foot = false, open = false, class: cls, children, ...rest }: Props = $props()
 </script>
 
-<details {...rest} {open} class={['m-more', cls]}><summary>{summary}</summary><div class="m-more-body">{@render children?.()}</div></details>
+<details {...rest} {open} ontoggle={e => expanded = e.currentTarget.open} class={['m-more', foot && 'm-more-foot', cls]}><summary>{expanded && less ? less : summary}</summary><div class="m-more-body">{@render children?.()}</div></details>

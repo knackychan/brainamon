@@ -289,6 +289,41 @@ class SiteScriptsTest(unittest.TestCase):
         """)
         self.assertEqual(out, [['signin', 'check', 'read'], 3, {'t': 'end', 'reason': 'empty'}])
 
+    def test_unsave_requires_matching_durable_receipt_and_stops_on_failure(self):
+        out = run("""
+            const results=[]
+            for (const mode of ['off','ok','missing','partial','wrong-batch','paused','native-paused','native-silent','refused']) {
+              const c=load('facebook.js','_runner.js'), removed=[], sent=[]
+              let listener, tick=0, reply=null
+              c.Date={now:()=>tick}; c.sessionStorage={getItem:()=>null,setItem(){}}
+              c.document={visibilityState:'visible',querySelectorAll:()=>[]};c.navigator={onLine:true}
+              c.location={pathname:'/saved/'};c.window={};c.scroll=()=>{}
+              c.sleep=async ms=>{tick+=ms;if(reply){const m=reply;reply=null;listener({data:JSON.stringify(m)})}}
+              c.SITE.read=()=>[100000,100001,100002].map(n=>({url:'https://www.facebook.com/reel/'+n+'/',kind:'Reel'}))
+              c.SITE.unsave=async(doc,url,allowed)=>{if(!await allowed())return false;removed.push(url);return mode!=='refused'}
+              const known=[await c.hashOf('fb:100000')]
+              await c.main({addEventListener:(_,fn)=>listener=fn,postMessage:data=>{
+                const m=JSON.parse(data);sent.push(m)
+                if(m.t==='hello')listener({data:JSON.stringify({t:'init',run:'r',known,signed:true,unsave:mode!=='off'})})
+                if(m.t==='ping' && mode!=='native-silent')listener({data:JSON.stringify({t:'signed',on:true,active:mode!=='native-paused'||!sent.some(x=>x.t==='batch')})})
+                if(m.t==='batch' && mode!=='missing') {
+                  reply={t:'stored',batch:m.batch+(mode==='wrong-batch'?1:0),urls:m.items.map(x=>x.url)}
+                  if(mode==='partial')reply.urls.pop()
+                  if(mode==='paused')c.document.visibilityState='hidden'
+                }
+              }})
+              results.push([mode,removed.map(u=>c.SITE.key(u)),sent.at(-1).reason])
+            }
+            console.log(JSON.stringify(results))
+        """)
+        self.assertEqual(out, [
+            ['off', [], 'end'], ['ok', ['fb:100001', 'fb:100002'], 'end'],
+            ['missing', [], 'failure'], ['partial', [], 'failure'],
+            ['wrong-batch', [], 'failure'], ['paused', [], 'stop'],
+            ['native-paused', [], 'unsave-failed'], ['native-silent', [], 'unsave-failed'],
+            ['refused', ['fb:100001'], 'unsave-failed'],
+        ])
+
     def test_native_background_signal_pauses_a_visible_webview(self):
         out = run("""
             const c=load('facebook.js','_runner.js'), phases=[]

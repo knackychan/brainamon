@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-from tests.phone_groups import open_group  # noqa: E402  (About is a group on the phone's Settings, projects/phone-settings)
+from tests.phone_pages import open_group  # noqa: E402  (About is a group on the phone's Settings, projects/phone-settings)
 WEB_DIST = ROOT / 'web/dist'
 DOCUMENTS = (
     ('Privacy policy', 'mobile-shell/store/privacy-policy.md'),

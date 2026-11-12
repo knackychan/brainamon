@@ -1,4 +1,7 @@
 export const messages = {
+  "common.showMore": "Show more",
+  "common.showLess": "Show less",
+  "common.step": "Step {n} of {total}",
   "common.error.canvasProposalObject": "Give a canvas proposal object.",
   "common.error.canvasFrames": "Extracted frames are unavailable in the phone library. Use thumbnails or text.",
   "common.error.canvasFields": "Invalid canvas addition fields.",

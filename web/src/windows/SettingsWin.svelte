@@ -10,12 +10,12 @@
   // with edits not saved yet; everything else applies at once. Find a setting searches SECTIONS.
   import { onMount, setContext, tick, untrack } from 'svelte'
   import { api } from '../lib/api'
-  import type { CloudView, Sizes } from '../lib/backup'
+  import type { CloudSnapshot, CloudView, RecoveryView, Sizes } from '../lib/backup'
   import { refreshAskOptions } from '../lib/ask.svelte'
   import { confirmWin, topWin, wins } from '../lib/windows.svelte'
   import { runCmd } from '../lib/commands'
-  import { on } from '../lib/events.svelte'
-  import { loadInstallChecks, onb, openWiskitKey } from '../lib/onboarding.svelte'
+  import { live, on } from '../lib/events.svelte'
+  import { onb, openWiskitKey } from '../lib/onboarding.svelte'
   import { isDesktop, pickPath, type PickKind } from '../lib/pick'
   import { progress } from '../lib/progress'
   import { toast } from '../lib/ui.svelte'
@@ -26,9 +26,14 @@
   import SiteSessions from '../components/SiteSessions.svelte'
   import LicenseSettings from '../components/LicenseSettings.svelte'
   import BackupPhonesPage from './BackupPhonesPage.svelte'
+  import BackupTaskPanel from '../components/BackupTaskPanel.svelte'
   import { openRecover } from '../lib/recover'
   import ObsidianSettings from '../components/ObsidianSettings.svelte'
-  import type { ModelView, ModelChoice, SetupView, ToolsView } from '../lib/setup'
+  import type { ModelView, ModelChoice, SetupView, ToolsView, InstallView, BrowserRuntime } from '../lib/setup'
+  import type { MapStatus, ObsidianView } from '../lib/obsidian'
+  import { toolsReady } from '../lib/onboarding'
+  import { backupState, type ActId, type BackupState, type Line } from '../lib/backup-state'
+  import { videoLine, browserLine, vaultLine as sectionVaultLine, mapStatusLine } from '../lib/settings-lines'
   import type { SettingsTab } from '../lib/io-commands.svelte'
   import Button, { QUIET_PRIMARY } from '../components/ui/Button.svelte'
   import Hint from '../components/ui/Hint.svelte'
@@ -51,10 +56,17 @@
   let visited = $state<Partial<Record<Page, boolean>>>({ overview: true })
   let navigated = -1
   let pendingSection = ''
+  let sectionSerial = 0
+  let sectionRequest = $state({ id: '', serial: 0 })
+  let cancelRequest = $state({ serial: 0 })
+  let navigationBlocked = $state('')
   function focusSection() {
     void tick().then(() => requestAnimationFrame(() => {
-      const el = pendingSection && document.getElementById(pendingSection)
-      if (!el || !body?.contains(el)) return
+      const fallback = ({ 'set-s-sync-task': 'set-s-sync-status', 'set-s-obsidian-more': 'set-s-obsidian-vault',
+        'set-s-sync-account-more': 'set-s-sync-account', 'set-s-sync-backup-more': 'set-s-sync-uploads',
+        'set-s-sync-recovery-more': 'set-s-sync-recovery', 'set-s-sync-phones-more': 'set-s-sync-pair' } as Record<string, string>)[pendingSection] || ''
+      const el = pendingSection && (document.getElementById(pendingSection) || (fallback ? document.getElementById(fallback) : null))
+      if (!el || !body?.contains(el) || el.closest('[hidden]')) return
       pendingSection = ''
       if (el instanceof HTMLDetailsElement) el.open = true
       for (let parent = el.parentElement; parent && parent !== body; parent = parent.parentElement) {
@@ -70,17 +82,19 @@
     const targetTab = tab, targetSection = section, request = navigation
     untrack(() => {
       if (navigated === request) return
-      navigated = request
       const defaults: Partial<Record<SettingsTab, string>> = {
         keys: 'set-s-keys-main', models: 'set-s-models-wiskit', local: 'set-s-local',
         'claude-code': 'set-s-cc-program', tools: 'set-s-tools-video', downloads: 'set-s-dl-logins',
         sync: 'set-s-sync-account', app: 'set-s-app-folder', license: 'set-s-license',
       }
       const target = targetSection || defaults[targetTab] || ''
+      if (backupForm && target) { navigationBlocked = 'Finish or cancel the open backup form before navigating.'; return }
       // the Phone sync tab joined Backup & recovery as one page (Backup & phones)
       const page = SECTIONS.find(s => s.id === target)?.tab ?? (targetTab === 'phone' ? 'backup' : TABS.some(t => t.id === targetTab) ? targetTab as Page : 'overview')
-      selectTab(page)
+      if (!selectTab(page)) return
+      navigated = request
       pendingSection = target
+      sectionRequest = { id: target, serial: ++sectionSerial }
       focusSection()
     })
   })
@@ -111,26 +125,27 @@
   // One primary per state (master rule 1): the footer's Done steps back while the visible tab shows a primary.
   let bodyPrimary = $state(false)
   function syncPrimary() { bodyPrimary = !!body?.querySelector('#set-panel > div:not([hidden]) .wkey.pri:not(:disabled)') }
-  function selectTab(id: Page) {
+  function selectTab(id: Page): boolean {
+    if (backupForm && id !== cur) { navigationBlocked = 'Finish or cancel the open backup form before changing sections.'; return false }
+    navigationBlocked = ''
     pendingSection = ''
     cur = id
     visited[id] = true
     body?.scrollTo(0, 0)
     void tick().then(syncPrimary)
     if (id === 'ai') void loadAudioTools()
-    if (id === 'backup') void loadRecoveryStatus()
+    return true
   }
-  // Overview's Open links: the clicked link is now hidden, so focus moves to the tab's heading
   let heading: HTMLHeadingElement | undefined = $state()
-  function openTab(id: Page) {
-    selectTab(id)
-    void tick().then(() => heading?.focus({ preventScroll: true }))
-  }
+  let overviewTaskNode: HTMLDivElement | undefined = $state()
+  let overviewHadTask = false
+  let overviewTaskFocused = false
 
   // ── Find a setting: every section, with the words someone might type for what is in it ──
   interface Sec { tab: Page; id: string; title: string; words: string }
   const SECTIONS: Sec[] = [
-    { tab: 'ai', id: 'set-s-models-wiskit', title: 'Wiskit', words: 'wiskit model provider anthropic claude openai gpt freellmapi turn on describe sort summaries video analysis refresh model lists' },
+    { tab: 'ai', id: 'set-s-models-wiskit', title: 'Wiskit', words: 'wiskit model provider anthropic claude openai gpt freellmapi turn on describe sort summaries video analysis' },
+    { tab: 'ai', id: 'set-s-model-refresh', title: 'Refresh model lists', words: 'refresh model lists providers reload' },
     { tab: 'ai', id: 'set-s-models-search', title: 'Search', words: 'search embeddings meaning semantic index provider' },
     { tab: 'ai', id: 'set-s-keys-main', title: 'API keys', words: 'api key anthropic claude openai gpt get a key paste remove replace' },
     { tab: 'ai', id: 'set-s-ai-advanced', title: 'Other ways to use AI', words: 'advanced alternatives local freellmapi' },
@@ -139,22 +154,33 @@
     { tab: 'ai', id: 'set-s-cc-program', title: 'Claude Code program', words: 'claude code cli program path test login' },
     { tab: 'ai', id: 'set-s-cc-wiskit', title: 'Wiskit mode', words: 'use in wiskit claude code model' },
     { tab: 'ai', id: 'set-s-cc-approvals', title: 'Approvals', words: 'run requests without asking approve approval mcp tools' },
+    { tab: 'backup', id: 'set-s-sync-status', title: 'Backup status', words: 'backup status progress overview safe' },
+    { tab: 'backup', id: 'set-s-sync-task', title: 'Task', words: 'task queue progress saved work' },
     { tab: 'backup', id: 'set-s-sync-account', title: 'Google account', words: 'google drive account sign in again connect disconnect switch account change account storage back up' },
+    { tab: 'backup', id: 'set-s-sync-account-more', title: 'Switch account or disconnect', words: 'google drive switch account disconnect change account' },
     { tab: 'backup', id: 'set-s-sync-uploads', title: 'Backup', words: 'backup upload status files videos canvases favourites pause resume reset turn on turn off' },
+    { tab: 'backup', id: 'set-s-sync-backup-more', title: 'Reset backup', words: 'reset erase backup' },
     { tab: 'backup', id: 'set-s-sync-recovery', title: 'Recovery', words: 'recovery passphrase recovery file kit restore recover a library backup lost stolen formatted replacement pc keep this folder missing key wrong key lost key same folder' },
+    { tab: 'backup', id: 'set-s-sync-recovery-more', title: 'Change passphrase or save another copy', words: 'change passphrase another copy forgot passphrase recovery file' },
     { tab: 'obsidian', id: 'set-s-sync-vault', title: 'Vault sync with phone', words: 'obsidian vault notes sync phone conflicts deletions folder drop' },
     { tab: 'backup', id: 'set-s-sync-pair', title: 'Phones', words: 'phones add a phone pair qr code encryption key phone page remove all phones unpair lost stolen new key rotate license phone sync' },
+    { tab: 'backup', id: 'set-s-sync-phones-more', title: 'Remove all phones or phone page address', words: 'remove all phones unpair phone page address' },
     { tab: 'imports', id: 'set-s-tools-video', title: 'Video tools', words: 'ffmpeg ffprobe yt-dlp deno youtube ejs install winget video download analysis tools folder' },
+    { tab: 'imports', id: 'set-s-tools-more', title: 'Tool folders', words: 'tools folder path install by hand manual' },
     { tab: 'imports', id: 'set-s-tools-browser', title: 'Browser tools', words: 'browser tools playwright python scrapers saved posts facebook instagram reddit import' },
+    { tab: 'imports', id: 'set-s-browser-more', title: 'Remove browser tools', words: 'remove browser tools environment python folder install' },
     { tab: 'obsidian', id: 'set-s-obsidian-vault', title: 'Obsidian vault', words: 'obsidian vault create new vault existing vault knowledge graph open in obsidian move fredorama adopted reset reclaim take over pictures' },
+    { tab: 'obsidian', id: 'set-s-obsidian-more', title: 'Change vault', words: 'vault copy path change folder adopted pages' },
     { tab: 'obsidian', id: 'set-s-obsidian-map', title: 'Knowledge map', words: 'knowledge map topics refresh map rebuild stale summaries index coverage wiskit' },
     { tab: 'imports', id: 'set-s-dl-logins', title: 'Site logins', words: 'site logins cookies cookies.txt sign in private posts facebook instagram reddit youtube forget test link' },
     { tab: 'imports', id: 'set-s-dl-watch', title: 'Scraper imports', words: 'watch folder scraper csv downloads import' },
     { tab: 'general', id: 'set-s-app-folder', title: 'Library folder', words: 'version library folder data folder location move restart' },
     { tab: 'general', id: 'set-s-app-startup', title: 'Startup', words: 'start with windows startup wiskit desktop widget tray minimize reopen notice' },
     { tab: 'general', id: 'set-s-app-notify', title: 'Notifications', words: 'windows notifications toasts test alerts' },
-    { tab: 'general', id: 'set-s-app-updates', title: 'Updates', words: 'updates update download install diagnostics support logs zip automatic' },
-    { tab: 'general', id: 'set-s-app-about', title: 'About', words: 'about version privacy legal software license eula notices support contact quit stop exit background server' },
+    { tab: 'general', id: 'set-s-app-updates', title: 'Updates', words: 'updates update download install automatic' },
+    { tab: 'general', id: 'set-s-app-about', title: 'About', words: 'about version privacy legal software license eula notices support contact' },
+    { tab: 'general', id: 'set-s-app-diagnostics', title: 'Export diagnostics', words: 'diagnostics support logs zip export' },
+    { tab: 'general', id: 'set-s-app-quit', title: 'Quit completely', words: 'quit stop exit background server' },
     { tab: 'general', id: 'set-s-license', title: 'Support & older receipts', words: 'support donate free license key activate remove replace sync gumroad receipt ko-fi' },
   ]
   let find = $state('')
@@ -164,6 +190,7 @@
     const words = q.split(/\s+/)
     const hits: { s: Sec; t: TabDef; rank: number }[] = []
     for (const s of SECTIONS) {
+      if (s.id === 'set-s-sync-task' && !hasBackupTask()) continue
       if (s.id.startsWith('set-s-cc-') && !cc?.available) continue
       const t = TABS.find(x => x.id === s.tab)
       if (!t) continue
@@ -173,13 +200,20 @@
     }
     return hits.sort((a, b) => a.rank - b.rank)
   })
+  function hasBackupTask() { return !!backupView.task }
   async function jump(s: Sec) {
+    if (backupForm) { navigationBlocked = 'Finish or cancel the open backup form before navigating.'; return }
+    if (!selectTab(s.tab)) return
     find = ''
-    selectTab(s.tab)
     pendingSection = s.id
+    sectionRequest = { id: s.id, serial: ++sectionSerial }
     focusSection()
   }
-  const jumpTo = (id: string) => { const s = SECTIONS.find(x => x.id === id); if (s) jump(s) }
+  const jumpTo = (id: string) => {
+    const s = SECTIONS.find(x => x.id === id)
+    if (s) jump(s)
+    else if (id === 'set-s-sync-task' && selectTab('backup')) { pendingSection = id; sectionRequest = { id, serial: ++sectionSerial }; focusSection() }
+  }
   function findKey(e: KeyboardEvent) {
     if (e.key === 'Enter' && found.length) { e.preventDefault(); jump(found[0].s) }
     else if (e.key === 'Escape' && find) { e.preventDefault(); e.stopPropagation(); find = '' }     // Escape again closes the window
@@ -243,6 +277,7 @@
   const NO_KEYS = { anthropic: '', openai: '', freellmapi: '', local: '' }
   let keyIn = $state<Record<string, string>>({ ...NO_KEYS })
   let clear = $state<Record<string, boolean>>({})
+  let replacing = $state<Record<string, boolean>>({})
   let plain = $state<Record<string, string>>({})
   let dl = $state<Record<string, string>>({})
   let wiskit = $state<ModelChoice>({ provider: '', model: '' })
@@ -316,20 +351,52 @@
   let setupv = $state<SetupFacts | null>(null)
   function loadSetup() {
     api.get<SetupFacts>('/api/app/setup?include_tools=false').then(s => { setupv = s }).catch(() => {})
-    void loadInstallChecks().catch(() => {})
   }
-  interface NextStep { line: string; key: string; run: () => void }
-  // each key lands on the group that does the step; a build without Google sign-in skips the Drive steps
-  const nextStep = $derived.by((): NextStep | null => {
-    if (v && !wiskitOn) return { line: 'Add an AI key so Wiskit can answer, describe and summarize.', key: 'Turn on Wiskit', run: () => openWiskitKey(v?.models.jarvis.provider) }
-    if (!onb.tools) return { line: 'Set up the video tools for downloads, analysis and transcription.', key: 'Set up video tools…', run: () => jumpTo('set-s-tools-video') }
-    if (cloud && !cloud.signed_in && cloud.configured) return { line: 'Back up your library to your own Google Drive, encrypted.', key: 'Back up to Google Drive…', run: () => jumpTo('set-s-sync-account') }
-    if (cloud?.signed_in && !cloud.running && recoveryReady && !recoveryRestored) return { line: 'Turn on backup so each change backs up to Google Drive.', key: 'Turn on backup…', run: () => jumpTo('set-s-sync-uploads') }
-    if (cloud?.running && recoveryReady && !onb.recovery && !recoveryRestored) return { line: 'Create a recovery passphrase to get this library back if the PC is lost.', key: 'Create recovery passphrase…', run: () => jumpTo('set-s-sync-recovery') }
-    if (cloud?.licensed && cloud.signed_in && setupv && !setupv.phone_seen) return { line: 'Add your phone to read your library anywhere.', key: 'Add a phone…', run: () => jumpTo('set-s-sync-pair') }
-    return null
-  })
-
+  let sectionOwned = $state({ video: false, browser: false, obsidian: false })
+  let videoTools = $state<ToolsView | null>(null), videoInstall = $state<InstallView | null>(null)
+  let browserRuntime = $state<BrowserRuntime | null>(null), obsidianView = $state<ObsidianView | null>(null)
+  let videoPending = $state(true), browserPending = $state(true), obsidianPending = $state(true)
+  let videoError = $state(''), browserError = $state(''), obsidianError = $state('')
+  let videoChild = $state<Line | null>(null), browserChild = $state<Line | null>(null)
+  let obsidianChild = $state<{ vault: Line; map: Line } | null>(null)
+  let videoRequest = 0, browserRequest = 0, obsidianRequest = 0
+  let latestMap: MapStatus | null = null
+  const videoStatus = $derived(videoChild ?? videoLine({ tools: videoTools, install: videoInstall, checking: videoPending, starting: false, error: videoError }))
+  const browserStatus = $derived(browserChild ?? browserLine({ runtime: browserRuntime, checking: browserPending, doing: '', error: browserError }))
+  const obsidianVaultStatus = $derived(obsidianChild?.vault ?? sectionVaultLine({ view: obsidianView, pending: obsidianPending, error: obsidianError }))
+  const obsidianMapStatus = $derived(obsidianChild?.map ?? mapStatusLine({ view: obsidianView, pending: obsidianPending, error: obsidianError, job: live.jobs.current }))
+  const priority: Record<Line['kind'], number> = { failed: 0, paused: 1, working: 2, loading: 3, empty: 4, done: 5 }
+  function winner(items: { line: Line; id: string }[]) { return items.reduce((a, b) => priority[b.line.kind] < priority[a.line.kind] ? b : a) }
+  const importsChoice = $derived(winner([{ line: videoStatus, id: 'set-s-tools-video' }, { line: browserStatus, id: 'set-s-tools-browser' }]))
+  async function loadVideo(force = false) {
+    if (sectionOwned.video || (videoPending && videoRequest && !force)) return
+    const request = ++videoRequest; videoPending = true; videoError = ''
+    try {
+      const [tools, install] = await Promise.all([api.get<ToolsView>('/api/settings/tools'), api.get<InstallView>('/api/settings/tools/install')])
+      if (request === videoRequest && !sectionOwned.video) { videoTools = tools; videoInstall = install; onb.tools = toolsReady(tools) }
+    } catch (e) { if (request === videoRequest && !sectionOwned.video) { videoTools = null; videoInstall = null; videoError = (e as Error).message || 'Could not read video tools.' } }
+    finally { if (request === videoRequest && !sectionOwned.video) videoPending = false }
+  }
+  async function loadBrowser(force = false) {
+    if (sectionOwned.browser || (browserPending && browserRequest && !force)) return
+    const request = ++browserRequest; browserPending = true; browserError = ''
+    try { const r = await api.get<BrowserRuntime>('/api/settings/scraper-runtime'); if (request === browserRequest && !sectionOwned.browser) { browserRuntime = r; onb.browser = r.state === 'ready' } }
+    catch (e) { if (request === browserRequest && !sectionOwned.browser) { browserRuntime = null; browserError = (e as Error).message || 'Could not read browser tools.' } }
+    finally { if (request === browserRequest && !sectionOwned.browser) browserPending = false }
+  }
+  async function loadObsidian(force = false) {
+    if (sectionOwned.obsidian || (obsidianPending && obsidianRequest && !force)) return
+    const request = ++obsidianRequest; obsidianPending = true; obsidianError = ''
+    try {
+      const v = await api.get<ObsidianView>('/api/obsidian')
+      if (request === obsidianRequest && !sectionOwned.obsidian) obsidianView = latestMap && (latestMap.seq ?? 0) >= (v.status.seq ?? 0) ? { ...v, status: latestMap } : v
+    } catch (e) { if (request === obsidianRequest && !sectionOwned.obsidian) { obsidianView = null; obsidianError = (e as Error).message || 'Could not read the vault.' } }
+    finally { if (request === obsidianRequest && !sectionOwned.obsidian) obsidianPending = false }
+  }
+  function refreshSections(force = false) { void loadVideo(force); void loadBrowser(force); void loadObsidian(force) }
+  function receiveVideo(line: Line) { if (!sectionOwned.video) { sectionOwned.video = true; videoRequest++ }; videoChild = line }
+  function receiveBrowser(line: Line) { if (!sectionOwned.browser) { sectionOwned.browser = true; browserRequest++ }; browserChild = line }
+  function receiveObsidian(lines: { vault: Line; map: Line }) { if (!sectionOwned.obsidian) { sectionOwned.obsidian = true; obsidianRequest++ }; obsidianChild = lines }
   async function exportDiagnostics() {
     diagBusy = true; diagError = ''
     try { diag = (await api.post<{ path: string }>('/api/app/diagnostics')).path } catch (e) { diagError = (e as Error).message } finally { diagBusy = false }
@@ -358,6 +425,7 @@
   }
   interface Upd { current: string; latest?: string; newer?: boolean; notes?: string; size?: number; error?: string }
   let upd = $state<Upd | null>(null)
+  let updateLoaded = $state(false)
   let updState = $state<'' | 'checking' | 'downloading' | 'ready' | 'installing'>('')
   let updName = ''
   let updPct = $state(0)
@@ -373,14 +441,16 @@
   type UpdateStatus = DlStatus & Upd & { version: string; automatic: boolean }
   function takeUpdate(st: UpdateStatus) {
     if (updState === 'installing') return
-    if (st.latest || st.current) upd = { ...st, error: undefined }
+    updateLoaded = true
+    upd = st.latest || st.current ? { ...st, error: undefined } : null
     updName = st.name
     updState = ['checking', 'downloading', 'ready'].includes(st.state) ? st.state as typeof updState : ''
     updPct = st.total ? Math.floor(st.done / st.total * 100) : 0
     updError = st.error || ''
   }
   async function loadUpdate() {
-    try { takeUpdate(await api.get<UpdateStatus>('/api/app/update/status')) } catch { /* retry on the next event */ }
+    try { takeUpdate(await api.get<UpdateStatus>('/api/app/update/status')) }
+    catch (e) { updError = (e as Error).message }
   }
   async function downloadUpdate() {
     updError = ''
@@ -451,35 +521,112 @@
   let recoveryConfigured = $state(false)
   let recoveryReady = $state(false)
   let recoveryRestored = $state(false)
+  let rec = $state<RecoveryView | null>(null), recError = $state(''), recPending = $state(true)
+  let recRequest = 0, recoveryCloudKey = ''
   async function loadRecoveryStatus() {
+    const request = ++recRequest
+    rec = null; recError = ''; recPending = true; recoveryReady = false
     try {
-      const r = await api.get<{ configured: boolean; restored: boolean; enrolled: boolean }>('/api/cloud/recovery')
-      recoveryConfigured = r.configured; recoveryRestored = r.restored; onb.recovery = r.enrolled; recoveryReady = true
-    } catch { recoveryReady = false }
+      const r = await api.get<RecoveryView>('/api/cloud/recovery')
+      if (request === recRequest) { rec = r; recoveryConfigured = r.configured; recoveryRestored = r.restored; onb.recovery = r.enrolled; recoveryReady = true }
+    } catch (e) { if (request === recRequest) recError = (e as Error).message || 'Unknown error.' }
+    finally { if (request === recRequest) recPending = false }
   }
   let cloud = $state<CloudView | null>(null)
+  $effect(() => {
+    const c = cloud
+    if (!c) return
+    const key = JSON.stringify([c.signed_in, c.account, c.key_missing, c.rotation, c.error_code, c.last_publish, c.task?.id, c.task?.stage])
+    untrack(() => { if (recoveryCloudKey && key !== recoveryCloudKey) void loadRecoveryStatus(); recoveryCloudKey = key })
+  })
   let backupForm = $state(false)               // a form of the page is open (a danger key is its submit): Done steps back
-  let recoverPrimary = $state(false)           // the page's summary already offers Recover this backup / Unlock backup: the footer's link steps back
   let sizes = $state<Sizes | null>(null)
   let cloudBusy = $state(false)
   let cloudNow = $state(Date.now())
+  const syncStatus = $derived(backupState(cloud, recPending ? null : recError ? 'error' : rec, cloudNow).rows.vault)
+  const obsidianChoice = $derived(winner([{ line: obsidianVaultStatus, id: 'set-s-obsidian-vault' }, { line: syncStatus, id: 'set-s-sync-vault' }, { line: obsidianMapStatus, id: 'set-s-obsidian-map' }]))
+  let backupChild = $state<BackupState | null>(null)
+  let actionRequest = $state<{ id: ActId; serial: number } | undefined>()
+  let pendingAction: ActId | null = null, actionSerial = 0
+  const backupView = $derived(backupChild ?? backupState(cloud, recPending ? null : recError ? 'error' : rec, cloudNow))
+  $effect.pre(() => {
+    const present = !!backupView.task
+    untrack(() => {
+      if (overviewHadTask && !present && (overviewTaskFocused || overviewTaskNode?.contains(document.activeElement))) {
+        overviewTaskFocused = false
+        void tick().then(() => { if (cur === 'overview' && document.activeElement === document.body) heading?.focus({ preventScroll: true }) })
+      }
+      overviewHadTask = present
+    })
+  })
+  function receiveBackupModel(state: BackupState) {
+    backupChild = state
+    if (pendingAction) { const id = pendingAction; pendingAction = null; actionRequest = { id, serial: ++actionSerial } }
+  }
+  function backupAction(id: ActId) {
+    if (!selectTab('backup')) return
+    pendingAction = id
+    if (backupChild && cloud) { pendingAction = null; actionRequest = { id, serial: ++actionSerial } }
+  }
+  const updatesStatus = $derived.by((): Line => {
+    if (updError || upd?.error) return { kind: 'failed', tone: 'next', text: updError || upd?.error || '' }
+    if (['checking', 'downloading', 'installing'].includes(updState)) return { kind: 'working', tone: 'busy', text: updState === 'checking' ? 'Checking for updates…' : updState === 'downloading' ? `Downloading update · ${updPct}%` : 'Installing update…' }
+    if (!updateLoaded) return { kind: 'loading', tone: 'todo', text: 'Checking update status…' }
+    if (updState === 'ready') return { kind: 'paused', tone: 'next', text: `${updName || upd?.latest || 'Update'} ready to install` }
+    if (!upd) return { kind: 'empty', tone: 'optional', text: 'Updates have not been checked yet.' }
+    return upd.newer ? { kind: 'empty', tone: 'optional', text: `${upd.latest} available` } : { kind: 'done', tone: 'done', text: `${upd.current} · up to date${appv?.frozen ? '' : ' · from source'}` }
+  })
+  const aiChoice = $derived.by(() => {
+    const provider = v?.models.providers.find(p => p.id === wiskit.provider)?.label ?? wiskit.provider
+    const model = v?.models.models[wiskit.provider]?.find(m => m.id === wiskit.model)?.label ?? wiskit.model
+    const ai: Line = !v ? loadError ? { kind: 'failed', tone: 'next', text: loadError } : { kind: 'loading', tone: 'todo', text: 'Checking Wiskit…' }
+      : wiskitOn ? { kind: 'done', tone: 'done', text: `${provider} · ${model}` } : { kind: 'empty', tone: 'optional', text: `Needs a ${provider} key` }
+    const claude: Line = ccError || (ccTest && !ccTest.ok) ? { kind: 'failed', tone: 'next', text: ccError || ccState.line } : ccBusy || ccTesting ? { kind: 'working', tone: 'busy', text: 'Checking Claude Code…' } : { kind: 'done', tone: 'done', text: ccState.line }
+    return winner([{ line: ai, id: 'set-s-models-wiskit' }, ...(cc?.available ? [{ line: claude, id: 'set-s-cc-program' }] : [])])
+  })
+  interface NextStep { line: string; key?: string; run?: () => void }
+  const nextStep = $derived.by((): NextStep | null => {
+    if (['failed', 'paused'].includes(backupView.kind)) {
+      if (backupView.task?.primary) return { line: 'Continue the saved task above.' }
+      if (backupView.hero.primary) { const a = backupView.hero.primary; return { line: backupView.hero.text, key: a.label, run: () => backupAction(a.id) } }
+      return { line: backupView.hero.text, key: 'Open backup status', run: () => jumpTo('set-s-sync-task') }
+    }
+    for (const choice of [{ line: updatesStatus, id: 'set-s-app-updates' }, aiChoice, importsChoice, obsidianChoice]) {
+      if (choice.line.kind === 'failed' || choice.line.kind === 'paused') return { line: choice.line.text, key: 'Open settings', run: () => jumpTo(choice.id) }
+    }
+    if (v && !wiskitOn) return { line: 'Add an AI key so Wiskit can answer, describe and summarize.', key: 'Turn on Wiskit', run: () => openWiskitKey(v?.models.jarvis.provider) }
+    if (videoStatus.kind === 'empty') return { line: 'Set up the video tools for downloads, analysis and transcription.', key: 'Set up video tools…', run: () => jumpTo('set-s-tools-video') }
+    if (cloud && !cloud.signed_in && cloud.configured) return { line: 'Back up your library to your own Google Drive, encrypted.', key: 'Back up to Google Drive…', run: () => jumpTo('set-s-sync-account') }
+    if (cloud?.signed_in && !cloud.on && recoveryReady && !recoveryRestored) return { line: 'Turn on backup so each change backs up to Google Drive.', key: 'Turn on backup…', run: () => jumpTo('set-s-sync-uploads') }
+    if (cloud?.on && recoveryReady && !onb.recovery && !recoveryRestored) return { line: 'Create a recovery passphrase to get this library back if the PC is lost.', key: 'Create recovery passphrase…', run: () => jumpTo('set-s-sync-recovery') }
+    if (cloud?.licensed && cloud.signed_in && setupv && !setupv.phone_seen) return { line: 'Add your phone to read your library anywhere.', key: 'Add a phone…', run: () => jumpTo('set-s-sync-pair') }
+    return null
+  })
+  function navNote(id: Page): string {
+    if (dirty.includes(id)) return 'Not saved yet'
+    if (id === 'overview') return ''
+    const kind = id === 'general' ? updatesStatus.kind : id === 'ai' ? aiChoice.line.kind : id === 'imports' ? importsChoice.line.kind : id === 'obsidian' ? obsidianChoice.line.kind : backupView.kind
+    return kind === 'failed' ? 'Needs you' : kind === 'paused' ? 'Paused' : kind === 'working' ? 'Working' : ''
+  }
   let cloudErr = $state<{ where: string; msg: string } | null>(null)
   const mb = (b: number) => b >= 1e9 ? `${(b / 1073741824).toFixed(1)} GB` : `${Math.max(b ? 0.1 : 0, b / 1048576).toFixed(1)} MB`
   const when = (ms: number) => ms ? new Date(ms).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'never'
   // the last `cloud` event: an answer read before it (a lower seq) keeps its state fields
-  let cloudSnap: Partial<CloudView> | null = null
+  let cloudSnap: CloudSnapshot | null = null
+  let cloudEpoch = 0, freshCloud = true
   function takeView(v: CloudView) {
-    cloud = cloudSnap && v.seq < (cloudSnap.seq ?? 0) ? { ...v, ...cloudSnap } : v
+    const next = cloudSnap && v.seq < cloudSnap.seq ? { ...v, ...cloudSnap } : v
+    if (freshCloud || !cloud || next.seq >= cloud.seq) { cloud = next; freshCloud = false }
   }
   // `pending` shows at once; the answer or a `cloud` event replaces it. A failure rolls it back unless the
   // server has moved on since (a newer seq), and shows where it happened (`where`: the section's actions)
   async function cloudDo(path: string, body?: unknown, pending?: Partial<CloudView>, where = 'phone'): Promise<boolean> {
     cloudBusy = true; cloudErr = null
-    const before = cloud
+    const before = cloud, epoch = cloudEpoch
     if (cloud && pending) cloud = { ...cloud, ...pending }
-    try { takeView(await api.post<CloudView>(path, body)); return true } catch (e) {
-      if (before && cloud?.seq === before.seq) cloud = before
-      cloudErr = { where, msg: (e as Error).message }; return false
+    try { const result = await api.post<CloudView>(path, body); if (epoch === cloudEpoch) takeView(result); return true } catch (e) {
+      if (epoch === cloudEpoch && before && cloud?.seq === before.seq) cloud = before
+      if (epoch === cloudEpoch) cloudErr = { where, msg: (e as Error).message }; return false
     } finally { cloudBusy = false }
   }
   // Drop a phone from vault sync (spec 1b decision 5): asks beside the button, then its file list leaves Drive
@@ -503,18 +650,12 @@
     return c.vault.on ? 'Vault sync is on but not running.' : 'Vault sync is off.'
   })
   const vaultMoving = $derived(!!cloud && (cloud.vault_state === 'starting' || cloud.vault_state === 'stopping'))
+  const vaultGate = $derived(cloud?.recovery_gate_active ? `${cloud.recovery_activity?.step || 'A recovery change is in progress.'} Wait for it to finish.` : '')
   const vaultPct = $derived(cloud?.vault_state === 'syncing' && cloud.vault_total ? progress(cloud.vault_done, cloud.vault_total, cloud.vault_since).pct : undefined)
-  // the summary line of Obsidian & map's Phone sync row
-  const vaultSummary = $derived.by((): { on: boolean; text: string } => {
-    const c = cloud
-    if (!c) return { on: false, text: 'Checking…' }
-    if (!c.licensed) return { on: false, text: 'PC update needed' }
-    const on = c.vault_running && !['stopping', 'brake', 'error'].includes(c.vault_state)
-    return { on, text: c.vault_running ? `On${c.vault_last ? ` · last ${when(c.vault_last)}` : ''}` : 'Off' }
-  })
   async function cloudOpt(o: Partial<CloudView['options']> | { phone_url: string }, where = 'phone') {
     cloudErr = null
-    try { takeView(await api.put<CloudView>('/api/cloud/options', o)) } catch (e) { cloudErr = { where, msg: (e as Error).message } }
+    const epoch = cloudEpoch
+    try { const result = await api.put<CloudView>('/api/cloud/options', o); if (epoch === cloudEpoch) takeView(result) } catch (e) { if (epoch === cloudEpoch) cloudErr = { where, msg: (e as Error).message } }
   }
   // a transition the server is still in: account and sync actions wait for it
   const cloudMoving = $derived(!!cloud && ['signing-in', 'starting', 'stopping', 'disconnecting'].includes(cloud.state))
@@ -530,6 +671,7 @@
   function resetKeys() {
     keyIn = { ...NO_KEYS }
     clear = {}
+    replacing = {}
     keyResult = {}
   }
   function discard() {
@@ -555,11 +697,15 @@
     api.get<AppView>('/api/app').then(a => { appv = a; focusSection() }).catch(e => { appError = (e as Error).message })
   }
   // Also used after a reconnect: a restarted server counts seq from 0 again.
-  function loadCloud() {
+  function loadCloud(reset = false) {
     cloudError = ''
-    api.get<CloudView>('/api/cloud').then(c => { cloud = c; cloudSnap = null; focusSection() }).catch(e => { cloudError = (e as Error).message })
+    if (reset) { cloudEpoch++; cloudSnap = null; freshCloud = true }
+    const epoch = cloudEpoch
+    api.get<CloudView>('/api/cloud').then(c => { if (epoch === cloudEpoch) { takeView(c); focusSection() } }).catch(e => { if (epoch === cloudEpoch) cloudError = (e as Error).message })
   }
   onMount(() => {
+    const window = wins.find(w => w.id === 'settings')
+    if (window) window.beforeClose = beforeClose
     const observer = new MutationObserver(() => { syncPrimary(); if (pendingSection) focusSection() })
     if (body) observer.observe(body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'class', 'disabled'] })
     syncPrimary()
@@ -568,21 +714,32 @@
     loadRecoveryStatus()
     loadCloud()
     loadUpdate()
-    const updateTimer = setInterval(() => { cloudNow = Date.now(); loadUpdate() }, 2000)
+    const updateTimer = setInterval(() => {
+      cloudNow = Date.now(); loadUpdate()
+      if (!sectionOwned.video && videoInstall?.state === 'running' && !videoPending) void loadVideo()
+      if (!sectionOwned.browser && browserRuntime?.state === 'installing' && !browserPending) void loadBrowser()
+    }, 2000)
     api.get<Sizes>('/api/cloud/sizes').then(z => { sizes = z }).catch(() => {})
     loadCc()
     loadSetup()
+    refreshSections()
     const offs = [
-      on('hello', () => { loadCloud(); loadUpdate() }),
+      on('hello', () => { loadCloud(true); loadUpdate(); latestMap = null; refreshSections(true) }),
       on('update', takeUpdate),
-      on('cloud', (d: Partial<CloudView>) => {
-        if (!cloud || (d.seq ?? 0) < cloud.seq) return       // older than what the window shows
+      on('cloud', (d: CloudSnapshot) => {
+        if (!freshCloud && d.seq < Math.max(cloudSnap?.seq ?? 0, cloud?.seq ?? 0)) return
         cloudSnap = d
-        cloud = { ...cloud, ...d }
+        if (cloud) { cloud = { ...cloud, ...d }; freshCloud = false }
       }),
-      on('settings_changed', () => { refreshView(); if (visited.ai) void loadAudioTools(); loadSetup() }),
+      on('settings_changed', () => { refreshView(); if (visited.ai) void loadAudioTools(); loadSetup(); refreshSections() }),
+      on('map', (d: MapStatus) => {
+        if (sectionOwned.obsidian) return
+        if (!latestMap || (d.seq ?? 0) >= (latestMap.seq ?? 0)) latestMap = d
+        if (obsidianView && (d.seq ?? 0) >= (obsidianView.status.seq ?? 0)) obsidianView = { ...obsidianView, status: d }
+      }),
+      on('job', d => { if (!sectionOwned.obsidian && !d.current && d.last?.kind === 'refresh_map') void loadObsidian() }),
     ]
-    return () => { observer.disconnect(); clearInterval(updateTimer); offs.forEach(off => off()) }
+    return () => { if (window) delete window.beforeClose; cloudEpoch++; recRequest++; videoRequest++; browserRequest++; obsidianRequest++; observer.disconnect(); clearInterval(updateTimer); offs.forEach(off => off()) }
   })
 
   const KEYS: [string, string][] = [['openai', 'OpenAI'], ['anthropic', 'Anthropic'], ['freellmapi', 'FreeLLMAPI key']]
@@ -602,10 +759,14 @@
       const r = await api.put<View>('/api/settings', value ? { keys: { [k]: value } } : { clear_keys: [k] })
       // Only availability changed; the other saved baselines and drafts still belong to this form.
       v = { ...v, keys: r.keys, models: { ...v.models, providers: r.models.providers } }
-      keyIn[k] = ''; clear[k] = false; keyResult[k] = { saved: true }
+      keyIn[k] = ''; clear[k] = false; replacing[k] = false; keyResult[k] = { saved: true }
       refreshAskOptions()
     } catch (e) { keyResult[k] = { error: (e as Error).message } }
     finally { busy = false; keySaving = '' }
+  }
+  function cancelKeyReplacement(k: string) {
+    keyIn[k] = ''; clear[k] = false; replacing[k] = false; keyResult[k] = {}
+    void tick().then(() => document.getElementById(`replace-${k}`)?.focus())
   }
   // 1. Get a key, as in Turn on Wiskit: the provider's key page in the browser (POST /api/app/setup/link)
   async function openKeyPage(k: string) {
@@ -662,14 +823,32 @@
   })
   // Escape answers an open question first, and asks before unsaved edits are dropped; otherwise the window's
   // usual Escape closes it. Find's own Escape (clear the field) runs while it has text.
+  let askingClose = false
+  function beforeClose(): boolean {
+    if (!dirty.length) return true
+    if (!askingClose) {
+      askingClose = true
+      void confirmWin({ title: 'Close Settings', msg: `Not saved yet: ${dirtyNames.join(', ')}. Close without saving?`, detail: 'Cancel keeps your edits so you can Save them.', ok: 'Discard and close', danger: true })
+        .then(ok => { askingClose = false; if (ok) { discard(); close() } })
+    }
+    return false
+  }
   function escKey(e: KeyboardEvent) {
-    if (e.key !== 'Escape' || topWin()?.id !== 'settings') return
+    if (topWin()?.id !== 'settings') return
+    if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !(e.target as HTMLElement | null)?.closest('input, textarea, select, [contenteditable="true"]')) {
+      const field = document.getElementById(window.innerWidth <= 600 ? 'set-find-m' : 'set-find')
+      if (field) { e.preventDefault(); field.focus() }
+      return
+    }
+    if (e.key !== 'Escape') return
     if (find && (e.target as HTMLElement | null)?.closest?.('.set-find, .set-picker')) return
     const stop = () => { e.preventDefault(); e.stopPropagation() }
+    if (cur === 'backup' && backupForm) { stop(); cancelRequest = { serial: cancelRequest.serial + 1 }; return }
+    const replacement = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-key-replacement]')?.dataset.keyReplacement
+    if (replacement && replacing[replacement]) { stop(); cancelKeyReplacement(replacement); return }
     if (!dirty.length) return
     stop()
-    void confirmWin({ title: 'Close Settings', msg: `Not saved yet: ${dirtyNames.join(', ')}. Close without saving?`, detail: 'Cancel keeps your edits so you can Save them.', ok: 'Discard and close', danger: true })
-      .then(ok => { if (ok) close() })
+    close()
   }
   function tabKey(e: KeyboardEvent) {
     const i = TABS.findIndex(t => t.id === cur)
@@ -680,7 +859,7 @@
     else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') next = (i + TABS.length - 1) % TABS.length
     else return
     e.preventDefault()
-    selectTab(TABS[next].id)
+    if (!selectTab(TABS[next].id)) return
     document.getElementById(`set-t${cur}`)?.focus()
   }
 </script>
@@ -699,15 +878,29 @@
 
 <!-- one API key row of a group: the field, Save key, Get an API key, Remove key, then its state -->
 {#snippet keyField(k: string, label: string)}
-  <Label for={`k-${k}`}>{label}{#if k === 'openai'}{' '}<Hint as="span" tone="positive">(Recommended)</Hint>{/if}</Label>
-  <div>
+  {@const compact = (k === 'openai' || k === 'anthropic') && !!v?.keys[k] && !replacing[k]}
+  {#if compact}<Label as="span">{label}</Label>{:else}<Label for={`k-${k}`}>{label}{#if k === 'openai'}{' '}<Hint as="span" tone="positive">(Recommended)</Hint>{/if}</Label>{/if}
+  <div data-key-replacement={replacing[k] ? k : undefined}>
+    {#if compact}
+      <Status id={`k-${k}-st`} on={!clear[k]} aria-live="polite">{keyState(k)}</Status>
+      <div class="frow">
+        {#if clear[k]}
+          <Button size="sm" disabled={busy} onclick={() => saveKey(k)}>Confirm removal</Button><TextButton disabled={busy} onclick={() => { clear[k] = false; keyResult[k] = {} }}>Keep key</TextButton>
+        {:else}
+          <TextButton id={`replace-${k}`} disabled={busy} onclick={() => { replacing[k] = true; keyResult[k] = {}; void tick().then(() => document.getElementById(`k-${k}`)?.focus()) }}>Replace…</TextButton>
+          <TextButton disabled={busy} onclick={() => { clear[k] = true; keyResult[k] = {} }}>Remove key</TextButton>
+        {/if}
+      </div>
+    {:else}
     <div class="frow">
       <input class="inp" id={`k-${k}`} type="password" bind:value={keyIn[k]} disabled={busy && (!keySaving || keySaving === k)} oninput={() => { keyResult[k] = {} }} placeholder={v?.keys[k] ? 'Saved on this PC. Paste a new one to replace it' : k === 'local' ? 'Optional' : `${KEY_NAMES[k]} API key`} autocomplete="off" spellcheck="false" aria-describedby={`k-${k}-st`} />
       <Button variant={primaryKey === k ? 'pri' : 'default'} keep size="sm" disabled={busy || !keyEdited(k)} onclick={() => saveKey(k)}>{keySaving === k ? 'Saving…' : clear[k] && !keyIn[k]?.trim() ? 'Confirm removal' : `Save ${KEY_NAMES[k]} key`}</Button>
       {#if k === 'anthropic' || k === 'openai'}<Button size="sm" aria-label={`Get an ${KEY_NAMES[k]} API key`} onclick={() => openKeyPage(k)}>Get an API key</Button>{/if}
-      {#if v?.keys[k]}<TextButton disabled={busy && (!keySaving || keySaving === k)} aria-pressed={!!clear[k]} onclick={() => { clear[k] = !clear[k]; keyResult[k] = {} }}>{clear[k] ? 'Keep key' : 'Remove key'}</TextButton>{/if}
+      {#if replacing[k]}<TextButton disabled={busy} onclick={() => cancelKeyReplacement(k)}>Cancel</TextButton>
+      {:else if v?.keys[k]}<TextButton disabled={busy && (!keySaving || keySaving === k)} aria-pressed={!!clear[k]} onclick={() => { clear[k] = !clear[k]; keyResult[k] = {} }}>{clear[k] ? 'Keep key' : 'Remove key'}</TextButton>{/if}
     </div>
     <Status id={`k-${k}-st`} on={!!v?.keys[k] && !(clear[k] && !keyIn[k]?.trim())} aria-live="polite">{keyState(k)}</Status>
+    {/if}
     {#if k === 'local'}<Hint>Optional. Ollama accepts any word here, such as local.</Hint>{/if}
     {#if keyResult[k]?.error}<Hint tone="error" role="alert">{keyResult[k].error}</Hint>
     {:else if keyResult[k]?.saved}<Hint role="status">{v?.keys[k] ? 'Saved on this PC. Provider access has not been tested.' : 'Key removed from this PC.'}</Hint>{/if}
@@ -719,7 +912,7 @@
   {:else}<Hint role="status">Loading settings…</Hint>{/if}
 {/snippet}
 
-<svelte:window onkeydowncapture={escKey} />
+<svelte:window onkeydowncapture={escKey} onpointerdowncapture={e => { if (!overviewTaskNode?.contains(e.target as Node)) overviewTaskFocused = false }} />
 <div class="set-layout">
   <div class="set-nav">
     <div class="set-find">
@@ -731,7 +924,7 @@
       {#each TABS as t, i (t.id)}
         {#if i === 0 || TABS[i - 1].group !== t.group}<span class="set-group" aria-hidden="true">{t.group}</span>{/if}
         <button class="set-tab" class:dirty={dirty.includes(t.id)} type="button" role="tab" id={`set-t${t.id}`} aria-controls="set-panel" aria-selected={cur === t.id}
-          tabindex={cur === t.id ? 0 : -1} onclick={() => selectTab(t.id)} onkeydown={tabKey}>{t.label}{#if dirty.includes(t.id)}<span class="sr">, not saved yet</span>{/if}</button>
+          tabindex={cur === t.id ? 0 : -1} onclick={() => selectTab(t.id)} onkeydown={tabKey}>{t.label}{#if navNote(t.id)}<br /><small>{navNote(t.id)}</small>{/if}</button>
       {/each}
     </div>
   </div>
@@ -743,9 +936,9 @@
       </div>
       <div>
         <Label for="set-section">Section</Label>
-        <select class="inp" id="set-section" bind:value={cur} onchange={() => selectTab(cur)}>
+        <select class="inp" id="set-section" value={cur} onchange={e => { if (!selectTab((e.currentTarget as HTMLSelectElement).value as Page)) (e.currentTarget as HTMLSelectElement).value = cur }}>
           {#each GROUPS as g (g)}
-            <optgroup label={g}>{#each TABS.filter(t => t.group === g) as t (t.id)}<option value={t.id}>{t.label}{dirty.includes(t.id) ? ' (not saved)' : ''}</option>{/each}</optgroup>
+            <optgroup label={g}>{#each TABS.filter(t => t.group === g) as t (t.id)}<option value={t.id}>{t.label}{navNote(t.id) ? ` (${navNote(t.id)})` : ''}</option>{/each}</optgroup>
           {/each}
         </select>
       </div>
@@ -755,6 +948,7 @@
   <header class="set-heading">
     <h2 tabindex="-1" data-autofocus bind:this={heading}>{current.label}</h2>
     <Hint>{current.help}</Hint>
+    {#if navigationBlocked}<Hint role="status">{navigationBlocked}</Hint>{/if}
     {#if cur === 'ai'}<small class="set-save-note">Key edits save with their own key; the rest with Save.</small>{/if}
   </header>
 
@@ -762,19 +956,24 @@
     <!-- tab:overview -->
     <div hidden={cur !== 'overview'}><div class="set-calm">
       <GroupBox tone="summary" aria-label="Your setup at a glance">
+        <Label as="span">Updates</Label>
+        <div><Status state={updatesStatus.tone}>{updatesStatus.text}</Status><TextButton aria-label="Open Updates" onclick={() => jumpTo('set-s-app-updates')}>Open</TextButton></div>
         <Label as="span">Wiskit & AI</Label>
-        <div><Status state={wiskitOn ? 'done' : 'optional'}>{!v ? 'Checking…' : wiskitOn ? `${v.models.providers.find(p => p.id === wiskit.provider)?.label ?? wiskit.provider} key saved` : 'Needs a key'}</Status><TextButton aria-label="Open Wiskit & AI" onclick={() => openTab('ai')}>Open</TextButton></div>
+        <div><Status state={aiChoice.line.tone}>{aiChoice.line.text}</Status><TextButton aria-label="Open Wiskit & AI" onclick={() => jumpTo(aiChoice.id)}>Open</TextButton></div>
         <Label as="span">Imports & downloads</Label>
-        <div><Status on={onb.tools && onb.browser}>{onb.tools ? 'Video tools ready' : 'Video tools not set up'} · {onb.browser ? 'browser tools ready' : 'browser tools off'}</Status><TextButton aria-label="Open Imports & downloads" onclick={() => openTab('imports')}>Open</TextButton></div>
+        <div><Status state={importsChoice.line.tone}>{importsChoice.line.text}</Status><TextButton aria-label="Open Imports & downloads" onclick={() => jumpTo(importsChoice.id)}>Open</TextButton></div>
         <Label as="span">Obsidian & map</Label>
-        <div><Status state={setupv?.obsidian.mode === 'owner' ? 'done' : 'optional'}>{!setupv ? 'Checking…' : setupv.obsidian.mode === 'owner' ? 'Vault set up' : 'No vault yet'}</Status><TextButton aria-label="Open Obsidian & map" onclick={() => openTab('obsidian')}>Open</TextButton></div>
-        <Label as="span">Backup & phones</Label>
-        <div><Status state={cloud?.running ? 'done' : 'optional'}>{!cloud ? 'Checking…' : `${cloud.running ? 'Backup on' : cloud.signed_in ? 'Backup off' : 'Not connected'} · ${!recoveryReady ? 'recovery unchecked' : onb.recovery ? 'recovery set up' : 'recovery not set up'} · ${!cloud.licensed ? 'phone sync needs a PC update' : setupv?.phone_seen ? 'a phone has synced' : 'no phone yet'}`}</Status><TextButton aria-label="Open Backup & phones" onclick={() => openTab('backup')}>Open</TextButton></div>
+        <div><Status state={obsidianChoice.line.tone}>{obsidianChoice.line.text}</Status><TextButton aria-label="Open Obsidian & map" onclick={() => jumpTo(obsidianChoice.id)}>Open</TextButton></div>
+        {#each [{ id: 'account' as const, label: 'Google account', anchor: 'set-s-sync-account' }, { id: 'backup' as const, label: 'Backup', anchor: 'set-s-sync-uploads' }, { id: 'recovery' as const, label: 'Recovery', anchor: 'set-s-sync-recovery' }, { id: 'phones' as const, label: 'Phones', anchor: 'set-s-sync-pair' }] as row (row.id)}
+          <Label as="span">{row.label}</Label><div><Status state={backupView.rows[row.id].tone}>{backupView.rows[row.id].text}</Status><TextButton aria-label={`Open ${row.label}`} onclick={() => jumpTo(row.anchor)}>Open</TextButton></div>
+        {/each}
+        {#if dirty.length}<Label as="span">Not saved yet</Label><div><Hint>{dirtyNames.join(', ')}.</Hint></div>{/if}
       </GroupBox>
+      {#if backupView.task}<div bind:this={overviewTaskNode} onfocusin={() => { overviewTaskFocused = true }} onfocusout={e => { if (e.relatedTarget && !overviewTaskNode?.contains(e.relatedTarget as Node)) overviewTaskFocused = false }}><BackupTaskPanel task={backupView.task} source={cloud?.task ?? null} onaction={backupAction} allowPrimary={!dirty.length && !backupForm} /></div>{/if}
       <GroupBox active={!!nextStep} aria-label="Next step">
         <Label as="span">Next step</Label>
         <div><Hint>{nextStep ? nextStep.line : 'Everything you use is set up. AI, video tools and cloud connections stay optional.'}</Hint></div>
-        {#if nextStep}
+        {#if nextStep?.run && nextStep.key && !backupView.task?.primary}
           <span></span>
           <div><div class="frow"><Button variant="pri" size="sm" onclick={nextStep.run}>{nextStep.key}</Button></div></div>
         {/if}
@@ -786,7 +985,7 @@
       {#if appv}
         <GroupBox tone="summary" aria-label="General status">
           <Label as="span">Version</Label>
-          <div>{#if upd && !upd.error}<Status on={!upd.newer}>{upd.newer ? `${upd.latest} available` : `${upd.current} · up to date`}{appv.frozen ? '' : ' · from source'}</Status>{:else}<span>{appv.version}{appv.frozen ? '' : ' · from source'}</span>{/if}</div>
+          <div><Status state={updatesStatus.tone}>{updatesStatus.text}</Status></div>
           <Label as="span">Library</Label>
           <div><span>{appv.data_dir}{appv.data_dir_next !== appv.data_dir ? ` · from the next start: ${appv.data_dir_next}` : ''}</span></div>
           <Label as="span">Features</Label>
@@ -836,10 +1035,7 @@
             {#if updState === 'checking'}<Progress label="Checking for updates" />
             {:else if updState === 'downloading'}<Progress label="Downloading the update" pct={updPct} />
             {:else if updState === 'installing'}<Progress label="Starting the installer" />{/if}
-            {#if diagBusy}<Progress label="Exporting diagnostics" />{/if}
-            {#if diag}<Status on role="status">Saved: {diag}</Status>{/if}
             {#if updError}<Hint tone="error" role="alert">{updError}</Hint>{/if}
-            {#if diagError}<Hint tone="error" role="alert">{diagError}</Hint>{/if}
             <div class="frow">
               {#if upd?.newer && appv.frozen}
                 {#if updState === 'ready' || updState === 'installing'}
@@ -852,8 +1048,6 @@
               {:else}
                 <Button size="sm" disabled={['checking', 'downloading', 'installing'].includes(updState)} onclick={checkUpdate}>{updState === 'checking' ? 'Checking…' : 'Check for updates'}</Button>
               {/if}
-              <TextButton disabled={diagBusy} onclick={exportDiagnostics}>{diagBusy ? 'Exporting…' : 'Export diagnostics'}</TextButton><InfoTip label="What Export diagnostics does" text={'Export diagnostics writes a support zip with logs, the version and a settings summary. API keys, email addresses and your user folder are removed. The zip stays on this PC; nothing is sent.'} />
-              {#if diag}<TextButton onclick={revealDiag}>Open folder</TextButton>{/if}
             </div>
           </div>
         </GroupBox>
@@ -891,14 +1085,23 @@
           <Label as="span" id="set-s-app-about" tabindex={-1}>About</Label>
           <div>
             <Hint>Brainamon {appv.version} · {appv.frozen ? 'installed' : 'running from source'} · <a href="mailto:me@fredtomas.com">me@fredtomas.com</a></Hint>
-            {#if !appv.can_quit}<Hint>Quit is not available here: this server was not started by the Brainamon app.</Hint>{/if}
+          </div>
+          <Label as="span" id="set-s-app-diagnostics" tabindex={-1}>Diagnostics<InfoTip label="What Export diagnostics does" text={'Export diagnostics writes a support zip with logs, the version and a settings summary. API keys, email addresses and your user folder are removed. The zip stays on this PC; nothing is sent.'} /></Label>
+          <div>
+            {#if diagBusy}<Progress label="Exporting diagnostics" />{/if}
+            {#if diag}<Status on role="status">Saved: {diag}</Status>{/if}
+            {#if diagError}<Hint tone="error" role="alert">{diagError}</Hint>{/if}
+            <div class="frow"><TextButton disabled={diagBusy} onclick={exportDiagnostics}>{diagBusy ? 'Exporting…' : 'Export diagnostics'}</TextButton>{#if diag}<TextButton onclick={revealDiag}>Open folder</TextButton>{/if}</div>
           </div>
           <span></span>
           <div>
             <div class="frow">
-              <Button variant="danger" size="sm" disabled={appBusy || !appv.can_quit} onclick={quitApp}>{quitting ? 'Quitting…' : 'Quit completely'}</Button>
               <TextButton onclick={() => runCmd('about')}>Privacy and licenses…</TextButton>
             </div>
+            <Disclosure id="set-s-app-quit" tabindex={-1} summary="More: quit completely">
+              {#if !appv.can_quit}<Hint>Quit is not available here: this server was not started by the Brainamon app.</Hint>{/if}
+              <Button variant="danger" size="sm" disabled={appBusy || !appv.can_quit} onclick={quitApp}>{quitting ? 'Quitting…' : 'Quit completely'}</Button>
+            </Disclosure>
           </div>
         </GroupBox>
       {:else if appError}
@@ -915,6 +1118,7 @@
         {@const wiskitModel = v.models.models[wiskit.provider]?.find(m => m.id === wiskit.model)?.label ?? wiskit.model}
         {@const embedLabel = v.models.embed_providers.find(p => p.id === embed)?.label ?? embed}
         <GroupBox tone="summary" aria-label="AI status">
+          <Label as="span">Status</Label><div><Status state={aiChoice.line.tone}>{aiChoice.line.text}</Status></div>
           <Label as="span">Wiskit</Label>
           <div><Status on={wiskitOn}>{wiskitOn ? `${wiskitLabel} · ${wiskitModel}` : `Needs a ${wiskitLabel} key`}</Status></div>
           <Label as="span">Search</Label>
@@ -925,7 +1129,7 @@
 
         <GroupBox active={!v.keys.openai && !v.keys.anthropic} aria-label="API keys">
           <Label as="span" id="set-s-keys-main" tabindex={-1}>API keys</Label>
-          <div><Hint>{v.keys.openai || v.keys.anthropic ? 'Saved on this PC. Paste a new key to replace one.' : 'Paste a key. OpenAI covers Wiskit, search and transcription; Anthropic is optional, for Wiskit only.'}</Hint></div>
+          <div><Hint>{v.keys.openai || v.keys.anthropic ? 'Keys are saved on this PC; choose Replace to change one.' : 'Paste a key. OpenAI covers Wiskit, search and transcription; Anthropic is optional, for Wiskit only.'}</Hint></div>
           {@render keyField('openai', 'OpenAI')}
           {@render keyField('anthropic', 'Anthropic')}
           {#if linkError}<span></span><Hint tone="error" role="alert">Could not open the key page: {linkError}</Hint>{/if}
@@ -944,11 +1148,14 @@
             {#if refreshError}<Hint tone="error" role="alert">{refreshError}</Hint>{/if}
             <div class="frow">
               {#if !wiskitOn}<Button variant={keyTyped || dirty.length ? 'default' : 'pri'} size="sm" onclick={() => openWiskitKey(v?.models.jarvis.provider)}>Turn on Wiskit</Button>{/if}
-              <TextButton disabled={refreshing} onclick={refreshModels}>{refreshing ? 'Checking…' : 'Refresh model lists'}</TextButton>
             </div>
-            <Hint>{foundLine}</Hint>
+            <Disclosure id="set-s-model-refresh" tabindex={-1} summary="More: refresh the model lists">
+              <Hint>{foundLine}</Hint><TextButton disabled={refreshing} onclick={refreshModels}>{refreshing ? 'Checking…' : 'Refresh model lists'}</TextButton>
+            </Disclosure>
           </div>
+        </GroupBox>
           {#if cc?.available}
+          <GroupBox aria-label="Claude Code">
             <Label as="span" id="set-s-cc-program" tabindex={-1}>Claude Code</Label>
             <div>
               <Status on={ccState.on} role="status">{ccState.line}</Status>
@@ -989,8 +1196,8 @@
               {#if ccError && ccErrorAt === 'set'}<Hint tone="error" role="alert">{ccError}</Hint>{/if}
               {#if appv && !appv.frozen}<Disclosure summary="Use Brainamon from Claude Code (MCP)"><Hint>Configure your MCP client to run <code>python -m mcp_local</code> from your Brainamon checkout. Read tools work with Brainamon closed. Job tools (describe, categorize, thumbnails) need Brainamon running, and a job or a note starts only after your click here, unless Run requests without asking is on. The server is local only, has no delete tool, and every write happens inside the app. Full steps: <code>docs/development/MCP.md</code>.</Hint></Disclosure>{/if}
             </div>
+          </GroupBox>
           {/if}
-        </GroupBox>
 
         <GroupBox aria-label="Search">
           <Label for="m-emb" id="set-s-models-search" tabindex={-1}>Search</Label>
@@ -1033,16 +1240,22 @@
     <div hidden={cur !== 'imports'}>{#if visited.imports}<div class="set-calm">
       <GroupBox tone="summary" aria-label="Imports status">
         <Label as="span">Video tools</Label>
-        <div><Status on={onb.tools}>{onb.tools ? 'Ready' : 'Not set up'}</Status></div>
+        <div><Status state={videoStatus.tone}>{videoStatus.text}</Status></div>
         <Label as="span">Browser tools</Label>
-        <div><Status on={onb.browser}>{onb.browser ? 'Ready' : 'Not set up'}</Status></div>
+        <div><Status state={browserStatus.tone}>{browserStatus.text}</Status></div>
         <Label as="span">Site logins</Label>
         <div><span>{logins === null ? 'Checking…' : logins ? `${logins} saved` : 'None'}</span></div>
         <Label as="span">Watch folder</Label>
         <div><span>{dl.scrape_watch_dir || 'Downloads'}</span></div>
       </GroupBox>
-      <ToolsSettings titleId="set-s-tools-video" lead={!addingLogin} onready={ready => { onb.tools = ready }} />
-      <div class="set-anchor" id="set-s-tools-browser" tabindex="-1"><ImportSetup section="browser" lead={onb.tools && !addingLogin} onready={ready => { onb.browser = ready }} /></div>
+      {#if !sectionOwned.video && videoPending}<Hint role="status">Checking video tools…</Hint>
+      {:else if !sectionOwned.video && videoError}<div class="set-anchor" id="set-s-tools-video" tabindex="-1"><Hint tone="error" role="alert">{videoError}</Hint><Button size="sm" onclick={() => loadVideo()}>Retry video tools</Button></div>
+      {:else}<ToolsSettings titleId="set-s-tools-video" lead={!addingLogin} initial={videoTools ?? undefined} initialInstall={videoInstall ?? undefined} onstatus={receiveVideo} onready={ready => { onb.tools = ready }} />{/if}
+      <div class="set-anchor" id="set-s-tools-browser" tabindex="-1">
+        {#if !sectionOwned.browser && browserPending}<Hint role="status">Checking browser tools…</Hint>
+        {:else if !sectionOwned.browser && browserError}<Hint tone="error" role="alert">{browserError}</Hint><Button size="sm" onclick={() => loadBrowser()}>Retry browser tools</Button>
+        {:else}<ImportSetup section="browser" moreId="set-s-browser-more" lead={onb.tools && !addingLogin} initial={browserRuntime ?? undefined} onstatus={receiveBrowser} onready={ready => { onb.browser = ready }} />{/if}
+      </div>
       <SiteSessions titleId="set-s-dl-logins" oncount={n => { logins = n }} onadding={on => { addingLogin = on }} />
       {#if v && (dl.yt_dlp_cookies || dl.instagram_cookies)}
         <Hint>This library still points at cookie files from an earlier version. Save a protected copy above, or press Forget saved access to stop using them. The files themselves are not deleted.</Hint>
@@ -1059,7 +1272,9 @@
     <!-- /tab:imports -->
     <!-- tab:obsidian -->
     <div hidden={cur !== 'obsidian'}>{#if visited.obsidian}
-      <ObsidianSettings sync={vaultSummary}>
+      {#if !sectionOwned.obsidian && obsidianPending}<Hint role="status">Checking the vault and knowledge map…</Hint>
+      {:else if !sectionOwned.obsidian && obsidianError}<Hint tone="error" role="alert">{obsidianError}</Hint><Button size="sm" onclick={() => loadObsidian()}>Retry vault and map</Button>
+      {:else}<ObsidianSettings sync={{ on: syncStatus.kind === 'done', text: syncStatus.text, tone: syncStatus.tone }} initial={obsidianView ?? undefined} onstatus={receiveObsidian}>
         {#snippet phoneSync()}
           <GroupBox active={!!cloud && (cloud.vault_state === 'starting' || cloud.vault_state === 'syncing' || cloud.vault_state === 'brake')} aria-label="Vault sync with phone">
             <Label as="span" id="set-s-sync-vault" tabindex={-1}>Vault sync with phone<InfoTip label="Conflicts, deletions and skipped files"><span>In a Brainamon vault, the pages Brainamon generates go from PC to phone only; your own files, and anything you add inside the Brainamon folder, go both ways. A classic export's Content Manager folder only goes from PC to phone. If both sides change a file, the PC copy stays and a separate "phone conflict" copy is added. Deleted files go to .trash. Files over 50 MB, plugins, themes and workspace files are skipped.</span><span>A Brainamon vault syncs only while every phone runs the current app; the phone's Settings &gt; Obsidian shows its name. Drop forgets a phone you no longer use. Vault sync can stay off.</span></InfoTip></Label>
@@ -1073,6 +1288,7 @@
                 {#if !cloud.vault.folder}<Hint>Syncs the vault with the Android app on the Google account in Backup & phones. Choose a vault above first.</Hint>
                 {:else}<Hint>Syncs {cloud.vault.folder} with the Android app on the Google account in Backup & phones.{cloud.vault_last ? ` Last round ${when(cloud.vault_last)}${cloud.vault_summary ? ` · ${cloud.vault_summary}` : ''}.` : ''}</Hint>{/if}
                 {#if !cloud.configured && !cloud.signed_in}<Hint>Needs Google sign-in, which is not set up in this build.</Hint>{/if}
+                {#if vaultGate}<Hint id="set-vault-gate" role="status">{vaultGate}</Hint>{/if}
                 {#if !cloud.vault_devices}<Hint>The phone check is incomplete. Remembered phones can still be dropped.</Hint>{/if}
                 {#if cloud.vault_devices?.length || cloud.vault_members.length}
                   <ItemList items={cloud.vault_devices ?? cloud.vault_members.map(device => ({ device, ok: false }))} key={d => d.device} label="Phones">
@@ -1095,38 +1311,26 @@
                     {#if cloud.state === 'signing-in' && cloud.vault_state === 'starting'}
                       <Button size="sm" disabled={cloudBusy} onclick={() => cloudDo('/api/cloud/cancel-sign-in', undefined, { state: 'off', vault_state: 'off', error: '' }, 'vault')}>Cancel sign-in</Button>
                     {/if}
-                    <Button size="sm" disabled={!cloud.licensed || cloudBusy || vaultMoving || cloudMoving || (!cloud.configured && !cloud.signed_in)} onclick={() => cloudDo('/api/cloud/vault/connect', undefined, { vault_state: 'starting', vault_reason: '', ...(cloud?.signed_in ? {} : { state: 'signing-in' as const, error: '' }) }, 'vault')}>Sync my Obsidian vault</Button>
+                    <Button size="sm" disabled={!!vaultGate || !cloud.licensed || cloudBusy || vaultMoving || cloudMoving || (!cloud.configured && !cloud.signed_in)} aria-describedby={vaultGate ? 'set-vault-gate' : undefined} onclick={() => cloudDo('/api/cloud/vault/connect', undefined, { vault_state: 'starting', vault_reason: '', ...(cloud?.signed_in ? {} : { state: 'signing-in' as const, error: '' }) }, 'vault')}>Sync my Obsidian vault</Button>
                   {/if}
                 </div>
               </div>
             {:else if cloudError}
-              <div><Hint tone="error" role="alert">Could not load the cloud settings: {cloudError}</Hint><div class="frow"><Button size="sm" onclick={loadCloud}>Retry</Button></div></div>
+              <div><Hint tone="error" role="alert">Could not load the cloud settings: {cloudError}</Hint><div class="frow"><Button size="sm" onclick={() => loadCloud()}>Retry</Button></div></div>
             {:else}
               <div><Hint role="status">Loading the cloud settings…</Hint></div>
             {/if}
           </GroupBox>
         {/snippet}
-      </ObsidianSettings>
+      </ObsidianSettings>{/if}
     {/if}</div>
     <!-- /tab:obsidian -->
     <!-- tab:backup -->
     <div hidden={cur !== 'backup'}>{#if visited.backup}
       {#if cloud}
-        <BackupPhonesPage {cloud} {sizes} err={cloudErr} run={cloudDo} setOption={cloudOpt} reload={loadCloud} onrecover={openRecover} onrecoverprimary={primary => { recoverPrimary = primary }} onform={open => { backupForm = open }} />
-        <div class="set-calm">
-          <Disclosure summary="Phone page address">
-            <div class="fg">
-              <Label for="c-purl">Phone page</Label>
-              <div>
-                <input class="inp" id="c-purl" name="phone_url" type="url" autocomplete="off" spellcheck="false" value={cloud.phone_url} onchange={e => cloudOpt({ phone_url: (e.currentTarget as HTMLInputElement).value }, 'page')} />
-                {#if cloudErr?.where === 'page'}<Hint tone="error" role="alert">{cloudErr.msg}</Hint>{/if}
-                <Hint>Where the phone opens Brainamon. During development, reach this PC over USB with adb reverse tcp:18765 tcp:18765.</Hint>
-              </div>
-            </div>
-          </Disclosure>
-        </div>
+        <BackupPhonesPage {cloud} {sizes} {rec} {recError} {recPending} {sectionRequest} {actionRequest} {cancelRequest} onmodel={receiveBackupModel} loadRec={loadRecoveryStatus} err={cloudErr} run={cloudDo} setOption={cloudOpt} reload={loadCloud} onrecover={openRecover} onform={open => { backupForm = open; if (!open) navigationBlocked = '' }} />
       {:else if cloudError}
-        <div class="set-calm"><Hint tone="error" role="alert">Could not load the cloud settings: {cloudError}</Hint><div class="frow"><Button size="sm" onclick={loadCloud}>Retry</Button></div></div>
+        <div class="set-calm"><Hint tone="error" role="alert">Could not load the cloud settings: {cloudError}</Hint><div class="frow"><Button size="sm" onclick={() => loadCloud()}>Retry</Button></div></div>
       {:else}
         <div class="set-calm"><Hint role="status">Loading the cloud settings…</Hint></div>
       {/if}
@@ -1138,7 +1342,6 @@
 </div>
 <WinFoot>
   {#snippet start()}
-    {#if cur === 'backup' && !recoverPrimary}<TextButton onclick={openRecover}>Recover a library…</TextButton>{/if}
     {#if dirty.length}<small class="set-foot-note" role="status">Not saved yet: {dirtyNames.join(', ')}.</small>
     {/if}
     {#if fromSetup}<Button disabled={busy} onclick={backToSetup}>Back to Setup</Button>{/if}

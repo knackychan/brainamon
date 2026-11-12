@@ -35,6 +35,7 @@ PHONES_UNCHECKED = ('Vault sync has not checked your phones yet. Wait for its fi
                     'Settings > Backup & phones.')
 MANIFEST_MISSING = ("The vault's manifest is missing or unreadable, so vault sync waits. Use Reclaim generated pages "
                     'in Settings > Obsidian.')
+VAULT_CHANGED = 'The selected vault changed. Review the current vault and confirm the action again.'
 
 
 def phone_old(devices) -> str:
@@ -116,7 +117,8 @@ class MapService:
         self.st = {'seq': 0, 'state': 'idle', 'pending': False, 'error': '', 'busy': '', 'waiting': False,
                    'last_maintenance': 0, 'last_render': 0, 'written': 0, 'removed': 0,
                    'adopted': [], 'unlisted': 0, 'other_library': False, 'missing': False, 'leftovers': 0,
-                   'topics': 0, 'stale': 0, 'pending_summaries': 0}
+                   'topics': 0, 'stale': 0, 'pending_summaries': 0,
+                   'pending_reason': '', 'progress': None}
 
     # ── state ────────────────────────────────────────────────────────────────
     def status(self) -> dict:
@@ -196,19 +198,22 @@ class MapService:
     def run_pass(self) -> bool:
         """Maintenance (when a map exists) then the render (when an owner vault is set), each with a
         non-blocking lock. False: something stayed pending (retried by the thread)."""
+        self._set(error='', pending_reason='', progress=None, state='reading')
         inputs = self.writer.read(self._read_inputs)
         ok = True
         if self.cache_path.exists():
             ok = self._maintain(inputs) and ok
         if inputs['owner'] and inputs['vault']:
             ok = self._render(inputs) and ok
-        self._set(pending=not ok, state='idle' if ok else 'pending', error='' if ok else self.st['error'])
+        self._set(pending=not ok, state='idle' if ok else 'pending', progress=None, error='' if ok else self.st['error'])
         return ok
 
     def _maintain(self, inputs: dict) -> bool:
         if not MAP_LOCK.acquire(blocking=False):
+            self._set(pending_reason='map')
             return False
         try:
+            self._set(state='maintaining')
             cache = map_engine.load(self.cache_path)
             if cache['clusters']:
                 map_engine.assign(cache, inputs['idx'], inputs['fps'], inputs['live_ids'])
@@ -234,12 +239,13 @@ class MapService:
     def _render(self, inputs: dict, vault=None) -> bool:
         vault = Path(vault or inputs['vault'])
         if not VAULT_LOCK.acquire(blocking=False):
+            self._set(pending_reason='vault')
             return False
         try:
             if not vault.is_dir():
                 self._set(missing=True, other_library=False)            # moved or renamed by hand: never recreated
                 return True
-            self._set(state='rendering')
+            self._set(state='preparing', progress=None)
             man = owner_vault.read_manifest(vault)
             if man is None:
                 if inputs['vault_sync']:
@@ -251,7 +257,16 @@ class MapService:
                 return True
             files = self._files(inputs, man)
             owner_vault.rejoin_released(vault, man, files)
-            res = owner_vault.apply_render(vault, man, files, track_removed=inputs['vault_sync'])
+            last_progress = 0.0
+
+            def progress(stage, done, total):
+                nonlocal last_progress
+                now = time.monotonic()
+                if done == 0 or done == total or now - last_progress >= 0.2:
+                    self._set(state=stage, progress={'done': done, 'total': total})
+                    last_progress = now
+
+            res = owner_vault.apply_render(vault, man, files, track_removed=inputs['vault_sync'], progress=progress)
             first_open = self.writer.read(lambda db: db.get_setting(S_FIRST_OPEN, ''))
             if first_open == 'pending' and (vault / '.obsidian' / 'workspace.json').is_file():
                 self.writer.call(lambda db: db.set_setting(S_FIRST_OPEN, ''))   # Obsidian opened it
@@ -260,6 +275,7 @@ class MapService:
                       leftovers=sum(1 for r in man.get('released') or {} if (vault / r).exists()))
             return True
         finally:
+            self._set(state='idle', progress=None)
             VAULT_LOCK.release()
 
     # ── user actions (decisions 1, 4, 8, 10): wait for the vault lock, cancellable ──
@@ -387,19 +403,21 @@ class MapService:
         self.poke(now=True)
         return n
 
-    def _owner(self) -> tuple:
+    def _owner(self, expected_vault: str | None = None) -> tuple:
         vault, mode, library_id = self.writer.read(lambda db: (db.get_setting(S_VAULT, '') or '', db.get_setting(S_MODE, ''),
                                                                 db.get_setting('library_id', '')))
         if mode != 'owner' or not vault:
             raise owner_vault.VaultError('No Brainamon vault is set up.')
+        if expected_vault is not None and Path(expected_vault) != Path(vault):
+            raise owner_vault.VaultError(VAULT_CHANGED)
         return Path(vault), library_id
 
-    def reset(self, rel: str) -> None:
+    def reset(self, rel: str, expected_vault: str | None = None) -> None:
         """Reset to generated: one adopted page gets its generated content back (or goes when its source is gone)."""
-        vault, library_id = self._owner()
         self._begin('reset')
         try:
             def go():
+                vault, library_id = self._owner(expected_vault)
                 man = owner_vault.read_manifest(vault)
                 if man is None or man['library_id'] != library_id:
                     raise owner_vault.VaultError('This vault has no manifest of this library.')
@@ -412,12 +430,12 @@ class MapService:
         finally:
             self._end()
 
-    def reclaim(self) -> int:
+    def reclaim(self, expected_vault: str | None = None) -> int:
         """Reclaim generated pages: adopt Brainamon's unlisted files into the manifest (a new one when lost)."""
-        vault, library_id = self._owner()
         self._begin('reclaim')
         try:
             def go():
+                vault, library_id = self._owner(expected_vault)
                 man = owner_vault.read_manifest(vault) or owner_vault.new_manifest(library_id, self.vault_id_for(vault) or None)
                 if man['library_id'] != library_id:
                     raise owner_vault.VaultError(owner_vault.OTHER_LIBRARY)
@@ -431,12 +449,12 @@ class MapService:
         self.run_pass()                  # synchronously: the tab's unlisted count is right when the request answers
         return n
 
-    def take_over(self) -> None:
+    def take_over(self, expected_vault: str | None = None) -> None:
         """Take over this vault (decision 4, amended): matches refreshed, edits kept, leftovers kept."""
-        vault, library_id = self._owner()
         self._begin('takeover')
         try:
             def go():
+                vault, library_id = self._owner(expected_vault)
                 man = owner_vault.read_manifest(vault)
                 if man is None:
                     raise owner_vault.VaultError('This vault has no manifest to take over.')
@@ -447,13 +465,13 @@ class MapService:
             self._end()
         self.run_pass()                  # synchronously: the tab's counts are right when the request answers
 
-    def remove_leftovers(self) -> int:
+    def remove_leftovers(self, expected_vault: str | None = None) -> int:
         """Remove leftovers (the user's confirmed click): earlier pages kept at take-over, deleted when still
         unchanged."""
-        vault, library_id = self._owner()
         self._begin('remove')
         try:
             def go():
+                vault, library_id = self._owner(expected_vault)
                 man = owner_vault.read_manifest(vault)
                 if man is None or man['library_id'] != library_id:
                     raise owner_vault.VaultError('This vault has no manifest of this library.')

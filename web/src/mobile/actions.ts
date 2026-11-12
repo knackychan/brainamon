@@ -2,12 +2,12 @@
 // status card on More and the Status group of Settings > Backup & phones press it. Without a PC, Back up to Google Drive is
 // Connect, Set up recovery opens the Recovery group's form, and Check recovery file… opens the file chooser at once (inside
 // the tap) and shows its outcome in that group (recovery.svelte.ts).
-import { connectLabel } from './settings-words'
+import { connectLabel, phoneWords } from './settings-words'
 import type { ActionId, PhoneAction } from './mirror/phone-state'
 import { openBackupBox } from './onboard.svelte'
 import { checkFile, rec } from './recovery.svelte'
 import { changeAccount, connectDrive, pairFrom, phone, refresh, syncNow } from './state.svelte'
-import { setSyncPaused } from './network.svelte'
+import { network, setSyncPaused } from './network.svelte'
 
 const GOOGLE: ActionId[] = ['connect', 'sign-in-again', 'change-account', 'back-up']
 const RECOVERY: ActionId[] = ['set-up-recovery', 'check-file']
@@ -15,7 +15,7 @@ const RECOVERY: ActionId[] = ['set-up-recovery', 'check-file']
 export async function runPhoneAction(id: ActionId): Promise<void> {
   switch (id) {
     case 'manage-backup': location.hash = '#/backup/manage'; return
-    case 'resume-sync': setSyncPaused(false); return
+    case 'resume-sync': await setSyncPaused(network.pauseFailed); return
     case 'scan': return pairFrom()
     case 'connect': case 'sign-in-again': case 'back-up': return connectDrive()
     case 'change-account': return changeAccount()
@@ -27,5 +27,5 @@ export async function runPhoneAction(id: ActionId): Promise<void> {
 }
 
 // while its flow runs the key waits, and a Google key says which step it is in (as More's own keys do)
-export const actionBusy = (id: ActionId) => GOOGLE.includes(id) ? phone.connecting : (RECOVERY.includes(id) && (rec.busy || phone.connecting)) || phone.refreshing || (!!phone.sync && !phone.sync.end)
-export const actionLabel = (a: PhoneAction) => GOOGLE.includes(a.id) && phone.connecting ? connectLabel(phone.connectStep) : a.label
+export const actionBusy = (id: ActionId) => GOOGLE.includes(id) ? phone.connecting : (id === 'resume-sync' && network.pausePending) || (RECOVERY.includes(id) && (rec.busy || phone.connecting)) || phone.refreshing || (!!phone.sync && !phone.sync.end)
+export const actionLabel = (a: PhoneAction) => a.id === 'resume-sync' && (network.pausePending || network.pauseFailed) ? phoneWords(network.pausePending ? 'settings.sync.savingPolicy' : 'common.retry') : GOOGLE.includes(a.id) && phone.connecting ? connectLabel(phone.connectStep) : a.label

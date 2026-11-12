@@ -8,6 +8,8 @@ const here = (p) => fileURLToPath(new URL(p, import.meta.url))
 const dist = here('../../web/dist/'), cards = here('../../design/card-designs/'), www = here('../www/')
 const CARDS = ['cards.css', 'engine.js', 'full-art-v2/fa2.css', 'full-art-v2/fa2.js']   // what web/mobile.html links
 
+await import('../../web/scripts/build-sync.mjs')
+
 if (!existsSync(dist + 'mobile.html')) {
   console.error('web/dist/mobile.html is missing: run `npm run build` in web/ first.')
   process.exit(1)
@@ -19,10 +21,9 @@ for (const name of readdirSync(dist)) {
   cpSync(dist + name, www + name, { recursive: true })
 }
 for (const f of CARDS) cpSync(cards + f, www + 'cards/' + f)
-// The phone site reader's page scripts (projects/phone-site-reader): assets of the Contributor (debug) build
-// only, copied one by one by name (scrapers/ also holds personal scrape CSVs, which must never reach an APK).
-// packaging/payload_guard.py --release-mobile fails a release bundle that carries any of them.
-const sitesIn = here('../../scrapers/sites/'), sitesOut = here('../android/app/src/debug/assets/sites/')
+// Copy named page scripts only: scrapers/ also holds personal scrape CSVs.
+const sitesIn = here('../../scrapers/sites/'), sitesOut = here('../android/app/src/main/assets/sites/')
+rmSync(here('../android/app/src/debug/assets/sites/'), { recursive: true, force: true })
 rmSync(sitesOut, { recursive: true, force: true })
 mkdirSync(sitesOut, { recursive: true })
 if (existsSync(sitesIn)) for (const name of readdirSync(sitesIn)) if (/^[a-z_]+\.js$/.test(name)) cpSync(sitesIn + name, sitesOut + name)

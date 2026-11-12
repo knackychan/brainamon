@@ -163,6 +163,7 @@ class JobManager:
         self._closing = False
         self._seq = 0
         self._thread: threading.Thread | None = None
+        self.on_prepare: list = []         # fn(kind_key) after Writer prepare completes
         self.on_finish: list = []          # fn(kind_key, job) after every job (e.g. drop the smart-search index)
         self.request: dict | None = None   # the one job asked for from outside, waiting for Fred (ask / answer)
         self._req_seq = secrets.randbelow(2 ** 31)   # a fresh start per process: a card from before a restart never matches
@@ -190,6 +191,8 @@ class JobManager:
         kind = self._kind(kind_key)
         probe = Job(id=0, kind=kind.key, label=kind.label, ids=list(ids), force=force, opts=opts or {})
         items = self.writer.call(lambda db: kind.prepare(db, probe))
+        for fn in self.on_prepare:
+            fn(kind.key)
         return {'kind': kind.key, 'label': kind.label, 'count': len(items), 'asked': len(ids),
                 'force': force, **{k: v for k, v in probe.ctx.items() if k in ('provider', 'model', 'key', 'plan')}}
 
@@ -217,6 +220,8 @@ class JobManager:
             self.current = job            # reserve the line before the slow prepare
         try:
             job.items = self.writer.call(lambda db: kind.prepare(db, job))
+            for fn in self.on_prepare:
+                fn(kind.key)
         except Exception:
             with self._lock:
                 self.current = None
@@ -245,6 +250,8 @@ class JobManager:
         """Add items to the running job of the same kind (its options stay as they were)."""
         probe = Job(id=0, kind=kind.key, label=kind.label, ids=[int(i) for i in ids], force=force, opts=job.opts)
         items = self.writer.call(lambda db: kind.prepare(db, probe))
+        for fn in self.on_prepare:
+            fn(kind.key)
         with self._lock:
             new = [it for it in items if it['id'] not in job.status]
             for it in new:

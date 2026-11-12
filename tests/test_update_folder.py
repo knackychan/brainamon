@@ -132,6 +132,46 @@ class UpdateFolderTest(Library):
         return owner['device']
 
     # ── A20 ─────────────────────────────────────────────────────────────────
+    def test_update_journal_remains_accepted_after_task_write_failure(self):
+        stage = self.root / (update_folder.STAGE_PREFIX + 'synthetic')
+        stage.mkdir()
+        self.svc.intents.add(intents.UPDATE, {'stage': str(stage), 'hash': 'synthetic', 'manifest_id': 'manifest'})
+        self.svc.intents.update(intents.UPDATE, stage='downloaded')
+        with mock.patch('server.recovery.restore.preview', return_value={'hash': 'synthetic', 'manifest_id': 'manifest'}), \
+             mock.patch.object(self.svc.intents, 'update', side_effect=OSError('synthetic task write failure')):
+            result = self.service.update_activate()
+        self.assertTrue(result['restart'])
+        self.assertTrue(self.service._activation_pending())
+        self.assertTrue(self.service.status()['restart_required'])
+        self.assertEqual(self.svc.intents.find(intents.UPDATE)['stage'], 'downloaded')
+
+    def test_update_journal_remains_accepted_after_pause_clear_failure(self):
+        stage = self.root / (update_folder.STAGE_PREFIX + 'synthetic')
+        stage.mkdir()
+        self.svc.intents.add(intents.UPDATE, {'stage': str(stage), 'hash': 'synthetic', 'manifest_id': 'manifest'})
+        self.svc.intents.update(intents.UPDATE, stage='downloaded')
+        self.writer.call(lambda db: db.set_setting('cloud_upload', 'on'))
+        self.svc._set(on=True, state='idle')
+        with mock.patch.object(type(self.svc), 'running', new_callable=mock.PropertyMock, return_value=True):
+            token = self.svc.turn_off('recovery')
+        self.svc.intents.add(intents.RESET)
+        before = self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', '')))
+        with mock.patch('server.recovery.restore.preview', return_value={'hash': 'synthetic', 'manifest_id': 'manifest'}), \
+             mock.patch.object(self.svc, 'clear_pause', side_effect=OSError('synthetic Writer failure')):
+            result = self.service.update_activate()
+        self.assertTrue(result['restart'])
+        self.assertTrue(self.service._activation_pending())
+        self.assertTrue(self.service.status()['restart_required'])
+        self.assertEqual(self.svc.intents.find(intents.UPDATE)['stage'], 'swap')
+        with mock.patch.object(self.svc.recovery, 'guard', side_effect=AssertionError('recovery gate bypassed')), \
+             mock.patch.object(self.svc, 'ensure_running') as ensure:
+            with self.assertRaises(drive_client.DriveError) as caught:
+                self.svc.resume(token)
+        self.assertEqual(self.svc.classified(caught.exception)['action'], 'none')
+        ensure.assert_not_called()
+        self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_paused_at', ''), db.get_setting('cloud_pause_restore', ''))), before)
+        self.assertFalse(self.svc.status()['on'])
+
     def test_a20_only_the_difference_comes_down_one_restart_makes_this_pc_the_backup_pc_and_nothing_goes_up_twice(self):
         temp = self.temporary_pc()
         mine = self.published()
@@ -161,7 +201,14 @@ class UpdateFolderTest(Library):
         self.assertIn('notes/temp-11.md', get)
 
         calls = len(self.drive.calls)
-        self.download_update()
+        update = self.download_update()
+        staged = Writer(Path(update['payload']['stage']) / 'content_manager.db')
+        staged.start()
+        try:
+            staged.call(lambda db: (db.set_setting('cloud_paused_at', '123'), db.set_setting('cloud_pause_restore', 'old')))
+        finally:
+            staged.stop()
+        self.writer.call(lambda db: (db.set_setting('cloud_paused_at', '123'), db.set_setting('cloud_pause_restore', 'old')))
         unchanged_ids = {e['id'] for n, e in man['files'].items() if n not in changed}
         downloaded = {c.split(' ', 1)[1] for c in self.drive.calls[calls:] if c.startswith('download ')}
         self.assertFalse(downloaded & unchanged_ids, 'an unchanged file was downloaded')
@@ -170,6 +217,7 @@ class UpdateFolderTest(Library):
         self.assertEqual(self.drive.files, before)
 
         self.restart()
+        self.assertEqual(self.writer.read(lambda db: (db.get_setting('cloud_paused_at'), db.get_setting('cloud_pause_restore'))), ('', ''))
         self.assertEqual(self.drive.files, before)                         # the swap writes no cloud file
         self.svc._run_intents(threading.Event())                           # the claim, before any upload
         self.assertIsNone(self.svc.intents.find(intents.UPDATE))

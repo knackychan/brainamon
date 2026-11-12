@@ -27,21 +27,23 @@
 //   the same recovery code, or this one after a reset). The AI settings come bundled (PHONE_AI).
 import { CHANGE_PREFIX, MirrorKey, MirrorKeyError, nearest, readPack, readVectors, type Vectors } from '../mirror/crypto'
 import { Drive, NeedsSignIn } from '../mirror/drive'
-import { SyncPaused, syncPaused } from '../network.svelte'
+import { SyncPaused, syncPaused, network } from '../network.svelte'
+import { nativeCache, nativeReceipt, nativeRound, nativeSyncError, nativeSyncPolicy, nativeSyncSupported, seedNativeVault, stageNative } from '../sync/native.svelte'
+import { transferId, syncOwner } from '../sync/transfer'
 import { Changes, type ChangeEntry } from '../mirror/changes'
 import { deviceId, dropToken, forgetKeys, GOOGLE_DRIVE, requeueWaiting, takeKeys, takeRequeue, token, tokenProject, type Pairing } from '../mirror/pairing'
 import { diagnoseNoLibrary, isLibraryName, projectOf, type NoLibraryWhy } from '../mirror/diagnose'
-import { CONTROL_LOGICALS } from '../mirror/license'
+import { CONTROL_LOGICALS, LicenseRequired } from '../mirror/license'
 import { cleanLink } from '../links'
 import { libraryIds } from './find'
 import { canvasWire, declineCanvasPending, files, items as stored, kv, putCanvasPending } from '../store'
 import { baseKey, CHANGED, contextCheck, identity, version } from '../canvas/compose'
 import type { CanvasDraftContext } from './types'
-import { deviceName, isApp, linkGet, linkImage, vaultFs } from '../native'
+import { deviceName, isApp, linkGet, linkImage, secretsSaved, vaultFs } from '../native'
 import { linkInfo } from '../linkinfo'
 import { importChanges, type Saved } from '../imports'
 import { PIC_HINT_KEEP_MS, postPicOk, picturePlan, postKey, type PicHint } from '../sites'
-import { pcStatus, removeLegacy, vaultRound, type PcStatus, type Result as VaultResult } from '../vault/sync'
+import { pcStatus, removeLegacy, vaultRound, type PcStatus, type Env as VaultEnv, type Result as VaultResult } from '../vault/sync'
 import { beginCloudChange, CloudCancelled, cloudCheckpoint, cloudRevision, cloudStopped, endCloudChange, reconnecting, stopCloudWork } from '../mirror/gate'
 import { finishReconnect, recordPublish } from '../mirror/phone-reconnect'
 import { resendPending } from '../mirror/resend'
@@ -54,7 +56,7 @@ import { AiError, askAgent, CLOUD, complete, embed, listModels, pdfText, transcr
 import { ATTACH_PROMPT, decodeText, DIGEST_PROMPT, mediaType, PDF_PROMPT, stamp, withSection, type Picked } from '../files'
 import { ASK, DEEP, PHONE_AI, SYNTH } from '../ai/prompts'
 import { appendLanguage } from '../ai/language'
-import { lang, type Lang } from '../../lib/i18n/index'
+import { lang, t, type Key, type Lang } from '../../lib/i18n/index'
 import { CATEGORIZE_TOKENS, categorizePrompt, DESCRIBE_TOKENS, describePrompt, hasDescribeContent, mergeTags, NO_CONTENT, parseCategory, type ItemText } from '../ai/describe'
 import { auxRows, deepTurn, describeCall, Librarian, noteSections, PROFILE_FILE, profileOf, readAux, systemPrompt, topicTexts, type AuxVectors, type Cluster, type Resource } from '../ai/deep'
 import { applyCanvasLocal, canonJson, canvasHash, canvasView, checkCanvas, normalizeCanvas, type CanvasDocument, type RawCanvasProposal, type CanvasProposal } from '../ai/canvas'
@@ -181,6 +183,11 @@ export class MirrorSource implements MobileSource {
   private vec: { v: string; data: Vectors } | null = null
   private inflight = new Map<string, Promise<unknown>>()
   private flushT = 0
+  private nativeScope = ''
+  private nativeInit: Promise<boolean> | null = null
+  private staging: Promise<void> | null = null
+  private stageAgain = false
+  private nativeDirty = false
   private looked = 0                           // the last read of the manifest's rows (rows, watch)
   pcMirror = false                             // solo: Drive also holds a PC's mirror (pair with it instead)
   round: { at: number; ok: boolean; error: string } | null = null   // solo: the last backup round (send, then read back), null none yet
@@ -226,12 +233,21 @@ export class MirrorSource implements MobileSource {
   }
 
   // ── the manifest and the files ─────────────────────────────────────────────
-  async loadManifest(): Promise<Manifest> {
+  loadManifest(): Promise<Manifest> { return this.once('manifest', () => this.readManifest()) }
+  private async readManifest(): Promise<Manifest> {
     if (this.solo) return (this.manifest = SOLO_MANIFEST)
     const key = await this.key
-    const f = await this.drive.find(await key.name('manifest.json'))
-    if (!f) throw await this.noLibrary(key)
-    const m = await key.openJSON<Manifest>('manifest.json', await this.drive.get(f.id))
+    let m: Manifest
+    if (await this.nativeReady()) {
+      await this.runNative()
+      const snapshot = await nativeCache<Manifest>(this.nativeScope, 'manifest')
+      if (!snapshot) throw new NoMirror('The library has not finished downloading.')
+      m = snapshot
+    } else {
+      const f = await this.drive.find(await key.name('manifest.json'))
+      if (!f) throw await this.noLibrary(key)
+      m = await key.openJSON<Manifest>('manifest.json', await this.drive.get(f.id))
+    }
     this.drive.checkpoint()
     // Sent changes still overlay the cached copy; retain them until a compatible refresh.
     if ((m.reader ?? 1) > READER) { tooOld.fn(); throw new PhoneTooOld() }
@@ -296,6 +312,10 @@ export class MirrorSource implements MobileSource {
     const hit = await files.get(logical)
     if (hit && typeof hit.data === 'string' && (!f || hit.v === f.v)) return hit.data
     return this.once(logical, async () => {
+      if (await this.nativeReady()) {
+        const copy = await nativeCache<{ v: string; data: string }>(this.nativeScope, `file/${logical}/${f?.v}`)
+        if (copy && copy.v === f?.v) { await files.set(logical, copy); return copy.data }
+      }
       const raw = await this.fetchFile(logical)
       const text = logical.endsWith('.gz') ? await gunzip(raw) : new TextDecoder().decode(raw)
       this.drive.checkpoint()
@@ -311,7 +331,10 @@ export class MirrorSource implements MobileSource {
   // ── the light copy ─────────────────────────────────────────────────────────
   health() { return this.loadManifest().then(m => ({ ok: true, items: m.items })) }
 
-  async rows(step?: (key: 'read' | 'lib', note?: string) => void, progress?: (done: number, total: number) => void) {
+  rows(step?: (key: 'read' | 'lib', note?: string) => void, progress?: (done: number, total: number) => void) {
+    return this.once('rows', () => this.readRows(step, progress))
+  }
+  private async readRows(step?: (key: 'read' | 'lib', note?: string) => void, progress?: (done: number, total: number) => void) {
     const revision = cloudRevision()
     await this.ready()
     if (cloudStopped()) return { rows: this.rowsNow as Row[], cats: this.cats() }
@@ -363,12 +386,57 @@ export class MirrorSource implements MobileSource {
     return { rows: this.rowsNow as Row[], cats: this.cats() }
   }
 
+  // A scheduled native snapshot is local content too, including on an offline reopening.
+  async localCopy() {
+    await this.ready()
+    if (!await this.nativeReady()) return null
+    if (this.solo) {
+      await this.stagePending()                  // recognize this phone's envelopes before importing other phones
+      const names = await nativeCache<string[]>(this.nativeScope, 'solo-list') ?? []
+      this.pcMirror = await nativeCache<boolean>(this.nativeScope, 'pc-mirror') ?? false
+      const known = this.changes.known()
+      for (const name of names) {
+        if (known.has(name) || this.mine.has(name)) continue
+        const doc = await nativeCache<{ name: string; doc: { at?: number; changes?: Omit<ChangeEntry, 'id' | 'state'>[] } }>(this.nativeScope, 'solo/' + name)
+        if (doc) await this.changes.merge([doc])
+      }
+      this.setRows()
+    } else {
+      const m = await nativeCache<Manifest>(this.nativeScope, 'manifest')
+      if (!m) return null
+      this.manifest = m
+      this.meta = JSON.parse(await this.cached('library/meta.json'))
+      const parts: MRow[][] = []
+      for (const name of this.names('library/part-')) {
+        parts.push(JSON.parse(await this.cached(name)))
+        await new Promise(resolve => setTimeout(resolve, 0))
+      }
+      this.base = parts.flat().map(r => ({ ...r, nd: r.nd ?? 0 }))
+      this.setRows()
+    }
+    return { rows: this.rowsNow as Row[], cats: this.cats() }
+  }
+
   // solo: the change files in Drive this phone does not hold yet, merged into its journal; returns how
   // many changes came in. Files sealed with another key (a PC's pairing) are skipped.
   private async readBack(): Promise<number> {
     beginCloudChange()
     try {
       const key = await this.key
+      if (await this.nativeReady()) {
+        await this.runNative()
+        const names = await nativeCache<string[]>(this.nativeScope, 'solo-list') ?? []
+        this.pcMirror = await nativeCache<boolean>(this.nativeScope, 'pc-mirror') ?? false
+        const known = this.changes.known()
+        const docs = []
+        for (const name of names) {
+          if (known.has(name) || this.mine.has(name)) continue
+          const doc = await nativeCache<{ name: string; doc: { at?: number; changes?: Omit<ChangeEntry, 'id' | 'state'>[] } }>(this.nativeScope, 'solo/' + name)
+          if (doc) docs.push(doc)
+        }
+        this.drive.checkpoint()
+        return await this.changes.merge(docs)
+      }
       const all = await this.drive.list()
       this.pcMirror = all.some(f => isLibraryName(f.name))
       const prefix = await key.soloPrefix()
@@ -855,7 +923,61 @@ export class MirrorSource implements MobileSource {
     return { ids, dups: r.dups + duplicates }
   }
 
+  private async nativeReady(): Promise<boolean> {
+    if (!isApp || this.pair.d || !this.pair.g || this.pair.backupTask || cloudStopped()) return false
+    if (!await nativeSyncSupported()) return false
+    return this.nativeInit ??= (async () => {
+      await secretsSaved()
+      this.nativeScope = await syncOwner(this.pair, deviceId())
+      const opts = await kv.get<{ on: boolean; uri: string }>('vault')
+      await nativeSyncPolicy({ enabled: true, blocked: false, paused: network.manualPause, wifiOnly: network.wifiOnly,
+        device: deviceId(), vault: !!opts?.on && !this.solo, uri: opts?.uri ?? '' })
+      const state = await kv.get('vault-state')
+      if (state) await seedNativeVault(this.nativeScope, state)
+      return true
+    })().catch(e => { this.nativeInit = null; throw e })
+  }
+
+  private async stagePending(): Promise<void> {
+    if (!await this.nativeReady() || this.resendPending) return
+    this.stageAgain = true
+    if (this.staging) return this.staging
+    this.staging = (async () => {
+      while (this.stageAgain) {
+        this.stageAgain = false
+        await this.changes.prepareUploads(async doc => {
+          const id = await transferId(doc)
+          const prior = await nativeReceipt(this.nativeScope, id)
+          if (!prior.name) {
+            const [name, data] = await (await this.key).sealChange(doc, this.solo)
+            const receipt = await stageNative(this.nativeScope, id, name, toB64(data))
+            this.mine.add(receipt.name)
+            this.nativeDirty ||= !receipt.remote
+          } else { this.mine.add(prior.name); this.nativeDirty ||= !prior.remote }
+        }, deviceId(), this.canvasSync, !this.solo)
+      }
+    })().finally(() => { this.staging = null })
+    return this.staging
+  }
+
+  private async runNative() {
+    await this.stagePending()
+    const dirty = this.nativeDirty
+    this.nativeDirty = false
+    // New pending uploads still wait for their receipts, including edits staged during a vault round.
+    try { await nativeRound(false, false, dirty, undefined, !dirty); network.licenseLocked = false; network.licenseKind = ''; network.licenseProblem = '' }
+    catch (e) {
+      this.nativeDirty ||= dirty
+      const code = (e as { code?: string }).code
+      if (code === 'auth') { dropToken(); throw new NeedsSignIn((e as Error).message) }
+      if (code === 'access') { network.licenseLocked = true; network.licenseKind = 'invalid'; throw new LicenseRequired((e as Error).message) }
+      if (code === 'update') { tooOld.fn(); throw new PhoneTooOld() }
+      throw e
+    }
+  }
+
   flushSoon(ms = 1500) {
+    void this.stagePending().catch(e => { this.lastError = (e as Error).message })
     clearTimeout(this.flushT)
     this.flushT = window.setTimeout(() => { this.flush().catch(() => { /* stays queued */ }) }, ms)
   }
@@ -863,6 +985,24 @@ export class MirrorSource implements MobileSource {
   // send what is queued as one change file
   async flush(): Promise<number> {
     if (cloudStopped()) throw new CloudCancelled()
+    if (await this.nativeReady()) {
+      await this.stagePending()
+      if (network.manualPause || !network.online || (network.wifiOnly && !['wifi', 'ethernet'].includes(network.type))) throw new SyncPaused()
+      beginCloudChange()
+      try {
+        await this.runNative()
+        const n = await this.changes.flush(async doc => {
+          const receipt = await nativeReceipt(this.nativeScope, await transferId(doc))
+          if (!receipt.name || !receipt.remote) throw nativeSyncError('retry')
+          this.drive.checkpoint()
+          this.mine.add(receipt.name)
+          if (this.solo) await recordPublish(await this.key, receipt.name, receipt.remote, doc as { at: number; changes: unknown[] })
+          return receipt.name
+        }, deviceId(), this.canvasSync, !this.solo)
+        this.lastError = ''; return n
+      } catch (e) { this.lastError = (e as Error).message; throw e }
+      finally { endCloudChange() }
+    }
     if (syncPaused()) throw new SyncPaused()
     if (!navigator.onLine || !token(this.pair)) return 0
     // paired again (mirror/resend.ts): first a fresh manifest says what the PC has (it throws while there is none)
@@ -1128,9 +1268,26 @@ export class MirrorSource implements MobileSource {
   }
 
   // vault sync (Android app): the folder in kv 'vault' against the PC's list, through this pairing's Drive and key
-  async syncVault(force = false, progress?: (step: string, done: number, total: number, overall?: number, display?: string) => void, signal?: { aborted: boolean }, words?: (key: string, params?: Record<string, unknown>) => string): Promise<VaultResult> {
+  async syncVault(force = false, progress?: VaultEnv['progress'], signal?: { aborted: boolean }, words?: (key: string, params?: Record<string, unknown>) => string): Promise<VaultResult> {
     const opts = await kv.get<{ on: boolean; uri: string; name: string }>('vault')
     if (!opts?.on || !opts.uri) return { state: 'idle', reason: 'Vault sync is off.', summary: '' }
+    if (await this.nativeReady()) {
+      await nativeSyncPolicy({ vault: opts.on, uri: opts.uri })
+      if (signal?.aborted) return { state: 'stopped', reason: '', summary: '' }
+      await nativeRound(force, false, this.nativeDirty, s => {
+        const step = s.phase === 'vault' ? s.vaultStep : undefined
+        progress?.(step?.key ?? 'Syncing the vault', step?.done ?? 0, step?.total ?? 0, undefined,
+          words?.(step?.key ?? 'backup.vault.starting'), s.vaultFiles ?? undefined)
+      })
+      this.nativeDirty = false
+      const result = await nativeCache<VaultResult & { display?: Partial<Record<'reason' | 'summary', { key: string; params?: Record<string, unknown> }>> }>(this.nativeScope, 'vault-result')
+      if (!result) return { state: 'waiting', reason: '', summary: '' }
+      for (const field of ['reason', 'summary'] as const) {
+        const message = result.display?.[field]
+        if (message) result[field] = words ? words(message.key, message.params) : t(message.key as Key, message.params)
+      }
+      return result
+    }
     const fs = vaultFs(opts.uri)
     await this.drive.authorize()
     return vaultRound({
@@ -1148,6 +1305,7 @@ export class MirrorSource implements MobileSource {
   async vaultRemoveLegacy(): Promise<number> {
     const opts = await kv.get<{ on: boolean; uri: string; name: string }>('vault')
     if (!opts?.uri) return 0
+    if (await this.nativeReady()) { await nativeRound(false, true); return await nativeCache<number>(this.nativeScope, 'vault-legacy-moved') ?? 0 }
     return removeLegacy({ fs: vaultFs(opts.uri) })
   }
 
@@ -1475,7 +1633,13 @@ export class MirrorSource implements MobileSource {
   private keys(): Partial<Record<Provider, string>> { return this.pair.ai || {} }
   // the AI keys a new pairing left in Drive (a note for the More screen, or '')
   takeKeys(): Promise<string> { return takeKeys(this.pair, this.drive, this.words) }
-  forgetKeys() { forgetKeys(this.pair) }
+  async forgetKeys() {
+    const next = { ...this.pair }
+    forgetKeys(next)
+    await secretsSaved()
+    this.pair.ai = next.ai
+    delete this.pair.t; delete this.pair.tx
+  }
   private endpoints(): Endpoints { return { ...CLOUD, ...(this.pair.x || {}) } }
   private settings(): AiSettings | null { return this.meta?.ai ?? (this.solo ? PHONE_AI as AiSettings : null) }
   private noKey(words?: ToolWords) { return this.solo ? say(words, 'processing.error.soloKey', {}, SOLO_NO_KEY) : say(words, 'processing.error.pairedKey', {}, NO_KEY) }
@@ -1503,14 +1667,15 @@ export class MirrorSource implements MobileSource {
     try { localStorage.setItem(AI_PICK, JSON.stringify({ provider, model })) } catch { /* private window */ }
   }
   // ai_client.discover_cloud_models, from the phone with its own keys: one line per provider for More
-  async refreshModels(words?: ToolWords): Promise<string> {
+  async refreshModels(words?: ToolWords, signal?: AbortSignal): Promise<string> {
     const keys = this.keys(), ep = this.endpoints(), retired = this.settings()?.retired ?? []
     let found: Partial<Record<Provider, { id: string; label: string }[]>> = {}
     try { found = JSON.parse(localStorage.getItem(AI_FOUND) || '{}') } catch { /* none */ }
     const lines = await Promise.all((['anthropic', 'openai'] as Provider[]).filter(p => keys[p]).map(async p => {
-      try { found[p] = await listModels(ep, p, keys[p]!, retired); return say(words, 'settings.keys.modelCount', { provider: PROVIDER_LABEL[p], n: found[p]!.length }, `${PROVIDER_LABEL[p]}: ${found[p]!.length} models`) }
+      try { found[p] = await listModels(ep, p, keys[p]!, retired, signal); return say(words, 'settings.keys.modelCount', { provider: PROVIDER_LABEL[p], n: found[p]!.length }, `${PROVIDER_LABEL[p]}: ${found[p]!.length} models`) }
       catch (e) { return say(words, 'settings.keys.modelError', { provider: PROVIDER_LABEL[p], detail: (e as Error).message }, `${PROVIDER_LABEL[p]}: ${(e as Error).message}`) }
     }))
+    signal?.throwIfAborted()
     try { localStorage.setItem(AI_FOUND, JSON.stringify(found)) } catch { /* private window */ }
     return lines.join(' · ')
   }
@@ -2052,9 +2217,8 @@ export class MirrorSource implements MobileSource {
           if (!token(this.pair) || !(await this.readBack())) return
           this.setRows()
         } else {
-          const m = await this.loadManifest()
-          if (m.published === before) { if (m.published === this.full) this.recordSoon(); return }
           await this.rows()
+          if (this.manifest?.published === before) return
         }
         const ids = this.rowsNow.filter(r => old.get(r.id) !== JSON.stringify(r)).map(r => r.id)
         for (const id of old.keys()) if (!this.byId.has(id)) ids.push(id)

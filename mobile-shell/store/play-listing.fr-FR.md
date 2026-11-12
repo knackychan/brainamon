@@ -52,9 +52,11 @@ synchronisation Google Drive facultative stocke le contenu chiffré dans votre
 compte Google ; les appareils associés détiennent les clés de déchiffrement, et
 Google peut voir la taille des fichiers et les métadonnées de mise à jour. Lisez
 le contenu enregistré hors ligne. L’IA, les aperçus et la synchronisation nécessitent
-une connexion réseau. Les téléchargements, le scraping et l’analyse vidéo se font
-sous Windows ; le mode PC direct nécessite un PC en marche et accessible. Les
-aperçus et la disponibilité des médias dépendent du site source.
+une connexion réseau. Les téléchargements et l’analyse vidéo se font sous Windows ;
+le mode PC direct nécessite un PC en marche et accessible. Sur Android, Importer
+des publications enregistrées peut lire les listes Facebook, Instagram et Threads
+dans une fenêtre du site après connexion. L’import TikTok sera bientôt disponible.
+Les aperçus et les médias dépendent du site source.
 
 Toutes les fonctions actuelles sont disponibles sans paiement ni reçu. Le soutien
 facultatif aide le développeur à poursuivre son travail. Lisez la licence du code

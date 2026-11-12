@@ -9,7 +9,7 @@ import type { NoteRow, OpenNote } from '../../lib/knowledge.svelte'
 import type { MyNote } from '../../lib/notes.svelte'
 import type { Stamp } from '../../lib/note-format'
 import type { CanvasDoc, CanvasRow } from '../../lib/canvas.svelte'
-import type { PcStatus, Result as VaultResult } from '../vault/sync'
+import type { PcStatus, Env as VaultEnv, Result as VaultResult } from '../vault/sync'
 import type { Picked } from '../files'
 import type { Preview } from '../../lib/capture'
 import type { CanvasPreview } from '../../lib/job-requests'
@@ -111,7 +111,7 @@ export interface MobileSource {
   // transcribed (digest) or described; a PDF or text file is read. The desktop reads it on the PC
   // (POST /api/filing/read); the mirror with the phone's own key
   readFile(f: Picked, how: 'digest' | 'describe'): Promise<string>
-  syncVault?(force?: boolean, progress?: (step: string, done: number, total: number, overall?: number, display?: string) => void, signal?: { aborted: boolean }, words?: (key: string, params?: Record<string, unknown>) => string): Promise<VaultResult>
+  syncVault?(force?: boolean, progress?: VaultEnv['progress'], signal?: { aborted: boolean }, words?: (key: string, params?: Record<string, unknown>) => string): Promise<VaultResult>
   vaultPc?(): Promise<PcStatus | null>
   // Remove old Brainamon pages (spec 1b decision 3): what is left of the classic Content Manager/ folder goes
   // to .trash/, on the user's click; how many files moved

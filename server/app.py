@@ -123,6 +123,7 @@ def create_app(data_dir: Path | None = None, port: int | None = None,
             return True
         app.state.sync = SyncService(writer, hub, data_dir, cloud_dir, tints=lambda: dict(app.state.tints.tints),
                                      on_new_links=phone_links, on_synth=phone_synth)
+        app.state.jobs.on_prepare.append(lambda key: app.state.sync.refresh_vault_folder() if key == 'export_obsidian' else None)
         app.state.jobs.on_finish.append(lambda key, job: app.state.sync.poke())
         app.state.sync.boot()
         app.state.maps = MapService(writer, hub, data_dir,

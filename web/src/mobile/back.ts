@@ -17,7 +17,8 @@ export function parentHash(r: Route, base: 'lib' | 'cv' = 'lib'): string {
   if (r.chats) return '#/jv'
   if (r.recover) return '#/backup'
   if (r.imp || r.save) return '#/cap'
-  if (r.backup) return '#/more'
+  if (r.manage) return '#/backup'
+  if (r.group || r.backup) return '#/more'
   if (r.tab === 'notes' || r.tab === 'jv' || r.tab === 'cap') return base === 'cv' ? '#/canvas' : '#/lib'
   return r.tab === 'lib' ? '' : r.tab === 'more' && moreFrom ? moreFrom : '#/lib'
 }

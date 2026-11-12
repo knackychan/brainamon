@@ -10,6 +10,8 @@
   import T from '../../lib/i18n/T.svelte'
   import { captureText } from '../capture-words.ts'
   import { importGuides } from '../import-words.ts'
+  import MRow from '../ui/MRow.svelte'
+  import MToggle from '../ui/MToggle.svelte'
   import MBox from '../ui/MBox.svelte'
   import MButton from '../ui/MButton.svelte'
   import MDisclosure from '../ui/MDisclosure.svelte'
@@ -28,6 +30,7 @@
   type RunInfo = { at: number; complete: boolean; line: string; bad: boolean }
   type Review = Awaited<ReturnType<typeof readPending>> & { res: SiteRunResult | null }
   const REASONS: Record<string, string> = {
+    'unsave-failed': 'Removal could not be confirmed; scanning stopped. Review and import the saved results before retrying.',
     end: 'read to the end of the list', known: 'stopped at posts already in the library',
     stop: 'stopped', cap: 'stopped at 20,000 saved items',
     empty: 'Brainamon could not read this page; the site may have changed',
@@ -40,13 +43,14 @@
   let busy = $state<SiteId | ''>(''), confirm = $state<SiteId | ''>('')
   let errors = $state<Record<string, string>>({}), messages = $state<Record<string, string>>({})
   let runs = $state.raw<Record<string, RunInfo>>({})
+  let unsave = $state<Partial<Record<SiteId, boolean>>>({})
   let reviews = $state.raw<Partial<Record<SiteId, Review>>>({})
   let note = $state.raw<{ site: SiteId; full: boolean } | null>(null)
-  const reader = (site: SiteId) => !!RULES[site] && !!st?.sites[site]?.reader
+  const reader = (site: SiteId) => site !== 'tiktok' && !!RULES[site] && !!st?.sites[site]?.reader
   let consent = false
   const noteSeen = () => { try { return consent || !!localStorage.getItem(NOTE) } catch { return consent } }
   const reason = (res: SiteRunResult | null) => res ? REASONS[res.reason] ?? REASONS.stop : 'from a read that was cut off'
-  const badRun = (res: SiteRunResult | null) => res?.reason === 'empty' || res?.reason === 'failure'
+  const badRun = (res: SiteRunResult | null) => res?.reason === 'empty' || res?.reason === 'failure' || res?.reason === 'unsave-failed'
   const count = (n: number | undefined) => Number.isSafeInteger(n) && n! > 0 ? Math.min(n!, 1_000_000) : 0
 
   onMount(() => {
@@ -105,7 +109,7 @@
   }
 
   async function scan(site: SiteId, full = false) {
-    if (busy || importing || note || !st?.supported || st.sites[site]?.forgetting) return
+    if (site === 'tiktok' || busy || importing || note || !st?.supported || st.sites[site]?.forgetting) return
     errors[site] = ''; messages[site] = ''; confirm = ''
     if (!reader(site)) { await signIn(site); return }
     if (!mirrorSource || !canImport) return
@@ -118,7 +122,7 @@
       if (pending) await reviewRun(site, reviews[site]?.res ?? null)
       else {
         const known = await knownHashes(site, phone.rows.map(r => r.url))
-        const res = await siteOpen(site, known, full, !!runs[site]?.complete)
+        const res = await siteOpen(site, known, full, !!runs[site]?.complete, (site === 'facebook' || site === 'instagram') && !!unsave[site])
         if (res.reason === 'unsupported') errors[site] = WEBVIEW
         else await reviewRun(site, res)
       }
@@ -169,11 +173,15 @@
       <MBox as="section" class="m-import-fold" aria-label={s.name}>
         <MButton class="m-import-toggle" aria-expanded={open === s.id} aria-controls={`${id}-${s.id}`} onclick={() => (open = open === s.id ? '' : s.id)}>
           <span>{@render glyph(s.id)}{s.name}</span>
+          {#if s.id === 'tiktok'}<span class="m-import-soon">{t('imports.tiktok.comingSoon')}</span>{/if}
           <span class="m-import-chevron" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m4 6 4 4 4-4" /></svg></span>
         </MButton>
         <div id={`${id}-${s.id}`} class="m-import-reveal" class:open={open === s.id} aria-hidden={open !== s.id} inert={open !== s.id}>
           <div class="m-import-clip">
             <div class="m-import-platform m-import-expanded">
+              {#if s.id === 'tiktok'}
+                <MHint as="p">{t('imports.tiktok.comingSoon')}</MHint>
+              {:else}
               <div class="m-import-actions compact" role="group" aria-label={t('imports.actions', { name: s.name })}>
                 <div class="m-import-action">
                   <MButton as="a" href={s.page} target="_blank" rel="noopener noreferrer" aria-label={t('imports.export.request')}
@@ -225,11 +233,16 @@
                   </MInfo></div>
                 </div>
               </div>
+              {#if reader(s.id) && (s.id === 'facebook' || s.id === 'instagram')}
+                <MRow wrap title={t('imports.unsave.label')} desc={t('imports.unsave.help')}>
+                  <MToggle label={t('imports.unsave.label')} on={!!unsave[s.id]} disabled={!!busy || importing || !!note || !!reviews[s.id] || !!x?.pending} onchange={on => (unsave[s.id] = on)} />
+                </MRow>
+              {/if}
               <span id={`${id}-${s.id}-reader`} class="m-sr">{reader(s.id) ? 'Scan saved posts, then review and import.' : st?.supported ? t('imports.scan.signInOnly') : t('imports.scan.browserUnavailable')}</span>
               <span id={`${id}-${s.id}-file`} class="m-sr">{!s.file ? t('imports.file.unavailable') : canImport ? t('imports.file.cap') : t('imports.file.needsLibraryShort')}</span>
               {#if messages[s.id]}<MHint as="p" role="status">{messages[s.id]}</MHint>{/if}
               {#if note?.site === s.id}
-                <MHint as="p" role="status">Uses your login on this phone. Sites may check accounts that read fast. Brainamon only reads, slowly; you can stop anytime. Imported links follow your library's existing sync settings.</MHint>
+                <MHint as="p" role="status">Uses your login on this phone. Sites may check accounts that read fast. Brainamon reads slowly; you can stop anytime. Unsave is optional and asks for confirmation before scanning. Imported links follow your library's existing sync settings.</MHint>
                 <div class="m-row"><MButton variant="pri" size="sm" onclick={accept}>Continue</MButton><MTextButton onclick={() => (note = null)}>Cancel</MTextButton></div>
               {/if}
               {#if reviews[s.id]}
@@ -255,6 +268,7 @@
                 {#if importing}<MHint as="p" role="status">{t('imports.file.importing')}</MHint>{/if}
                 {#if error}<MHint as="p" tone="error" role="alert">{error}</MHint>{/if}
                 {#if done}<MHint as="p" role="status">{done}</MHint>{/if}
+              {/if}
               {/if}
             </div>
           </div>

@@ -72,8 +72,10 @@ Fetching previews, captions, pages or media contacts the requested sites and the
 hosts, transmitting the requested URL and normal connection information such as your IP address
 and request headers. Chosen site credentials are used only through the relevant access flow.
 Some previews are requested after a link is pasted/shared. Source sites control their own logs,
-availability and terms. Browser scraping and video download/analysis run on the PC; a Drive mirror
-is file sync and does not provide a live PC jobs connection.
+availability and terms. The phone's Import saved posts can read Facebook, Instagram
+and Threads saved lists in a site window using a login kept on that phone; you review
+the results before importing. Desktop browser scraping and video download/analysis
+run on the PC; a Drive mirror is file sync and does not provide a live PC jobs connection.
 
 Installed Windows builds check GitHub daily and download updates automatically by
 default; Settings > App can turn this off. Manual checks/downloads remain available.

@@ -2,6 +2,9 @@ import type { messages as English } from '../en/common.ts'
 import type { Localized } from '../en/index.ts'
 
 export const messages = {
+  "common.showMore": "顯示更多",
+  "common.showLess": "顯示較少",
+  "common.step": "第 {n} 步，共 {total} 步",
   "common.error.canvasProposalObject": "請提供畫布提案物件。",
   "common.error.canvasFrames": "手機媒體庫無法取得擷取的影格。請使用縮圖或文字。",
   "common.error.canvasFields": "畫布新增欄位無效。",

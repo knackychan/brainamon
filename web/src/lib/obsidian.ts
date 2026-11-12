@@ -35,7 +35,7 @@ export const COPY = {
   takeOver: 'Take over this vault',
   takeOverKeep: 'Take over, keep them',
   takeOverRemove: 'Take over and remove them',
-  takeOverHint: 'Take over makes this library the vault’s owner. Pages that match your library are refreshed, pages you edited stay yours, and the others stay as they are until you remove them. Your own files are never touched.',
+  takeOverHint: 'Take over makes this library the vaultâ€™s owner. Pages that match your library are refreshed, pages you edited stay yours, and the others stay as they are until you remove them. Your own files are never touched.',
   removeLeftovers: 'Remove leftovers',
   removeDetail: 'Only pages Brainamon generated and nobody changed since are deleted. Pages you edited and your own files stay.',
   reclaimDetail: 'Brainamon then updates the pages it can prove it generated, and removes those whose item is gone. Your own files stay yours.',
@@ -86,10 +86,18 @@ export function useAnyway(n: number): string {
 }
 
 export interface MapStatus {
+  pending_reason?: 'map' | 'vault' | ''; progress?: { done: number; total: number } | null
   seq?: number; state: string; pending: boolean; error: string; busy: string; waiting: boolean
   last_maintenance: number; last_render: number; written: number; removed: number
   adopted: string[]; unlisted: number; other_library: boolean; missing?: boolean; leftovers?: number
   topics: number; stale: number; pending_summaries: number
+}
+
+export interface ObsidianView {
+  vault: string; mode: 'owner' | ''; exists: boolean; is_vault: boolean; legacy: boolean; default_location: string; earlier_vault: boolean
+  pictures: boolean; first_open: 'pending' | ''; vault_sync_on: boolean; installed: boolean
+  map: { topics: number; stale: number; pending: number; model_changed: boolean; coverage: { indexed: number; total: number; low: boolean } }
+  status: MapStatus
 }
 
 export function leftoversText(n: number): string {
@@ -107,12 +115,24 @@ export function unlistedText(n: number): string {
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
 
 export function statusLine(st: MapStatus): string {
-  if (st.busy && st.waiting) return 'Waiting for the vault to be free.'
   if (st.missing) return 'Vault not found. It was moved, renamed or deleted.'
   if (st.other_library) return 'This vault belongs to another Brainamon library.'
-  if (st.pending) return 'Render pending: the vault is busy, Brainamon retries every minute.'
-  if (st.error) return `Stopped on an error: ${st.error}`
-  if (!st.last_render) return 'Not rendered yet.'
+  if (st.error) return `Could not update the Obsidian notes: ${st.error}${st.pending ? ' Brainamon retries every minute.' : ''}`
+  if (st.busy && st.waiting) return 'Waiting for the vault to be free.'
+  if (st.state === 'reading') return 'Reading your library for the Obsidian update…'
+  if (st.state === 'maintaining') return 'Updating the knowledge map…'
+  if (st.state === 'preparing' || st.state === 'rendering') return 'Preparing Obsidian notes from your library…'
+  if (st.state === 'checking' || st.state === 'saving') {
+    const action = st.state === 'checking' ? 'Checking existing Obsidian files' : 'Saving changes to Obsidian files'
+    return st.progress ? `${action}: ${st.progress.done} of ${st.progress.total}.` : `${action}…`
+  }
+  if (st.pending) {
+    const reason = st.pending_reason === 'vault' ? 'Another Brainamon task is using the vault. '
+      : st.pending_reason === 'map' ? 'Another Brainamon task is updating the knowledge map. ' : ''
+    return `Obsidian notes update waiting. ${reason}Brainamon retries every minute.`
+  }
+  if (st.busy) return ({ setup: 'Setting up the Obsidian vault…', move: 'Moving the Obsidian vault…', reset: 'Restoring the generated note…', reclaim: 'Reclaiming generated notes…', takeover: 'Connecting this library to the vault…', remove: 'Removing leftover generated notes…' } as Record<string, string>)[st.busy] ?? 'Updating the Obsidian vault…'
+  if (!st.last_render) return 'Obsidian notes have not been created yet.'
   const parts = [`Last refresh ${new Date(st.last_render).toLocaleString()}`]
   if (st.stale) parts.push(`${plural(st.stale, 'topic')} out of date`)
   if (st.adopted.length) parts.push(`${plural(st.adopted.length, 'adopted page')}`)

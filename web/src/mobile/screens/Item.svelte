@@ -34,7 +34,7 @@
   let full = $state<FullItem | null>(null)
   const aiDescription = $derived(full?.ai_desc?.trim() === NO_CONTENT ? '' : full?.ai_desc || '')
   let report = $state(''), transcript = $state(''), err = $state('')
-  let tab = $state<'rep' | 'tr' | 'info'>('rep')
+  let tab = $state<'desc' | 'rep' | 'tr' | 'info'>('desc')
   let related = $state<Row[]>([])
   let onPhone = $state(false), saved = $state(false), saving = $state(''), saveFrac = $state(0), keeping = $state(false)
   // an Error's own text is shown as the detail of a sentence in the page language (English: the detail alone, as today);
@@ -61,8 +61,8 @@
   const infoText = $derived(madeHere
     ? solo ? t('item.phone.infoSolo') : t('item.phone.infoPaired')
     : onMirror ? t('item.phone.infoMirror') : t('item.phone.infoDirect'))
-  const tabs = $derived<[string, string][]>([['rep', report ? t('item.tab.report') : t('item.tab.description')], ...(transcript ? [['tr', t('item.tab.transcript')] as [string, string]] : []), ['info', t('item.tab.info')]])
-  $effect(() => { if (tab === 'tr' && !transcript) tab = 'rep' })
+  const tabs = $derived<[string, string][]>([['desc', t('item.tab.description')], ...(report ? [['rep', t('item.tab.report')] as [string, string]] : []), ...(transcript ? [['tr', t('item.tab.transcript')] as [string, string]] : []), ['info', t('item.tab.info')]])
+  $effect(() => { if ((tab === 'rep' && !report) || (tab === 'tr' && !transcript)) tab = 'desc' })
 
   // Video playback is the existing block and the existing source/cache path.
   const vbytes = $derived(source.videoSize?.(id) ?? 0)
@@ -136,6 +136,8 @@
       if (stored) { full = stored.item; report = stored.report ?? ''; transcript = stored.transcript ?? ''; onPhone = true; saved = !!stored.saved }
       try {
         const it = await source.item(id)
+        if (!live || seq !== loadSeq) return
+        full = it
         const [rep, tr] = await Promise.all([
           it.files.report ? source.itemText(id, 'report').catch(() => '') : Promise.resolve(''),
           it.files.transcript ? source.itemText(id, 'transcript').catch(() => it.transcript || '') : Promise.resolve(it.transcript || ''),
@@ -168,8 +170,8 @@
     })
   })
   const body = $derived.by(() => {
-    if (!full) return ''
-    if (tab === 'rep') return report ? mdHTML(report) : mdHTML(aiDescription || full.description || '') || (source.describe ? `<p>${esc(t('item.empty.withTools'))}</p>` : `<p>${esc(t('item.empty.pcDescribes'))}</p>`)
+    if (tab === 'desc') return full ? mdHTML(aiDescription || full.description || '') || (source.describe ? `<p>${esc(t('item.empty.withTools'))}</p>` : `<p>${esc(t('item.empty.pcDescribes'))}</p>`) : mdHTML(row?.desc || '')
+    if (tab === 'rep') return mdHTML(report)
     if (tab === 'tr') return `<pre>${transcript.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!)}</pre>`
     return ''
   })

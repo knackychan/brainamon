@@ -3,11 +3,13 @@
   // the Vault group (owner status, Vault not found, the legacy Move, or the setup steps: first, create, pick),
   // the Vault sync with phone group the window renders (`phoneSync` snippet), and the Knowledge map group, which works with
   // or without a vault. Every string comes from lib/obsidian.ts.
-  import { onMount, type Snippet } from 'svelte'
+  import { onMount, untrack, type Snippet } from 'svelte'
   import { api, ApiError } from '../lib/api'
   import { live, on } from '../lib/events.svelte'
   import { jobBusy, jobBusyMsg, plural, startJob } from '../lib/jobs'
-  import { COPY, firstOpenText, leftoversText, mapLine, newToObsidianText, removeText, statusLine, unlistedText, useAnyway, vaultIn, type MapStatus } from '../lib/obsidian'
+  import { COPY, firstOpenText, leftoversText, newToObsidianText, removeText, statusLine, unlistedText, useAnyway, vaultIn, type MapStatus, type ObsidianView } from '../lib/obsidian'
+  import type { Line } from '../lib/backup-state'
+  import { vaultLine, mapStatusLine } from '../lib/settings-lines'
   import { isDesktop, pickPath } from '../lib/pick'
   import { toast } from '../lib/ui.svelte'
   import { confirmWin } from '../lib/windows.svelte'
@@ -24,17 +26,15 @@
   import TextButton from './ui/TextButton.svelte'
   import ToggleRow from './ui/ToggleRow.svelte'
 
-  interface View {
-    vault: string; mode: 'owner' | ''; exists: boolean; is_vault: boolean; legacy: boolean; default_location: string; earlier_vault: boolean
-    pictures: boolean; first_open: 'pending' | ''; vault_sync_on: boolean; installed: boolean
-    map: { topics: number; stale: number; pending: number; model_changed: boolean; coverage: { indexed: number; total: number; low: boolean } }
-    status: MapStatus
-  }
+  type View = ObsidianView
   interface KnownVault { path: string; open: boolean; ts: number }
 
-  let { sync, phoneSync }: { sync: { on: boolean; text: string }; phoneSync?: Snippet } = $props()
-  let v = $state<View | null>(null)
+  let { sync, phoneSync, initial, onstatus = (_lines: { vault: Line; map: Line }) => {} }: { sync: { on: boolean; text: string; tone?: Line['tone'] }; phoneSync?: Snippet; initial?: ObsidianView; onstatus?: (lines: { vault: Line; map: Line }) => void } = $props()
+  let v = $state<View | null>(untrack(() => initial ?? null))
   let error = $state('')
+  let statusPending = $state(untrack(() => !initial)), statusError = $state(''), vaultError = $state(''), mapError = $state('')
+  let statusRequest = 0
+  let latestMap: MapStatus | null = null
   let busy = $state('')                                  // the request in flight: 'setup' | 'move' | 'reset' | ...
   let step = $state<'first' | 'create' | 'pick'>('first')
   let path = $state('')                                  // the create step's folder
@@ -48,22 +48,33 @@
   const refreshing = $derived(live.jobs.current?.kind === 'refresh_map')
   const owner = $derived(!!v && v.mode === 'owner' && !changing)
   const flowOpen = $derived(changing || !!confirmFor || !!takeoverFor || busy === 'setup' || busy === 'move' || (!!v && v.mode !== 'owner' && !v.legacy && step !== 'first'))
+  const vaultStatus = $derived(vaultLine({ view: v, pending: statusPending, error: statusError || vaultError }))
+  const mapStatus = $derived(mapStatusLine({ view: v, pending: statusPending, error: statusError || mapError, job: live.jobs.current }))
+  $effect(() => { onstatus({ vault: vaultStatus, map: mapStatus }) })
 
   async function load() {
-    try { v = await api.get<View>('/api/obsidian'); error = ''; if (!path) path = v.default_location; if (!movePath) movePath = v.default_location }
-    catch (e) { error = (e as Error).message }
+    const request = ++statusRequest
+    statusPending = true; statusError = ''
+    try { const next = await api.get<View>('/api/obsidian'); if (request === statusRequest) { v = latestMap && (latestMap.seq ?? 0) >= (next.status.seq ?? 0) ? { ...next, status: latestMap } : next; error = ''; if (!path) path = v.default_location; if (!movePath) movePath = v.default_location } }
+    catch (e) { if (request === statusRequest) error = statusError = (e as Error).message }
+    finally { if (request === statusRequest) statusPending = false }
   }
   onMount(() => {
-    load()
+    if (!v) load()
+    else { if (!path) path = v.default_location; if (!movePath) movePath = v.default_location }
     const offs = [
-      on('map', (d: MapStatus) => { if (v && (d.seq ?? 0) >= (v.status.seq ?? 0)) v.status = d }),
+      on('map', (d: MapStatus) => { if (!latestMap || (d.seq ?? 0) >= (latestMap.seq ?? 0)) latestMap = d; if (v && (d.seq ?? 0) >= (v.status.seq ?? 0)) v.status = d }),
       on('settings_changed', load),
+      on('hello', () => { latestMap = null; void load() }),
       on('job', (d: { current: { kind: string } | null; last: { kind: string } | null }) => { if (!d.current && d.last?.kind === 'refresh_map') load() }),
     ]
-    return () => offs.forEach(f => f())
+    return () => { statusRequest++; offs.forEach(f => f()) }
   })
 
-  function fail(e: unknown) { error = e instanceof ApiError ? e.message : String(e) }
+  function fail(e: unknown, target: 'vault' | 'map' = 'vault') {
+    error = e instanceof ApiError ? e.message : String(e)
+    if (target === 'map') mapError = error; else vaultError = error
+  }
 
   // ── setup ──────────────────────────────────────────────────────────────────
   async function chooseFolder() {
@@ -71,7 +82,7 @@
     if (p) path = vaultIn(p)
   }
   async function setVault(folder: string, create: boolean, confirm = false, takeover = false, remove = false) {
-    busy = 'setup'; error = ''; confirmFor = null; takeoverFor = null
+    busy = 'setup'; error = vaultError = ''; confirmFor = null; takeoverFor = null
     try {
       const r = await api.put<View & { needs_confirm?: boolean; needs_takeover?: boolean; count?: number; message?: string }>('/api/obsidian/vault', { path: folder, create, confirm, takeover, remove })
       if (r.needs_takeover) { takeoverFor = { path: folder, leftovers: r.count ?? 0, message: r.message ?? '', create }; return }
@@ -91,10 +102,10 @@
 
   // ── owner actions ──────────────────────────────────────────────────────────
   async function act(what: string, url: string, body: unknown = {}) {
-    busy = what; error = ''
+    busy = what; error = vaultError = ''
     try { v = await api.post<View>(url, body); return true } catch (e) { fail(e); return false } finally { busy = '' }
   }
-  async function cancel() { try { await api.post('/api/obsidian/cancel') } catch (e) { fail(e) } }
+  async function cancel() { try { await api.post('/api/obsidian/cancel') } catch (e) { error = e instanceof ApiError ? e.message : String(e) } }
   async function copyPath() {
     try { await navigator.clipboard.writeText(v?.vault ?? ''); toast('Path copied') } catch { toast('Select the path and copy it by hand', 'w') }
   }
@@ -105,22 +116,27 @@
     } catch (e) { toast((e as Error).message, 'w') }
   }
   async function firstOpenDone() {
+    vaultError = ''
     try { v = await api.post<View>('/api/obsidian/first-open/done') } catch (e) { fail(e) }
   }
   async function pictures(on: boolean) {
+    vaultError = ''
     try { v = await api.put<View>('/api/obsidian/options', { pictures: on }) } catch (e) { fail(e) }
   }
   async function reset(rel: string) {
+    const expected_vault = v?.vault
     const ok = await confirmWin({ title: COPY.reset, msg: `Replace your edits in ${rel} with the generated page?`, detail: 'Your version is lost; the page is Brainamon’s again and follows the library.', ok: COPY.reset, danger: true })
-    if (ok) await act('reset', '/api/obsidian/reset', { path: rel })
+    if (ok) await act('reset', '/api/obsidian/reset', { path: rel, expected_vault })
   }
   async function reclaim() {
+    const expected_vault = v?.vault
     const ok = await confirmWin({ title: COPY.reclaim, msg: `${COPY.reclaim}?`, detail: COPY.reclaimDetail, ok: COPY.reclaim, danger: true })
-    if (ok) await act('reclaim', '/api/obsidian/reclaim')
+    if (ok) await act('reclaim', '/api/obsidian/reclaim', { expected_vault })
   }
   async function removeLeftovers() {
+    const expected_vault = v?.vault
     const ok = await confirmWin({ title: COPY.removeLeftovers, msg: removeText(v?.status.leftovers ?? 0), detail: COPY.removeDetail, ok: COPY.removeLeftovers, danger: true })
-    if (ok) await act('remove', '/api/obsidian/leftovers/remove')
+    if (ok) await act('remove', '/api/obsidian/leftovers/remove', { expected_vault })
   }
   async function takeOverRemove() {
     const t = takeoverFor
@@ -149,7 +165,7 @@
   // ── the map ────────────────────────────────────────────────────────────────
   async function refresh() {
     if (jobBusy()) { toast(jobBusyMsg(), 'w'); return }
-    error = ''
+    error = mapError = ''
     try {
       const p = await api.post<{ count: number; provider?: string; model?: string; plan?: { tags: number; rebuild: number; summaries: number } }>(
         '/api/jobs/preview', { kind: 'refresh_map', ids: [], force: true, opts: { rebuild } })
@@ -165,7 +181,7 @@
       await api.post('/api/jobs', { kind: 'refresh_map', ids: [], force: true, opts: { rebuild } })
       rebuild = false
       toast(`${COPY.refresh}: ${plural(p.count, 'step')} started`)
-    } catch (e) { fail(e) }
+    } catch (e) { fail(e, 'map') }
   }
   async function indexNow() { await startJob('index', {}) }
 </script>
@@ -181,11 +197,11 @@
 <div class="set-calm">
   <GroupBox tone="summary" aria-label="Obsidian status">
     <Label as="span">Vault</Label>
-    <div><span>{v.mode === 'owner' ? v.vault : v.legacy ? `${v.vault} · legacy` : 'None yet'}</span></div>
+    <div><Status state={vaultStatus.tone}>{vaultStatus.text}</Status>{#if vaultStatus.detail}<Hint>{vaultStatus.detail}</Hint>{/if}{#if statusError}<TextButton onclick={load}>Check again</TextButton>{/if}</div>
     <Label as="span">Vault sync with phone</Label>
-    <div><Status on={sync.on}>{sync.text}</Status></div>
+    <div><Status state={sync.tone ?? (sync.on ? 'done' : 'optional')}>{sync.text}</Status></div>
     <Label as="span">{COPY.mapTitle}</Label>
-    <div><Status on={v.map.topics > 0 && !v.map.stale && !v.map.pending}>{mapLine(v.map)}</Status></div>
+    <div><Status state={mapStatus.tone}>{mapStatus.text}</Status></div>
   </GroupBox>
 
   <GroupBox active={flowOpen} aria-label="Vault">
@@ -203,8 +219,10 @@
       </div>
     {:else if owner}
       <div>
-        <Status on={!v.status.pending && !v.status.error && !v.status.other_library && v.status.last_render > 0} aria-live="polite">{statusLine(v.status)}</Status>
-        {#if v.status.busy}<Progress label={v.status.busy} />{/if}
+        <Status on={vaultStatus.kind === 'done'} aria-live="polite">{statusLine(v.status)}</Status>
+        {#if v.status.progress && v.status.progress.total > 0}
+          <Progress label={statusLine(v.status)} pct={100 * v.status.progress.done / v.status.progress.total} paused={!!v.status.error} />
+        {/if}
         <Hint>Edit items in Brainamon; write your own notes anywhere else in the vault.<InfoTip label="What Brainamon writes"><span>{COPY.viewHint}</span><span>{COPY.picturesHint}</span><span>{COPY.ownerSync}</span><span>Connecting your own notes vault comes in a later update.</span></InfoTip></Hint>
         <ToggleRow label={COPY.pictures} note="about 45 KB per item" checked={v.pictures} onchange={pictures} />
       </div>
@@ -218,7 +236,7 @@
       {/if}
       {#if v.status.other_library}
         <Label as="span">Owner</Label>
-        <div><Hint>{COPY.takeOverHint}</Hint><div class="frow"><Button variant="pri" size="sm" disabled={!!busy} onclick={() => act('takeover', '/api/obsidian/takeover')}>{COPY.takeOver}</Button></div></div>
+        <div><Hint>{COPY.takeOverHint}</Hint><div class="frow"><Button variant="pri" size="sm" disabled={!!busy} onclick={() => act('takeover', '/api/obsidian/takeover', { expected_vault: v?.vault })}>{COPY.takeOver}</Button></div></div>
       {/if}
       {#if v.status.unlisted}
         <Label as="span">Unlisted files</Label>
@@ -228,25 +246,23 @@
         <Label as="span">Leftovers</Label>
         <div><Hint>{leftoversText(v.status.leftovers)}</Hint><div class="frow"><Button size="sm" disabled={!!busy} onclick={removeLeftovers}>{COPY.removeLeftovers}</Button></div></div>
       {/if}
-      {#if v.status.adopted.length}
-        <Label as="span">Adopted pages</Label>
-        <div>
-          <Hint>You edited these generated pages. Brainamon keeps your version and never updates or removes them.</Hint>
-          <ItemList items={v.status.adopted} key={rel => rel} label="Adopted pages">
-            {#snippet item(rel)}<span>{rel}</span>{/snippet}
-            {#snippet actions(rel)}<TextButton disabled={!!busy} onclick={() => reset(rel)}>{COPY.reset}</TextButton>{/snippet}
-          </ItemList>
-        </div>
-      {/if}
       <span></span>
       <div>
         {@render feedback()}
         <div class="frow">
           {#if v.status.busy && v.status.waiting}<Button size="sm" onclick={cancel}>{COPY.cancel}</Button>{/if}
           <Button size="sm" disabled={!v.is_vault} onclick={openObsidian}>{COPY.openVault}</Button>
-          <TextButton onclick={copyPath}>{COPY.copyPath}</TextButton>
-          <TextButton onclick={() => { changing = true; step = 'first' }}>{COPY.changeVault}</TextButton>
         </div>
+        <Disclosure id="set-s-obsidian-more" tabindex={-1} summary="More: copy path, change vault, adopted pages">
+          <div class="frow"><TextButton onclick={copyPath}>{COPY.copyPath}</TextButton><TextButton onclick={() => { changing = true; step = 'first' }}>{COPY.changeVault}</TextButton></div>
+          {#if v.status.adopted.length}
+            <Hint>You edited these generated pages. Brainamon keeps your version and never updates or removes them.</Hint>
+            <ItemList items={v.status.adopted} key={rel => rel} label="Adopted pages">
+              {#snippet item(rel)}<span>{rel}</span>{/snippet}
+              {#snippet actions(rel)}<TextButton disabled={!!busy} onclick={() => reset(rel)}>{COPY.reset}</TextButton>{/snippet}
+            </ItemList>
+          {/if}
+        </Disclosure>
       </div>
     {:else if v.legacy && !changing}
       <div>

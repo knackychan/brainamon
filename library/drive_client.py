@@ -38,6 +38,7 @@ AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 TOKEN_URL = 'https://oauth2.googleapis.com/token'
 REVOKE_URL = 'https://oauth2.googleapis.com/revoke'
 API = 'https://www.googleapis.com/drive/v3'
+BATCH = 'https://www.googleapis.com/batch/drive/v3'
 UPLOAD = 'https://www.googleapis.com/upload/drive/v3'
 SCOPE = 'https://www.googleapis.com/auth/drive.appdata'
 SPACE = 'appDataFolder'
@@ -62,11 +63,11 @@ class DriveError(Exception):
         self.reason = reason
 
 
-def delete_files(client, ids, progress=None, stopped=None):
+def delete_files(client, ids, progress=None, stopped=None, *, deleted=None):
     """Use Drive batching when available; small alternate clients retain their delete interface."""
     try:
         if callable(getattr(client, 'delete_many', None)):
-            return client.delete_many(ids, progress)
+            return client.delete_many(ids, progress, deleted=deleted)
         for index, fid in enumerate(ids, 1):
             if client.stop.is_set():
                 raise SignInCancelled('Google Drive work is stopping.')
@@ -75,6 +76,8 @@ def delete_files(client, ids, progress=None, stopped=None):
             except DriveError as e:
                 if e.status != 404:
                     raise
+            if deleted:
+                deleted([fid])
             if progress:
                 progress(index, len(ids))
     except SignInCancelled:
@@ -373,8 +376,8 @@ class DriveClient:
             if e.status != 404:        # already gone is fine
                 raise
 
-    def delete_many(self, file_ids: list[str], progress=None) -> None:
-        """Delete supplied IDs in four concurrent batches of up to 100; retry only failed parts."""
+    def delete_many(self, file_ids: list[str], progress=None, *, deleted=None) -> None:
+        """Delete in batches of 100; report confirmed IDs per response so callers can checkpoint them."""
         ids = list(dict.fromkeys(file_ids))
         if any(not re.fullmatch(r'[A-Za-z0-9_-]+', fid) for fid in ids):
             raise DriveError('Invalid Drive file identity.')
@@ -386,10 +389,16 @@ class DriveClient:
                 self._check()
                 batches = [ids[i:i + DELETE_BATCH_SIZE] for i in range(start, min(start + window, len(ids)), DELETE_BATCH_SIZE)]
                 futures = {pool.submit(self._delete_batch, batch): batch for batch in batches}
-                failed = []
+                failed, error = [], None
                 for future in as_completed(futures):
-                    results = future.result()
-                    self._check()
+                    try:
+                        results = future.result()
+                    except Exception as exc:
+                        error = error or exc
+                        continue
+                    confirmed = [fid for i, fid in enumerate(futures[future]) if results[i] in (200, 204, 404)]
+                    if confirmed and deleted:
+                        deleted(confirmed)
                     for i, fid in enumerate(futures[future]):
                         if results[i] in (200, 204, 404):
                             done += 1
@@ -397,9 +406,13 @@ class DriveClient:
                                 progress(done, len(ids))
                         else:
                             failed.append(fid)
+                if error:
+                    raise error
                 for fid in failed:
                     self._check()
                     self.delete(fid)
+                    if deleted:
+                        deleted([fid])
                     done += 1
                     if progress:
                         progress(done, len(ids))
@@ -410,7 +423,7 @@ class DriveClient:
         boundary = 'brainamon-' + secrets.token_hex(16)
         body = ''.join(f'--{boundary}\r\nContent-Type: application/http\r\nContent-ID: <delete-{i}>\r\n\r\nDELETE /drive/v3/files/{fid} HTTP/1.1\r\n\r\n'
                        for i, fid in enumerate(batch)) + f'--{boundary}--\r\n'
-        _, headers, raw = self._call('POST', 'https://www.googleapis.com/batch/drive/v3', body.encode('ascii'),
+        _, headers, raw = self._call('POST', BATCH, body.encode('ascii'),
                                     {'Content-Type': f'multipart/mixed; boundary={boundary}'}, max_bytes=2 * 1024 * 1024)
         content_type = _header(headers, 'Content-Type')
         message = BytesParser(policy=email_policy).parsebytes(f'Content-Type: {content_type}\r\n\r\n'.encode() + raw)

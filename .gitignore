@@ -60,6 +60,8 @@ dist/
 coverage/
 /packaging/tools/
 /mobile-shell/android/app/src/main/assets/public/
+/mobile-shell/android/app/src/main/assets/sync/
+/mobile-shell/android/app/src/debug/assets/sites/
 /mobile-shell/www/
 .cache/
 .tmp/

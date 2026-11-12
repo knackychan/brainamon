@@ -18,7 +18,7 @@ from playwright.sync_api import expect, sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from tests.check_phone_solo_browser import PAIR, ACCOUNT
-from tests.phone_groups import open_group  # the group rows, projects/phone-settings
+from tests.phone_pages import open_group  # the group rows, projects/phone-settings
 
 ART = Path(tempfile.mkdtemp(prefix='brainamon-mobile-remediation-'))
 OLD = 'solo-' + 'f' * 32 + '-'
@@ -157,8 +157,9 @@ def main():
                     recover.get_by_text('I have none of these', exact=True).click()
                     recover.get_by_role('button', name='Choose phone backup options…').click()
                     choices = page.locator('#phone-backup-choices')
-                    expect(choices.locator('select option')).to_have_count(3)
-                    choices.locator('select').select_option(OLD)
+                    choices.locator('.m-picker').click()
+                    expect(page.locator('.m-picker-options button')).to_have_count(3)
+                    page.locator('.m-picker-options button').filter(has_text=OLD[5:13]).click()
                     choices.get_by_role('button', name='Replace with this phone’s content…').click()
                     expect(choices.get_by_role('button', name='Confirm replacement')).to_have_count(1)
                     shot('replace-confirm', '#phone-backup-choices')
@@ -175,46 +176,42 @@ def main():
                     page.wait_for_timeout(250)
                     assert drive.held
                     expect(choices.get_by_role('list', name='Backup steps')).to_contain_text('0 / 1 item')
-                    expect(choices.locator('.task-steps .cycle')).to_have_count(1)
-                    assert choices.get_by_role('progressbar', name='Replacement backup upload').get_attribute('aria-valuenow') is None
-                    assert choices.locator('.prog.busy').evaluate('e => getComputedStyle(e).gridTemplateColumns.split(" ").length') == 1
-                    assert choices.locator('.prog.busy .lead').evaluate('e => getComputedStyle(e).animationName') != 'none'
+                    expect(choices.locator('.m-steps .k-working')).to_have_count(1)
+                    expect(choices.locator('.m-meter-run')).to_have_count(1)
+                    expect(choices.get_by_role('progressbar', name='Backup steps')).to_have_attribute('aria-valuemax', '4')
                     shot('replacement-uploading', '#phone-backup-choices')
                     page.evaluate("async()=>{const {mirrorSource:m}=await import('/src/mobile/state.svelte.ts');await m.changes.add({op:'note',file:'kept.md',title:'Kept',body:'during upload'})}")
                     choices.get_by_role('button', name='Pause', exact=True).click()
                     drive.release()
                     expect(choices.get_by_role('button', name='Resume task')).to_be_visible()
                     expect(choices.get_by_role('list', name='Backup steps')).to_contain_text('1 / 1 item')
-                    expect(choices.get_by_role('progressbar', name='Replacement backup upload')).to_have_attribute('aria-valuenow', '100')
+                    expect(choices.get_by_role('progressbar', name='Backup steps')).to_have_attribute('aria-valuenow', '2')
                     shot('task-paused', '#phone-backup-choices')
                     page.evaluate("""async()=>{const {backup:b}=await import('/src/mobile/backup.svelte.ts');
                       window.__savedBackupTask=b.task;
                       b.task={...b.task,phase:'delete',paused:false,removed:0,files:Array.from({length:100},(_,i)=>({id:'fixture-'+i,name:'fixture'}))};
                       b.busy=true;b.deleted=20;
                     }""")
-                    expect(choices.get_by_role('progressbar', name='Deleting old backup files')).to_have_attribute('aria-valuenow', '20')
+                    expect(choices.get_by_role('progressbar', name='Backup steps')).to_have_attribute('aria-valuenow', '20')
                     expect(choices.get_by_text('20 / 100 files deleted.', exact=False)).to_be_visible()
                     page.evaluate("""async()=>{const {backup:b}=await import('/src/mobile/backup.svelte.ts');b.deleted=40}""")
-                    expect(choices.get_by_role('progressbar', name='Deleting old backup files')).to_have_attribute('aria-valuenow', '40')
-                    estimate = choices.locator('.deletion-estimate')
-                    expect(estimate).to_be_visible()
-                    page.wait_for_function("() => Number(document.querySelector('.deletion-estimate').textContent.match(/: ([0-9,]+)/)[1].replaceAll(',',''))>40")
-                    expect(choices.get_by_role('progressbar', name='Deleting old backup files')).to_have_attribute('aria-valuenow', '40')
-                    shot('live-deletion-progress', '#phone-backup-choices')
-                    page.evaluate("""async()=>{const {backup:b}=await import('/src/mobile/backup.svelte.ts');b.deleted=98}""")
-                    expect(estimate).to_have_text('Estimated deletion: 99 / 100 files.')
-                    page.wait_for_timeout(300)
-                    expect(estimate).to_have_text('Estimated deletion: 99 / 100 files.')
+                    expect(choices.get_by_role('progressbar', name='Backup steps')).to_have_attribute('aria-valuenow', '40')
+                    expect(choices.locator('.m-meter-run')).to_have_count(1)
                     page.emulate_media(reduced_motion='reduce')
-                    expect(estimate).to_be_hidden()
+                    assert choices.locator('.m-meter-run').evaluate('e=>getComputedStyle(e).animationName') == 'none'
                     page.emulate_media(reduced_motion='no-preference')
-                    page.evaluate("""async()=>{const {backup:b}=await import('/src/mobile/backup.svelte.ts');b.task={...b.task,paused:true}}""")
-                    expect(estimate).to_have_count(0)
-                    page.evaluate("""async()=>{const {backup:b}=await import('/src/mobile/backup.svelte.ts');b.task={...b.task,paused:false};b.error='synthetic failure'}""")
-                    expect(estimate).to_have_count(0)
-                    page.evaluate("""async()=>{const {backup:b}=await import('/src/mobile/backup.svelte.ts');b.error='';b.deleted=100}""")
-                    expect(estimate).to_have_count(0)
-                    expect(choices.get_by_role('progressbar', name='Deleting old backup files')).to_have_attribute('aria-valuenow', '100')
+                    shot('live-deletion-progress', '#phone-backup-choices')
+                    for state in ('paused', 'failed', 'complete'):
+                        page.evaluate("""async state=>{const {backup:b}=await import('/src/mobile/backup.svelte.ts');
+                          b.busy=false;b.task={...b.task,paused:state==='paused'};
+                          b.error=state==='failed'?'Synthetic delete failure':'';b.deleted=state==='complete'?100:40;
+                        }""", state)
+                        expect(choices.get_by_role('progressbar', name='Backup steps')).to_have_attribute('aria-valuenow', '100' if state == 'complete' else '40')
+                        expect(choices.locator('.m-meter-run')).to_have_count(0)
+                        if state == 'failed':
+                            expect(choices.get_by_role('alert')).to_contain_text('Synthetic delete failure')
+                    page.evaluate("async()=>{const {backup:b}=await import('/src/mobile/backup.svelte.ts');b.error=''}")
+
 
                     page.evaluate("""async()=>{const {backup:b}=await import('/src/mobile/backup.svelte.ts');b.task=window.__savedBackupTask;b.busy=false;b.deleted=undefined}""")
 
@@ -241,10 +238,18 @@ def main():
                     page.evaluate("""async()=>{(await import('/src/mobile/native.ts')).secrets.set('bp-gtoken',JSON.stringify({access:'synthetic-renewed',exp:4e12}));
                       (await import('/src/mobile/state.svelte.ts')).phone.tokenAt=Date.now()}""")
                     page.get_by_role('button', name='Refresh backup list').click()
-                    expect(page.locator('#phone-backup-choices select option')).to_have_count(3)
-                    page.get_by_role('button', name='Close', exact=True).click()
+                    page.locator('#phone-backup-choices .m-picker').click()
+                    expect(page.locator('.m-picker-options button')).to_have_count(3)
+                    page.keyboard.press('Escape')
+                    expect(page.get_by_role('button', name='Close', exact=True)).to_have_count(0)
+                    page.evaluate("async()=>{await(await import('/src/mobile/mirror/gate.ts')).stopCloudWork()}")
+                    with page.expect_navigation(wait_until='domcontentloaded'):
+                        page.get_by_role('button', name='Back', exact=True).click()
+                    expect(page).to_have_url(base + '/mobile.html#/backup')
+                    assert page.evaluate("async()=>!(await import('/src/mobile/mirror/gate.ts')).cloudStopped()")
                     page.evaluate("location.hash='#/more'")
                     open_group(page, 'Sync').get_by_role('button', name='Pause sync', exact=True).click()
+                    page.evaluate("location.hash='#/more'")
                     page.reload()
                     expect(page.locator('#m-status')).to_contain_text('Sync paused by you.')
                     shot('sync-paused')

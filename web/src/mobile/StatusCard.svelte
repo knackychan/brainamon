@@ -5,6 +5,9 @@
   // the link to Settings > Backup & phones, which says the rest, its sentence as the title and at most one key, the
   // pill. The kicker and the key are separate targets; the detail never shows here.
   import { actionBusy, actionLabel, runPhoneAction } from './actions'
+  import { kindOf } from './settings-steps'
+  import { backup } from './backup.svelte'
+  import SettingsProgress from './SettingsProgress.svelte'
   import { phoneStatus } from './state.svelte'
   import MBox from './ui/MBox.svelte'
   import MButton from './ui/MButton.svelte'
@@ -14,9 +17,10 @@
 </script>
 
 {#if st}
-  <MBox id="m-status">
-    <MStatus look="hero" kicker={t('backup.group.title')} href="#/backup" tone={st.tone} text={st.text}>
+  <MBox id="m-status" class={['m-status-hero', 'm-wash', `k-${kindOf(st, backup.error)}`]}>
+    <MStatus look="hero" kicker={t('backup.state.title')} kind={kindOf(st, backup.error)} tone={st.tone} text={st.text}>
       {#if st.action}{@const a = st.action}<MButton shape="pill" variant={a.primary ? 'pri' : 'default'} disabled={actionBusy(a.id)} onclick={() => runPhoneAction(a.id)}>{actionLabel(a)}</MButton>{/if}
     </MStatus>
+    <SettingsProgress />
   </MBox>
 {/if}

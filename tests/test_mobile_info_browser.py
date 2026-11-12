@@ -202,7 +202,7 @@ class MobileInfoBrowser(unittest.TestCase):
                         for route_hash, title in menus:
                             page.evaluate('(hash) => { location.hash = hash }', route_hash)
                             if route_hash == '#/more':               # a group's (i) shows while the group is open (projects/phone-settings)
-                                page.locator('button.m-group-row', has_text=re.compile('^Sync')).click()
+                                page.locator('a[href="#/more/sync"]').click()
                             menu_trigger = page.get_by_role('button', name=f'More info: {title}', exact=True)
                             expect(menu_trigger).to_be_visible()
                             expect(page.locator('.m-info-dialog[open]')).to_have_count(0)

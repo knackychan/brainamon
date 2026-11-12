@@ -107,6 +107,46 @@ class VaultSyncPcTest(unittest.TestCase):
     def pc_index(self):
         return V.decode_index_full(self.key.open(V.INDEX_LOGICAL, self.drive.by_name(V.index_name(self.key, 'pc'))))
 
+    def test_vault_state_replace_retries_sharing_locks_and_preserves_old_file_on_failure(self):
+        path = self.cloud / S.VAULT_STATE
+        path.parent.mkdir(parents=True)
+        original, replacement = {'version': 'old'}, {'version': 'new'}
+        path.write_text(json.dumps(original), encoding='utf-8')
+        real_replace = Path.replace
+        attempts = []
+        def transient(source, target):
+            attempts.append(source)
+            self.assertEqual(json.loads(path.read_text(encoding='utf-8')), original)
+            if len(attempts) < 3:
+                raise PermissionError('synthetic sharing violation')
+            return real_replace(source, target)
+        with mock.patch.object(Path, 'replace', new=transient), mock.patch.object(S.time, 'sleep') as sleep:
+            S._save_vault_state(path, replacement)
+        self.assertEqual(len(attempts), 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [.1, .2])
+        self.assertEqual(json.loads(path.read_text(encoding='utf-8')), replacement)
+        with mock.patch.object(Path, 'replace', side_effect=PermissionError('persistent sharing violation')) as replace, \
+             mock.patch.object(S.time, 'sleep') as sleep:
+            with self.assertRaises(PermissionError):
+                S._save_vault_state(path, {'version': 'uncommitted'})
+        self.assertEqual(replace.call_count, 5)
+        self.assertEqual(sleep.call_count, 4)
+        self.assertEqual(json.loads(path.read_text(encoding='utf-8')), replacement)
+
+    @unittest.skipUnless(S.os.name == 'nt', 'Windows file-sharing semantics')
+    def test_vault_state_replace_waits_for_concurrent_windows_reader(self):
+        path = self.cloud / S.VAULT_STATE
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({'version': 'old'}), encoding='utf-8')
+        reader = path.open('rb')
+        try:
+            with mock.patch.object(S.time, 'sleep', side_effect=lambda _: reader.close()) as sleep:
+                S._save_vault_state(path, {'version': 'new'})
+            self.assertGreaterEqual(sleep.call_count, 1)
+        finally:
+            reader.close()
+        self.assertEqual(json.loads(path.read_text(encoding='utf-8')), {'version': 'new'})
+
     def test_removal_blocks_old_key_vault_before_download(self):
         self.put(self.ph, 'lost.md', 'lost phone edit')
         self.phone.round()
@@ -507,6 +547,7 @@ class VaultSyncPcTest(unittest.TestCase):
                     db = mock.Mock()
                     db.get_setting.side_effect = settings.get
                     self.svc.writer.read.side_effect = lambda fn: fn(db)
+                    self.svc.writer.call.side_effect = lambda fn: fn(db)
                     self.svc.st['vault_state'] = 'idle'  # a skipped round must not count as success
                     record = {'stage': 'prepared' if phase == 'prepare' else 'publishing',
                               'old': self.key.text(), 'new': self.key.text(),

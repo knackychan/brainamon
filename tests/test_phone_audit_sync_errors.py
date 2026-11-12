@@ -10,6 +10,9 @@ class SyncAccessErrors(unittest.TestCase):
         got = json.loads(node(r"""
             import fs from 'node:fs'
             import { stripTypeScriptTypes } from 'node:module'
+            import { t } from './web/src/lib/i18n/index.ts'
+            import { fmtNum } from './web/src/lib/i18n/format.ts'
+            globalThis.__syncWords = { t, fmtNum }
             const src = fs.readFileSync('web/src/mobile/state.svelte.ts', 'utf8')
             const region = src.slice(src.indexOf('const PARTS_AT'), src.indexOf('// after an items_changed'))
             const setup = `
@@ -31,6 +34,8 @@ class SyncAccessErrors(unittest.TestCase):
               const reconnecting = () => false, syncPaused = () => false, answered = () => true
               const renewSignIn = async () => true, measurePend = async () => {}, isApp = false, solo = false, navigator = { onLine: true }
               const fmtAgo = () => 'just now', window = { setTimeout: () => 0 }
+              const beginLanguageWork = () => () => {}
+              const { t, fmtNum } = globalThis.__syncWords
             `
             const mod = await import('data:text/javascript,' + encodeURIComponent(stripTypeScriptTypes(setup + region +
               '\nexport function result() { return { error: phone.error, run: phone.sync } }')))

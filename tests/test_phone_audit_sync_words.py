@@ -19,6 +19,7 @@ class SyncWords(unittest.TestCase):
               const backup = {task:null,busy:false}; const isApp = false, mirrorSource = {}, solo = false, source = {}, pics = { state: 'idle' }
               const phone = { sync: { end: 'error', msg: 'Waiting for your PC to confirm this phone.' } }
               const driveWork = () => null, syncPaused = () => false, fmtAgo = () => 'just now'
+              const nativeSync = { supported: false }
               let current = { ok: false, lamp: 'access removed', why: "This phone's access was removed on your PC." }
               const driveStatus = () => current
             `

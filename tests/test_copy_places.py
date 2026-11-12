@@ -19,7 +19,6 @@ PLACES = ['web/src', 'library', 'mobile-shell/store', 'docs/development/BACKUP-R
 PLACES += [p for p in ('docs/BACKUP-RESTORE.md', 'projects/backup-phones-mockup/README.md', 'CLAUDE.md') if (ROOT / p).is_file()]
 # the matches that stay, each for its reason
 ALLOWED = Counter({
-    ('web/src/windows/SetupHub.svelte', 'Upload now'): 1,                   # its own Upload now button
     ('web/src/previews/backup/ui.svelte.ts', 'Upload now'): 1,              # the preview's old and new label of one key
     ('web/src/previews/settings/SettingsPreview.svelte', 'Upload now'): 1,  # a sample button of the Settings preview
     ('projects/backup-phones-mockup/README.md', 'Upload now'): 1,           # D12: today's key, kept as the choice it was
@@ -100,9 +99,21 @@ class CopyPlacesTest(unittest.TestCase):
                         wrong.append(f'{path}:{n}: {rest[:60]}')
         self.assertEqual(wrong, [])
 
+    def test_phone_backup_off_help_names_both_pc_actions(self):
+        block = read('web/src/lib/backup.ts').split('export const W = {', 1)[1].split('\n}', 1)[0]
+        for action in ('Turn on backup', 'Resume backup'):
+            self.assertIn("'" + action + "'", block)
+        for language in ('en', 'fr', 'zh-Hant'):
+            text = read(f'web/src/lib/i18n/{language}/backup.ts')
+            help_line = next(line for line in text.splitlines() if '"backup.state.backupOffHelp"' in line)
+            for label in ('Settings > Backup & phones', 'Turn on backup', 'Resume backup'):
+                self.assertIn(label, help_line)
+
     def test_a_phone_place_named_anywhere_exists_on_the_phone(self):
         # the phone's Settings (#/more) was called More until projects/phone-settings: no visible line says More > any more
         more = names('web/src/mobile/screens/More.svelte') | names('web/src/mobile/Vault.svelte') | {'Backup & phones'}
+        for path in (ROOT / 'web/src/mobile/screens/settings').glob('*.svelte'):
+            more |= names(path.relative_to(ROOT).as_posix())
         backup = names('web/src/mobile/screens/Backup.svelte') | names('web/src/mobile/PhoneRecovery.svelte')
         wrong = [f'{path}:{n}: {line.strip()[:60]}' for path, text in files() for n, line in visible(path, text) if 'More > ' in line]
         for path, text in files():
@@ -144,7 +155,8 @@ class CopyPlacesTest(unittest.TestCase):
         promise = re.compile(r'(?i)\bphones (keep working|never notice|carry on)|same key, same phones|Unpairing deletes them')
         wrong = [f'{path}:{n}' for path, text in files() for n, line in visible(path, text) if promise.search(line)]
         self.assertEqual(wrong, [])
-        for rel, n in (('web/src/windows/BackupPhonesPage.svelte', 3), ('web/src/previews/backup/BackupPage.svelte', 3), ('projects/backup-phones-mockup/README.md', 2)):
+        for rel, n in (('web/src/windows/BackupPhonesPage.svelte', 2), ('web/src/lib/backup-state.ts', 1),
+                       ('web/src/previews/backup/BackupPage.svelte', 3), ('projects/backup-phones-mockup/README.md', 2)):
             if not (ROOT / rel).is_file():
                 continue
             self.assertEqual(plain(read(rel)).count(P4), n, rel)

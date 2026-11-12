@@ -1,4 +1,10 @@
 export const messages = {
+  "recovery.step.file": "Recovery file",
+  "recovery.step.fileSaved": "Recovery file saved {when}",
+  "recovery.step.check": "Check the recovery file",
+  "recovery.step.unlock": "Unlock the backup",
+  "recovery.step.checkPhone": "Check this phone",
+  "recovery.step.keep": "Keep or restore",
 
 
 
@@ -7,7 +13,7 @@ export const messages = {
 
 
   "recovery.state.exportSaved": "Recovery file saved in {folder}. Keep a copy outside this phone.",
-  "recovery.state.exportDownloaded": "Recovery file downloaded. Keep it outside this phone and never share it.",
+  "recovery.state.exportDownloaded": "Recovery file download requested. Check your downloads and keep a copy outside this phone. Never share it.",
   "recovery.eligibility.eligible": "This phone matches its latest backup in Drive. You can keep its content and reconnect it instead of restoring on an empty phone.",
   "recovery.eligibility.paired_pc": "This phone is paired with a PC. Desktop libraries are restored on the PC; reconnect is for a phone used without a PC.",
   "recovery.eligibility.not_connected": "This phone is not connected to Google Drive, so it cannot be checked against its backup. Restore on an empty phone works without it.",

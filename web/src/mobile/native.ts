@@ -16,7 +16,7 @@
 // - openObsidian: an obsidian:// link, and whether an app took it (See my knowledge graph)
 // - deviceName: the phone's name for the PC's Phones list (D13, mirror/phone-record.ts)
 // - siteState / siteOpen / sitePending / siteClear / siteForget: the phone site reader's window and run files
-//   (projects/phone-site-reader), in the Contributor (debug) build only
+//   (projects/phone-site-reader)
 import { App } from '@capacitor/app'
 import { Capacitor, CapacitorHttp, registerPlugin, type PluginListenerHandle } from '@capacitor/core'
 import { withTimeout } from './wait'
@@ -48,7 +48,7 @@ interface BrainamonPlugin {
   clipboardText(): Promise<{ text: string }>
   deviceName(): Promise<{ name: string }>
   siteState(): Promise<SiteReaderState>
-  siteOpen(o: { site: SiteId; known: string[]; full: boolean; complete: boolean }): Promise<SiteRunResult>
+  siteOpen(o: { site: SiteId; known: string[]; full: boolean; complete: boolean; unsave: boolean }): Promise<SiteRunResult>
   sitePending(o: { site: SiteId; offset: number; max: number }): Promise<SitePage>
   siteClear(o: { site: SiteId }): Promise<void>
   siteForget(o: { site: SiteId }): Promise<{ result: 'deleted' | 'cleared' }>
@@ -392,7 +392,7 @@ export function vaultFs(uri: string) {
   }
 }
 
-// ── the phone site reader (projects/phone-site-reader): the Contributor (debug) build only. siteState() is
+// ── the phone site reader (projects/phone-site-reader). siteState() is
 // null in a browser, in a build without the reader, or when the app does not answer; the other calls are
 // made only after it answered ──
 export interface SiteReaderState {
@@ -407,7 +407,7 @@ export async function siteState(): Promise<SiteReaderState | null> {
   try { return await withTimeout(B.siteState(), 5000, 'The site reader did not answer.') } catch { return null }
 }
 // resolves when the site window closes: no time limit, the user signs in, reads or stops
-export const siteOpen = (site: SiteId, known: string[], full: boolean, complete: boolean) => B.siteOpen({ site, known, full, complete })
+export const siteOpen = (site: SiteId, known: string[], full: boolean, complete: boolean, unsave = false) => B.siteOpen({ site, known, full, complete, unsave })
 export const sitePending = (site: SiteId, offset: number, max: number) =>
   withTimeout(B.sitePending({ site, offset, max }), 15000, 'The site reader did not answer.')
 export const siteClear = (site: SiteId) => withTimeout(B.siteClear({ site }), 5000, 'The site reader did not answer.')

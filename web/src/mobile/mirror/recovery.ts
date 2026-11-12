@@ -14,5 +14,5 @@ export async function exportPhoneRecovery(pair: { k: string; f: string }, words?
     return (words?.('recovery.state.exportSaved', { folder: folder.name }) ?? `Recovery file saved in ${folder.name}. Keep a copy outside this phone.`)
   }
   downloadRecovery(file, filename)
-  return (words?.('recovery.state.exportDownloaded') ?? 'Recovery file downloaded. Keep it outside this phone and never share it.')
+  return (words?.('recovery.state.exportDownloaded') ?? 'Recovery file download requested. Check your downloads and keep a copy outside this phone. Never share it.')
 }

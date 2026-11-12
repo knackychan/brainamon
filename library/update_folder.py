@@ -401,6 +401,8 @@ def swap(j: dict, save) -> Path:
             db.save_sync_state(state)
             db.set_setting('cloud_last_publish', str(plan['published']))
             db.set_setting('cloud_update_done', json.dumps(done))
+            db.set_setting('cloud_paused_at', '')
+            db.set_setting('cloud_pause_restore', '')
             db.reindex_notes()
         writer = Writer(live)
         writer.start()

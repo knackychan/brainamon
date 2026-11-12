@@ -8,9 +8,7 @@ import org.json.JSONObject;
 
 /**
  * The phone site reader (projects/phone-site-reader), as BrainamonPlugin sees it. The reader itself
- * (SiteReader, SiteActivity, SiteConfig, SiteRunFile) lives only in the Contributor (debug) build, under
- * src/debug: the plugin finds SiteReader by name at run time, so a release build carries none of its code
- * (packaging/payload_guard.py --release-mobile checks the release bundles).
+ * (SiteReader, SiteActivity, SiteConfig, SiteRunFile) lives in the main source set for both builds.
  */
 public interface SiteBridge {
     /** {supported, sites: {id: {signedIn, pending, forgetting, reader}}}. Any thread. */

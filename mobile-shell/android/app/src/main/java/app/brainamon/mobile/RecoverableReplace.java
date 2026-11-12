@@ -9,7 +9,7 @@ public final class RecoverableReplace {
         boolean rename(String name);
         boolean delete();
     }
-    public interface Folder { Entry find(String name); }
+    public interface Folder { Entry find(String name) throws IOException; }
 
     public static void recover(Folder folder, String name) throws IOException {
         Entry backup = folder.find(name + BACKUP);

@@ -1,0 +1,3165 @@
+{
+  "now": 1794276300000,
+  "cloud": {
+    "seq": 1,
+    "licensed": true,
+    "configured": true,
+    "signed_in": true,
+    "on": true,
+    "running": true,
+    "state": "idle",
+    "done": 0,
+    "total": 0,
+    "bytes_done": 0,
+    "bytes_total": 0,
+    "items_done": 0,
+    "items_total": 0,
+    "error": "",
+    "error_code": "",
+    "error_action": "",
+    "error_at": 0,
+    "error_account": "",
+    "files": 5678,
+    "size": 9800000000,
+    "last_publish": 1794276120000,
+    "last_summary": "Already up to date",
+    "account": "sample@example.com",
+    "used": 10600000000,
+    "limit": 16106127360,
+    "options": {
+      "videos": "fav",
+      "canvases": true
+    },
+    "phone_url": "https://phone.example.invalid/mobile.html",
+    "web_client": true,
+    "phone_keys": [
+      "openai"
+    ],
+    "last_intake": 1794276000000,
+    "intake_summary": "",
+    "phones": [
+      {
+        "device": "a1",
+        "name": "Pixel 8",
+        "seen": 1794276060000
+      },
+      {
+        "device": "b2",
+        "name": "Galaxy A54",
+        "seen": 1794182700000
+      }
+    ],
+    "rotation": "",
+    "rotation_lock": "",
+    "rotation_locked_at": 0,
+    "rotation_locked_by": 0,
+    "ignored_changes": 0,
+    "paused_since": 0,
+    "key_missing": false,
+    "token_expired": false,
+    "token_issued": 1794103500,
+    "task": null,
+    "recovery_activity": null,
+    "upload_step": "",
+    "upload_since": 1794275940000,
+    "skipped": 0,
+    "skipped_note": "",
+    "vault": {
+      "on": false,
+      "folder": ""
+    },
+    "vault_running": false,
+    "vault_devices": null,
+    "vault_members": [],
+    "vault_state": "off",
+    "vault_reason": "",
+    "vault_summary": "",
+    "vault_last": 0,
+    "vault_step": "",
+    "vault_done": 0,
+    "vault_total": 0,
+    "vault_since": 0,
+    "vault_skipped": 0,
+    "vault_skipped_note": ""
+  },
+  "recovery": {
+    "configured": true,
+    "enrolled": true,
+    "verified": true,
+    "verified_at": 1792548300,
+    "saved_at": 1792548300,
+    "setup_at": 1791770700,
+    "fingerprint": "sample-fingerprint",
+    "account": "sample@example.com",
+    "restored": false,
+    "restart_required": false,
+    "rotation_pending": false,
+    "preview": null,
+    "file_outdated": false,
+    "replaced_at": 0,
+    "takeover_ready": false,
+    "activity": null,
+    "check": null,
+    "update": null,
+    "updated": null,
+    "job": {
+      "state": "idle",
+      "done": 0,
+      "total": 0,
+      "error": "",
+      "destination": ""
+    }
+  },
+  "cases": [
+    {
+      "id": "loading",
+      "cloud": null,
+      "rec": null,
+      "state": "loading",
+      "expect": "Checking your backup",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "not-connected",
+      "cloud": {
+        "signed_in": false,
+        "on": false,
+        "running": false,
+        "state": "off",
+        "account": "",
+        "last_publish": 0,
+        "files": 0,
+        "size": 0,
+        "used": 0,
+        "limit": 0,
+        "phones": null
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "not-connected",
+      "expect": "Your library is only on this PC.",
+      "expected_primary": "connect",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "not-configured",
+      "cloud": {
+        "signed_in": false,
+        "on": false,
+        "running": false,
+        "state": "off",
+        "account": "",
+        "last_publish": 0,
+        "files": 0,
+        "size": 0,
+        "used": 0,
+        "limit": 0,
+        "phones": null,
+        "configured": false
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "not-configured",
+      "expect": "Your library is only on this PC.",
+      "expected_primary": "connect",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "signing-in",
+      "cloud": {
+        "signed_in": false,
+        "on": false,
+        "running": false,
+        "state": "signing-in",
+        "account": "",
+        "last_publish": 0,
+        "files": 0,
+        "size": 0,
+        "used": 0,
+        "limit": 0,
+        "phones": null
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "signing-in",
+      "expect": "Finish signing in",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "disconnected",
+      "cloud": {
+        "signed_in": false,
+        "on": false,
+        "running": false,
+        "state": "off",
+        "account": "sample@example.com",
+        "last_publish": 1794103500000,
+        "files": 0,
+        "size": 0,
+        "used": 0,
+        "limit": 0,
+        "phones": null
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "disconnected",
+      "expect": "Google Drive disconnected. Backup is off.",
+      "expected_primary": "connect",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "signed-out",
+      "cloud": {
+        "signed_in": false,
+        "running": false,
+        "state": "signed-out",
+        "error": "Sign in to Google Drive again to keep uploading."
+      },
+      "state": "signed-out",
+      "expect": "signed out of Google Drive",
+      "expected_primary": "connect",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "sign-in-expired",
+      "cloud": {
+        "running": false,
+        "state": "signed-out",
+        "token_expired": true,
+        "error": "Google Drive sign-in for sample@example.com expired or was removed.",
+        "error_code": "auth_expired",
+        "error_action": "sign_in_again"
+      },
+      "state": "sign-in-expired",
+      "expect": "Google stopped accepting this PC's sign-in",
+      "expected_primary": "sign-in-again",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "signing-in-again",
+      "cloud": {
+        "running": false,
+        "state": "signing-in",
+        "token_expired": true
+      },
+      "state": "signing-in",
+      "expect": "Finish signing in",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "wrong-account",
+      "cloud": {
+        "running": false,
+        "state": "off",
+        "token_expired": true,
+        "error": "You signed in as second@example.com, but this library backs up to sample@example.com. Nothing changed.",
+        "error_code": "wrong_account",
+        "error_action": "sign_in_again",
+        "error_account": "second@example.com"
+      },
+      "state": "wrong-account",
+      "expect": "You signed in as second@example.com",
+      "expected_primary": "sign-in-again",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "offline",
+      "cloud": {
+        "state": "error",
+        "error": "Can't reach Google Drive. Nothing changed. Brainamon retries when the connection is back.",
+        "error_code": "offline",
+        "error_action": "none"
+      },
+      "state": "offline",
+      "expect": "Can't reach Google Drive",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "backup-off-first",
+      "cloud": {
+        "last_publish": 0,
+        "files": 0,
+        "size": 0,
+        "phones": null,
+        "on": false,
+        "running": false,
+        "state": "off"
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "backup-off-first",
+      "expect": "Backup is off.",
+      "expected_primary": "turn-on",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "first-backup-starting",
+      "cloud": {
+        "last_publish": 0,
+        "files": 0,
+        "size": 0,
+        "phones": null,
+        "state": "starting",
+        "upload_step": "Checking the Google account and library ownership…",
+        "upload_since": 1794276292000
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "first-backup-starting",
+      "expect": "Backing up for the first time.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "first-backup",
+      "cloud": {
+        "last_publish": 0,
+        "files": 0,
+        "size": 0,
+        "phones": null,
+        "state": "publishing",
+        "done": 1204,
+        "total": 5678,
+        "bytes_done": 2100000000,
+        "bytes_total": 9800000000,
+        "items_done": 640,
+        "items_total": 3000,
+        "upload_since": 1794275940000
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "first-backup",
+      "expect": "Backing up for the first time: 1,204 of 5,678 files",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "first-offline",
+      "cloud": {
+        "last_publish": 0,
+        "files": 0,
+        "size": 0,
+        "phones": null,
+        "state": "error",
+        "error": "Can't reach Google Drive.",
+        "error_code": "offline",
+        "error_action": "none"
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "first-offline",
+      "expect": "The first backup continues when the connection returns.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "first-drive-full",
+      "cloud": {
+        "last_publish": 0,
+        "files": 0,
+        "size": 0,
+        "phones": null,
+        "state": "error",
+        "error": "Google Drive is full (15.0 of 15.0 GB).",
+        "error_code": "drive_full",
+        "error_action": "free_space",
+        "done": 2100,
+        "total": 5678,
+        "used": 16106127360
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "first-drive-full",
+      "expect": "Google Drive is full (15.0 of 15.0 GB).",
+      "expected_primary": "try-again",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "backing-up",
+      "cloud": {
+        "state": "publishing",
+        "done": 3,
+        "total": 12
+      },
+      "state": "backing-up",
+      "expect": "Backing up 12 changes.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "safe",
+      "cloud": {},
+      "state": "safe",
+      "expect": "Your library is safe: backed up at 10:02, unlocked by your passphrase or recovery file.",
+      "expected_primary": null,
+      "expected_safe_claim": true,
+      "expected_task": null,
+      "expected_checked_file_claim": true,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "backup-off",
+      "cloud": {
+        "on": false,
+        "running": false,
+        "state": "off",
+        "last_publish": 1794103500000
+      },
+      "state": "backup-off",
+      "expect": "Backup is off. Last backup:",
+      "expected_primary": "turn-on",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "pausing",
+      "cloud": {
+        "on": false,
+        "state": "stopping",
+        "paused_since": 1794276296000
+      },
+      "state": "pausing",
+      "expect": "Pausing after the current upload request",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "paused",
+      "cloud": {
+        "on": false,
+        "running": false,
+        "state": "off",
+        "paused_since": 1794269100000,
+        "last_publish": 1794268920000
+      },
+      "state": "paused",
+      "expect": "Backup paused. Changes since",
+      "expected_primary": "resume",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "paused-vault",
+      "cloud": {
+        "on": false,
+        "running": false,
+        "state": "off",
+        "paused_since": 1794275100000,
+        "last_publish": 1794274920000,
+        "vault": {
+          "on": false,
+          "folder": "D:\\Sample\\Brainamon vault"
+        }
+      },
+      "state": "paused",
+      "expect": "Resume restores vault sync if it was on when Pause was requested.",
+      "expected_primary": "resume",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "drive-full",
+      "cloud": {
+        "state": "error",
+        "error": "Google Drive is full (15.0 of 15.0 GB). Free space in Google Drive, then choose Try again.",
+        "error_code": "drive_full",
+        "error_action": "free_space",
+        "used": 16106127360
+      },
+      "state": "drive-full",
+      "expect": "Google Drive is full. Recent changes are not backed up yet.",
+      "expected_primary": "try-again",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "error",
+      "cloud": {
+        "state": "error",
+        "error": "Google Drive refused access. Check this account's permissions and any administrator restrictions, then choose Try again.",
+        "error_code": "other",
+        "error_action": "retry"
+      },
+      "state": "error",
+      "expect": "Google Drive refused access.",
+      "expected_primary": "try-again",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "rate-limited",
+      "cloud": {
+        "state": "error",
+        "error": "Google Drive asked Brainamon to slow down. Brainamon tries again by itself.",
+        "error_code": "rate_limited",
+        "error_action": "wait"
+      },
+      "state": "waiting",
+      "expect": "asked Brainamon to slow down",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "other-copy",
+      "cloud": {
+        "state": "error",
+        "error": "Another Brainamon on this PC (the installed app) made this backup with a different key. Use that copy, or quit it before using this one.",
+        "error_code": "other_copy",
+        "error_action": "none"
+      },
+      "state": "other-copy",
+      "expect": "Another Brainamon on this PC",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "foreign-backup",
+      "cloud": {
+        "last_publish": 0,
+        "files": 0,
+        "size": 0,
+        "phones": null,
+        "state": "error",
+        "error": "sample@example.com already holds a Brainamon backup from another PC.",
+        "error_code": "foreign_backup",
+        "error_action": "recover",
+        "error_at": 1794017100000
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "foreign-backup",
+      "expect": "already holds a Brainamon backup from another PC",
+      "expected_primary": "recover",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "key-missing",
+      "cloud": {
+        "on": false,
+        "running": false,
+        "state": "off",
+        "key_missing": true,
+        "last_publish": 1793844300000,
+        "phones": null
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "key-missing",
+      "expect": "this PC no longer has the key that opens it",
+      "expected_primary": "unlock",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "not-owner",
+      "cloud": {
+        "state": "error",
+        "error": "Another PC is the backup PC now. This PC stays paused instead of overwriting newer changes.",
+        "error_code": "not_owner",
+        "error_action": "recover",
+        "error_at": 1794103500000
+      },
+      "rec": {
+        "update": {
+          "eligible": false,
+          "reason": "other_key",
+          "message": "The newer backup uses another key (phones were removed or the backup was reset there)."
+        }
+      },
+      "state": "not-owner",
+      "expect": "Another PC became the backup PC",
+      "expected_primary": "recover",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "not-owner-update",
+      "cloud": {
+        "state": "error",
+        "error": "Another PC is the backup PC now. This PC stays paused instead of overwriting newer changes.",
+        "error_code": "not_owner",
+        "error_action": "recover",
+        "error_at": 1794103500000
+      },
+      "rec": {
+        "update": {
+          "eligible": true,
+          "reason": "eligible",
+          "message": "",
+          "bytes": 125829120,
+          "files": 46,
+          "nothing": false,
+          "local_changes": 0,
+          "published": 1794189900000,
+          "owner_at": 1794103500000,
+          "last_backup": 1794017100000,
+          "account": "sample@example.com"
+        }
+      },
+      "state": "not-owner-update",
+      "expect": "Google Drive has a newer version of this library",
+      "expected_primary": "update",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "recovery-loading",
+      "cloud": {},
+      "rec": null,
+      "state": "recovery-loading",
+      "expect": "Checking recovery",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "recovery-unread",
+      "cloud": {},
+      "rec": "error",
+      "state": "recovery-unread",
+      "expect": "The recovery status could not be read on this PC.",
+      "expected_primary": "retry-status",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "no-recovery",
+      "cloud": {
+        "phones": null
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "no-recovery",
+      "expect": "if this PC is lost nothing can unlock the backup",
+      "expected_primary": "create-pass",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "enroll-queued",
+      "cloud": {
+        "state": "publishing",
+        "done": 40,
+        "total": 300,
+        "task": {
+          "id": "sample-enroll",
+          "kind": "enroll",
+          "stage": "queued",
+          "title": "Saving the recovery passphrase",
+          "of": 3,
+          "done": 0,
+          "total": 0,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 1,
+          "steps": [
+            {
+              "label": "Waiting for the current upload request",
+              "state": "active"
+            },
+            {
+              "label": "Saving the encrypted key",
+              "state": "waiting"
+            },
+            {
+              "label": "Reading it back",
+              "state": "waiting"
+            }
+          ]
+        }
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0
+      },
+      "state": "enrolling",
+      "expect": "Saving your recovery passphrase",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 1,
+        "of": 3,
+        "pct": null
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "enroll-uploading",
+      "cloud": {
+        "task": {
+          "id": "sample-enroll",
+          "kind": "enroll",
+          "stage": "uploading",
+          "title": "Saving the recovery passphrase",
+          "of": 3,
+          "done": 0,
+          "total": 0,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 2,
+          "steps": [
+            {
+              "label": "Waiting for the current upload request",
+              "state": "done"
+            },
+            {
+              "label": "Saving the encrypted key",
+              "state": "active"
+            },
+            {
+              "label": "Reading it back",
+              "state": "waiting"
+            }
+          ]
+        },
+        "recovery_activity": {
+          "action": "enroll",
+          "state": "running",
+          "step": "Saving and reading back the encrypted recovery record in Google Drive…",
+          "started": 1794276280000
+        }
+      },
+      "rec": {
+        "configured": true,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 1794276300
+      },
+      "state": "enrolling",
+      "expect": "Saving your recovery passphrase",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 2,
+        "of": 3,
+        "pct": null
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "enroll-failed",
+      "cloud": {
+        "task": {
+          "id": "sample-enroll",
+          "kind": "enroll",
+          "stage": "queued",
+          "title": "Saving the recovery passphrase",
+          "of": 3,
+          "done": 0,
+          "total": 0,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "Can't reach Google Drive. Nothing changed. Brainamon retries when the connection is back.",
+          "code": "offline",
+          "lock": "",
+          "step": 1,
+          "steps": [
+            {
+              "label": "Waiting for the current upload request",
+              "state": "active"
+            },
+            {
+              "label": "Saving the encrypted key",
+              "state": "waiting"
+            },
+            {
+              "label": "Reading it back",
+              "state": "waiting"
+            }
+          ]
+        }
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "enroll-failed",
+      "expect": "Saving your recovery passphrase stopped.",
+      "expected_primary": "create-pass",
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 1,
+        "of": 3,
+        "pct": null
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "recovery-unconfirmed",
+      "cloud": {
+        "phones": null
+      },
+      "rec": {
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0
+      },
+      "state": "recovery-unconfirmed",
+      "expect": "not confirmed in Google Drive yet",
+      "expected_primary": "check-recovery",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "recovery-check-queued",
+      "cloud": {
+        "state": "publishing",
+        "done": 3,
+        "total": 40
+      },
+      "rec": {
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "check": {
+          "state": "queued",
+          "message": "Waiting for the current upload request, then checking recovery. Backup carries on.",
+          "account": "",
+          "enrolled": false
+        }
+      },
+      "state": "recovery-unconfirmed",
+      "expect": "not confirmed in Google Drive yet",
+      "expected_primary": "check-recovery",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "recovery-other-account",
+      "cloud": {
+        "phones": null
+      },
+      "rec": {
+        "account": "second@example.com"
+      },
+      "state": "no-recovery",
+      "expect": "if this PC is lost nothing can unlock the backup",
+      "expected_primary": "create-pass",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "passphrase-only",
+      "cloud": {},
+      "rec": {
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0
+      },
+      "state": "safe",
+      "expect": "Your library is safe: backed up at 10:02, unlocked by your passphrase.",
+      "expected_primary": null,
+      "expected_safe_claim": true,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "file-saved",
+      "cloud": {},
+      "rec": {
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 1794189900
+      },
+      "state": "safe",
+      "expect": "unlocked by your passphrase.",
+      "expected_primary": null,
+      "expected_safe_claim": true,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "file-outdated",
+      "cloud": {
+        "rotation": "complete",
+        "rotation_locked_at": 1794103500000,
+        "phones": [
+          {
+            "device": "a1",
+            "name": "Pixel 8",
+            "seen": 1794276060000
+          }
+        ]
+      },
+      "rec": {
+        "verified": false,
+        "verified_at": 0,
+        "file_outdated": true,
+        "replaced_at": 1794103500
+      },
+      "state": "file-outdated",
+      "expect": "stopped working when phones were removed",
+      "expected_primary": null,
+      "expected_safe_claim": true,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "remove-locking",
+      "cloud": {
+        "phones": null,
+        "rotation": "pending",
+        "rotation_locked_by": 1794279540000,
+        "rotation_lock": "Locked out by 10:59 at the latest: this PC stopped renewing their access",
+        "task": {
+          "id": "sample-remove_phones",
+          "kind": "remove_phones",
+          "stage": "requested",
+          "title": "Removing all phones",
+          "of": 5,
+          "done": 0,
+          "total": 0,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 2,
+          "steps": [
+            {
+              "label": "New key ready",
+              "state": "done"
+            },
+            {
+              "label": "Phones locked out",
+              "state": "active"
+            },
+            {
+              "label": "Re-encrypting",
+              "state": "waiting"
+            },
+            {
+              "label": "Checking the new copy",
+              "state": "waiting"
+            },
+            {
+              "label": "Deleting the old copy",
+              "state": "waiting"
+            }
+          ]
+        },
+        "error_code": "offline",
+        "state": "error",
+        "error": "Can't reach Google Drive."
+      },
+      "rec": {
+        "rotation_pending": true
+      },
+      "state": "task-remove_phones",
+      "expect": "Removing all phones · step 2 of 5.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 2,
+        "of": 5,
+        "pct": null
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "remove-reencrypt",
+      "cloud": {
+        "rotation": "pending",
+        "rotation_locked_at": 1794275940000,
+        "rotation_lock": "Phones locked out at 09:59.",
+        "phones": [],
+        "state": "publishing",
+        "task": {
+          "id": "sample-remove_phones",
+          "kind": "remove_phones",
+          "stage": "publishing",
+          "title": "Removing all phones",
+          "of": 5,
+          "done": 2345,
+          "total": 5678,
+          "bytes_done": 4100000000,
+          "bytes_total": 9800000000,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 3,
+          "steps": [
+            {
+              "label": "New key ready",
+              "state": "done"
+            },
+            {
+              "label": "Phones locked out",
+              "state": "done"
+            },
+            {
+              "label": "Re-encrypting",
+              "state": "active"
+            },
+            {
+              "label": "Checking the new copy",
+              "state": "waiting"
+            },
+            {
+              "label": "Deleting the old copy",
+              "state": "waiting"
+            }
+          ]
+        }
+      },
+      "rec": {
+        "rotation_pending": true
+      },
+      "state": "task-remove_phones",
+      "expect": "Removing all phones · step 3 of 5.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 3,
+        "of": 5,
+        "pct": 41.83673469387755
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "remove-checking",
+      "cloud": {
+        "rotation": "pending",
+        "rotation_locked_at": 1794275940000,
+        "rotation_lock": "Phones locked out at 09:59.",
+        "phones": [],
+        "state": "publishing",
+        "task": {
+          "id": "sample-remove_phones",
+          "kind": "remove_phones",
+          "stage": "publishing",
+          "title": "Removing all phones",
+          "of": 5,
+          "done": 3000,
+          "total": 5678,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 4,
+          "steps": [
+            {
+              "label": "New key ready",
+              "state": "done"
+            },
+            {
+              "label": "Phones locked out",
+              "state": "done"
+            },
+            {
+              "label": "Re-encrypting",
+              "state": "done"
+            },
+            {
+              "label": "Checking the new copy",
+              "state": "active"
+            },
+            {
+              "label": "Deleting the old copy",
+              "state": "waiting"
+            }
+          ]
+        }
+      },
+      "rec": {
+        "rotation_pending": true
+      },
+      "state": "task-remove_phones",
+      "expect": "Removing all phones · step 4 of 5.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 4,
+        "of": 5,
+        "pct": 52.835505459668894
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "remove-cleanup",
+      "cloud": {
+        "rotation": "pending",
+        "rotation_locked_at": 1794275940000,
+        "rotation_lock": "Phones locked out at 09:59.",
+        "phones": [],
+        "state": "publishing",
+        "task": {
+          "id": "sample-remove_phones",
+          "kind": "remove_phones",
+          "stage": "cleanup",
+          "title": "Removing all phones",
+          "of": 5,
+          "done": 4000,
+          "total": 5678,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 5,
+          "steps": [
+            {
+              "label": "New key ready",
+              "state": "done"
+            },
+            {
+              "label": "Phones locked out",
+              "state": "done"
+            },
+            {
+              "label": "Re-encrypting",
+              "state": "done"
+            },
+            {
+              "label": "Checking the new copy",
+              "state": "done"
+            },
+            {
+              "label": "Deleting the old copy",
+              "state": "active"
+            }
+          ]
+        }
+      },
+      "rec": {
+        "rotation_pending": true
+      },
+      "state": "task-remove_phones",
+      "expect": "Removing all phones · step 5 of 5.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 5,
+        "of": 5,
+        "pct": 70.44734061289186
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "remove-paused",
+      "cloud": {
+        "rotation": "pending",
+        "rotation_locked_at": 1794275940000,
+        "rotation_lock": "Phones locked out at 09:59.",
+        "phones": [],
+        "on": false,
+        "running": false,
+        "state": "off",
+        "paused_since": 1794275580000,
+        "task": {
+          "id": "sample-remove_phones",
+          "kind": "remove_phones",
+          "stage": "publishing",
+          "title": "Removing all phones",
+          "of": 5,
+          "done": 2345,
+          "total": 5678,
+          "bytes_done": 4100000000,
+          "bytes_total": 9800000000,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 3,
+          "steps": [
+            {
+              "label": "New key ready",
+              "state": "done"
+            },
+            {
+              "label": "Phones locked out",
+              "state": "done"
+            },
+            {
+              "label": "Re-encrypting",
+              "state": "active"
+            },
+            {
+              "label": "Checking the new copy",
+              "state": "waiting"
+            },
+            {
+              "label": "Deleting the old copy",
+              "state": "waiting"
+            }
+          ],
+          "paused_snapshot": true
+        }
+      },
+      "rec": {
+        "rotation_pending": true
+      },
+      "state": "paused-task",
+      "expect": "Removing all phones is paused too.",
+      "expected_primary": "resume",
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 3,
+        "of": 5,
+        "pct": 41.83673469387755
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "remove-failed",
+      "cloud": {
+        "rotation": "pending",
+        "rotation_locked_at": 1794275940000,
+        "rotation_lock": "Phones locked out at 09:59.",
+        "phones": [],
+        "state": "error",
+        "error": "Google Drive is full (15.0 of 15.0 GB). Free space in Google Drive, then choose Try again.",
+        "error_code": "drive_full",
+        "error_action": "free_space",
+        "task": {
+          "id": "sample-remove_phones",
+          "kind": "remove_phones",
+          "stage": "publishing",
+          "title": "Removing all phones",
+          "of": 5,
+          "done": 4100,
+          "total": 5678,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 3,
+          "steps": [
+            {
+              "label": "New key ready",
+              "state": "done"
+            },
+            {
+              "label": "Phones locked out",
+              "state": "done"
+            },
+            {
+              "label": "Re-encrypting",
+              "state": "active"
+            },
+            {
+              "label": "Checking the new copy",
+              "state": "waiting"
+            },
+            {
+              "label": "Deleting the old copy",
+              "state": "waiting"
+            }
+          ]
+        }
+      },
+      "rec": {
+        "rotation_pending": true
+      },
+      "state": "task-failed",
+      "expect": "Removing all phones stopped.",
+      "expected_primary": "try-again",
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 3,
+        "of": 5,
+        "pct": 72.20852412821417
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "remove-after-restart",
+      "cloud": {
+        "rotation": "pending",
+        "rotation_locked_at": 1794275940000,
+        "rotation_lock": "Phones locked out at 09:59.",
+        "phones": [],
+        "state": "starting",
+        "upload_step": "Checking for pending phone changes in Google Drive…",
+        "task": {
+          "id": "sample-remove_phones",
+          "kind": "remove_phones",
+          "stage": "publishing",
+          "title": "Removing all phones",
+          "of": 5,
+          "done": 0,
+          "total": 0,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794265500000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 3,
+          "steps": [
+            {
+              "label": "New key ready",
+              "state": "done"
+            },
+            {
+              "label": "Phones locked out",
+              "state": "done"
+            },
+            {
+              "label": "Re-encrypting",
+              "state": "active"
+            },
+            {
+              "label": "Checking the new copy",
+              "state": "waiting"
+            },
+            {
+              "label": "Deleting the old copy",
+              "state": "waiting"
+            }
+          ]
+        }
+      },
+      "rec": {
+        "rotation_pending": true
+      },
+      "state": "task-remove_phones",
+      "expect": "Removing all phones · step 3 of 5.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 3,
+        "of": 5,
+        "pct": null
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "phones-removed",
+      "cloud": {
+        "rotation": "complete",
+        "rotation_locked_at": 1794273900000,
+        "phones": []
+      },
+      "state": "phones-removed",
+      "expect": "All phones removed at",
+      "expected_primary": "add-phone",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "reset-queued",
+      "cloud": {
+        "state": "starting",
+        "task": {
+          "id": "sample-reset_backup",
+          "kind": "reset_backup",
+          "stage": "queued",
+          "title": "Resetting the backup",
+          "of": 3,
+          "done": 0,
+          "total": 0,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 1,
+          "steps": [
+            {
+              "label": "New key ready",
+              "state": "active"
+            },
+            {
+              "label": "Backing up again",
+              "state": "waiting"
+            },
+            {
+              "label": "Deleting the old backup",
+              "state": "waiting"
+            }
+          ]
+        }
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "task-reset_backup",
+      "expect": "Resetting the backup · step 1 of 3.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 1,
+        "of": 3,
+        "pct": null
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "reset-backing-up",
+      "cloud": {
+        "state": "publishing",
+        "phones": null,
+        "task": {
+          "id": "sample-reset_backup",
+          "kind": "reset_backup",
+          "stage": "backing-up",
+          "title": "Resetting the backup",
+          "of": 3,
+          "done": 1500,
+          "total": 5678,
+          "bytes_done": 2600000000,
+          "bytes_total": 9800000000,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "items_done": 800,
+          "items_total": 3000,
+          "step": 2,
+          "steps": [
+            {
+              "label": "New key ready",
+              "state": "done"
+            },
+            {
+              "label": "Backing up again",
+              "state": "active"
+            },
+            {
+              "label": "Deleting the old backup",
+              "state": "waiting"
+            }
+          ]
+        }
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "task-reset_backup",
+      "expect": "Resetting the backup · step 2 of 3.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 2,
+        "of": 3,
+        "pct": 26.53061224489796
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "reset-cleanup",
+      "cloud": {
+        "state": "publishing",
+        "phones": null,
+        "upload_step": "Deleting the old backup…",
+        "task": {
+          "id": "sample-reset_backup",
+          "kind": "reset_backup",
+          "stage": "cleanup",
+          "title": "Resetting the backup",
+          "of": 3,
+          "done": 2000,
+          "total": 5700,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "uploaded_items": 3000,
+          "uploaded_items_total": 3000,
+          "uploaded_files": 5678,
+          "step": 3,
+          "steps": [
+            {
+              "label": "New key ready",
+              "state": "done"
+            },
+            {
+              "label": "Backing up again",
+              "state": "done"
+            },
+            {
+              "label": "Deleting the old backup",
+              "state": "active"
+            }
+          ]
+        }
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "task-reset_backup",
+      "expect": "Resetting the backup · step 3 of 3.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 3,
+        "of": 3,
+        "pct": 35.08771929824562
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "switch-signing-in",
+      "cloud": {
+        "signed_in": false,
+        "on": false,
+        "running": true,
+        "state": "signing-in",
+        "account": "",
+        "phones": null,
+        "task": {
+          "id": "sample-switch_account",
+          "kind": "switch_account",
+          "stage": "signing-in",
+          "title": "Switching Google account",
+          "of": 3,
+          "done": 0,
+          "total": 0,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 2,
+          "steps": [
+            {
+              "label": "Signing out",
+              "state": "done"
+            },
+            {
+              "label": "Signing in and backing up",
+              "state": "active"
+            },
+            {
+              "label": "Deleting the old copy",
+              "state": "waiting"
+            }
+          ]
+        }
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "signing-in",
+      "expect": "Finish signing in",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 2,
+        "of": 3,
+        "pct": null
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "switch-backing-up",
+      "cloud": {
+        "account": "second@example.com",
+        "state": "publishing",
+        "last_publish": 0,
+        "phones": null,
+        "task": {
+          "id": "sample-switch_account",
+          "kind": "switch_account",
+          "stage": "signing-in",
+          "title": "Switching Google account",
+          "of": 3,
+          "done": 900,
+          "total": 5678,
+          "bytes_done": 1500000000,
+          "bytes_total": 9800000000,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 2,
+          "steps": [
+            {
+              "label": "Signing out",
+              "state": "done"
+            },
+            {
+              "label": "Signing in and backing up",
+              "state": "active"
+            },
+            {
+              "label": "Deleting the old copy",
+              "state": "waiting"
+            }
+          ]
+        }
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "task-switch_account",
+      "expect": "Switching Google account · step 2 of 3.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 2,
+        "of": 3,
+        "pct": 15.306122448979592
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "switch-cleanup",
+      "cloud": {
+        "account": "second@example.com",
+        "state": "idle",
+        "phones": null,
+        "task": {
+          "id": "sample-switch_account",
+          "kind": "switch_account",
+          "stage": "cleanup",
+          "title": "Switching Google account",
+          "of": 3,
+          "done": 2500,
+          "total": 5690,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 3,
+          "steps": [
+            {
+              "label": "Signing out",
+              "state": "done"
+            },
+            {
+              "label": "Signing in and backing up",
+              "state": "done"
+            },
+            {
+              "label": "Deleting the old copy",
+              "state": "active"
+            }
+          ]
+        }
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "task-switch_account",
+      "expect": "Switching Google account · step 3 of 3.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 3,
+        "of": 3,
+        "pct": 43.936731107205624
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "one-shot",
+      "cloud": {
+        "on": false,
+        "running": true,
+        "state": "publishing",
+        "done": 4,
+        "total": 9,
+        "task": {
+          "id": "sample-one_shot_publish",
+          "kind": "one_shot_publish",
+          "stage": "running",
+          "title": "Backing up once",
+          "of": 1,
+          "done": 0,
+          "total": 0,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 1,
+          "steps": [
+            {
+              "label": "Backing up",
+              "state": "active"
+            }
+          ]
+        }
+      },
+      "state": "task-one_shot_publish",
+      "expect": "Backing up once · step 1 of 1.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 1,
+        "of": 1,
+        "pct": null
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "task-queue",
+      "cloud": {
+        "rotation": "pending",
+        "rotation_locked_at": 1794275940000,
+        "rotation_lock": "Phones locked out at 09:59.",
+        "phones": [],
+        "state": "publishing",
+        "task": {
+          "id": "sample-remove_phones",
+          "kind": "remove_phones",
+          "stage": "publishing",
+          "title": "Removing all phones",
+          "of": 5,
+          "done": 2345,
+          "total": 5678,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 3,
+          "steps": [
+            {
+              "label": "New key ready",
+              "state": "done"
+            },
+            {
+              "label": "Phones locked out",
+              "state": "done"
+            },
+            {
+              "label": "Re-encrypting",
+              "state": "active"
+            },
+            {
+              "label": "Checking the new copy",
+              "state": "waiting"
+            },
+            {
+              "label": "Deleting the old copy",
+              "state": "waiting"
+            }
+          ]
+        },
+        "tasks": [
+          {
+            "id": "sample-remove_phones",
+            "kind": "remove_phones",
+            "title": "Removing all phones",
+            "stage": "publishing",
+            "error": "",
+            "code": ""
+          },
+          {
+            "id": "sample-one-shot",
+            "kind": "one_shot_publish",
+            "title": "Backing up once",
+            "stage": "queued",
+            "error": "",
+            "code": ""
+          }
+        ]
+      },
+      "rec": {
+        "rotation_pending": true
+      },
+      "state": "task-remove_phones",
+      "expect": "Removing all phones · step 3 of 5.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 3,
+        "of": 5,
+        "pct": 41.29975343430785
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": [
+        "sample-one-shot"
+      ]
+    },
+    {
+      "id": "disconnect-stopping",
+      "cloud": {
+        "on": false,
+        "state": "disconnecting",
+        "upload_step": "Stopping current work…",
+        "task": {
+          "id": "sample-disconnect",
+          "kind": "disconnect",
+          "stage": "queued",
+          "title": "Disconnecting Google Drive",
+          "of": 3,
+          "done": 0,
+          "total": 0,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 1,
+          "steps": [
+            {
+              "label": "Stopping current work",
+              "state": "active"
+            },
+            {
+              "label": "Deleting the backup if requested",
+              "state": "waiting"
+            },
+            {
+              "label": "Signing out",
+              "state": "waiting"
+            }
+          ]
+        }
+      },
+      "state": "disconnecting",
+      "expect": "Disconnecting from Google Drive",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 1,
+        "of": 3,
+        "pct": null
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "disconnect-deleting",
+      "cloud": {
+        "on": false,
+        "state": "disconnecting",
+        "done": 2100,
+        "total": 5690,
+        "task": {
+          "id": "sample-disconnect",
+          "kind": "disconnect",
+          "stage": "deleting",
+          "title": "Disconnecting Google Drive",
+          "of": 3,
+          "done": 2100,
+          "total": 5690,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 2,
+          "steps": [
+            {
+              "label": "Stopping current work",
+              "state": "done"
+            },
+            {
+              "label": "Deleting the backup if requested",
+              "state": "active"
+            },
+            {
+              "label": "Signing out",
+              "state": "waiting"
+            }
+          ]
+        }
+      },
+      "state": "disconnecting",
+      "expect": "Disconnecting from Google Drive",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 2,
+        "of": 3,
+        "pct": 36.90685413005272
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "disconnect-signing-out",
+      "cloud": {
+        "on": false,
+        "state": "disconnecting",
+        "task": {
+          "id": "sample-disconnect",
+          "kind": "disconnect",
+          "stage": "signing-out",
+          "title": "Disconnecting Google Drive",
+          "of": 3,
+          "done": 0,
+          "total": 0,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 3,
+          "steps": [
+            {
+              "label": "Stopping current work",
+              "state": "done"
+            },
+            {
+              "label": "Deleting the backup if requested",
+              "state": "done"
+            },
+            {
+              "label": "Signing out",
+              "state": "active"
+            }
+          ]
+        }
+      },
+      "state": "disconnecting",
+      "expect": "Disconnecting from Google Drive",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 3,
+        "of": 3,
+        "pct": null
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "disconnect-failed",
+      "cloud": {
+        "on": false,
+        "running": false,
+        "state": "error",
+        "error": "Can't reach Google Drive. Nothing changed. Brainamon retries when the connection is back.",
+        "error_code": "offline",
+        "task": {
+          "id": "sample-disconnect",
+          "kind": "disconnect",
+          "stage": "deleting",
+          "title": "Disconnecting Google Drive",
+          "of": 3,
+          "done": 0,
+          "total": 0,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "Can't reach Google Drive. Nothing changed. Brainamon retries when the connection is back.",
+          "code": "offline",
+          "lock": "",
+          "step": 2,
+          "steps": [
+            {
+              "label": "Stopping current work",
+              "state": "done"
+            },
+            {
+              "label": "Deleting the backup if requested",
+              "state": "active"
+            },
+            {
+              "label": "Signing out",
+              "state": "waiting"
+            }
+          ]
+        }
+      },
+      "state": "disconnect-failed",
+      "expect": "Disconnecting stopped. Your Google account is still connected.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 2,
+        "of": 3,
+        "pct": null
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "update-downloading",
+      "cloud": {
+        "state": "error",
+        "error": "Another PC is the backup PC now. This PC stays paused instead of overwriting newer changes.",
+        "error_code": "not_owner",
+        "error_action": "recover",
+        "error_at": 1794103500000,
+        "task": {
+          "id": "sample-update_folder",
+          "kind": "update_folder",
+          "stage": "downloading",
+          "title": "Updating this folder",
+          "of": 3,
+          "done": 12,
+          "total": 46,
+          "bytes_done": 41943040,
+          "bytes_total": 125829120,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 1,
+          "steps": [
+            {
+              "label": "Downloading what changed",
+              "state": "active"
+            },
+            {
+              "label": "Switching at the restart",
+              "state": "waiting"
+            },
+            {
+              "label": "Becoming the backup PC",
+              "state": "waiting"
+            }
+          ]
+        }
+      },
+      "rec": {
+        "update": {
+          "eligible": true,
+          "reason": "eligible",
+          "message": "",
+          "bytes": 125829120,
+          "files": 46,
+          "nothing": false,
+          "local_changes": 0,
+          "published": 1794189900000,
+          "owner_at": 1794103500000,
+          "last_backup": 1794017100000,
+          "account": "sample@example.com"
+        }
+      },
+      "state": "updating",
+      "expect": "Updating this folder: 40 MB of 120 MB",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 1,
+        "of": 3,
+        "pct": 33.333333333333336
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "update-downloaded",
+      "cloud": {
+        "state": "error",
+        "error": "Another PC is the backup PC now. This PC stays paused instead of overwriting newer changes.",
+        "error_code": "not_owner",
+        "error_action": "recover",
+        "error_at": 1794103500000,
+        "task": {
+          "id": "sample-update_folder",
+          "kind": "update_folder",
+          "stage": "downloaded",
+          "title": "Updating this folder",
+          "of": 3,
+          "done": 0,
+          "total": 0,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 2,
+          "steps": [
+            {
+              "label": "Downloading what changed",
+              "state": "done"
+            },
+            {
+              "label": "Switching at the restart",
+              "state": "active"
+            },
+            {
+              "label": "Becoming the backup PC",
+              "state": "waiting"
+            }
+          ]
+        }
+      },
+      "rec": {
+        "update": {
+          "eligible": true,
+          "reason": "eligible",
+          "message": "",
+          "bytes": 125829120,
+          "files": 46,
+          "nothing": false,
+          "local_changes": 0,
+          "published": 1794189900000,
+          "owner_at": 1794103500000,
+          "last_backup": 1794017100000,
+          "account": "sample@example.com"
+        }
+      },
+      "state": "update-downloaded",
+      "expect": "Downloaded. Restart Brainamon to switch",
+      "expected_primary": "restart",
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 2,
+        "of": 3,
+        "pct": null
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "update-swap",
+      "cloud": {
+        "state": "error",
+        "error": "Another PC is the backup PC now. This PC stays paused instead of overwriting newer changes.",
+        "error_code": "not_owner",
+        "error_action": "recover",
+        "error_at": 1794103500000,
+        "task": {
+          "id": "sample-update_folder",
+          "kind": "update_folder",
+          "stage": "swap",
+          "title": "Updating this folder",
+          "of": 3,
+          "done": 0,
+          "total": 0,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 2,
+          "steps": [
+            {
+              "label": "Downloading what changed",
+              "state": "done"
+            },
+            {
+              "label": "Switching at the restart",
+              "state": "active"
+            },
+            {
+              "label": "Becoming the backup PC",
+              "state": "waiting"
+            }
+          ]
+        }
+      },
+      "rec": {
+        "update": {
+          "eligible": true,
+          "reason": "eligible",
+          "message": "",
+          "bytes": 125829120,
+          "files": 46,
+          "nothing": false,
+          "local_changes": 0,
+          "published": 1794189900000,
+          "owner_at": 1794103500000,
+          "last_backup": 1794017100000,
+          "account": "sample@example.com"
+        }
+      },
+      "state": "update-swap",
+      "expect": "Downloaded. Restart Brainamon to switch",
+      "expected_primary": "restart",
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 2,
+        "of": 3,
+        "pct": null
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "update-claim",
+      "cloud": {
+        "state": "starting",
+        "task": {
+          "id": "sample-update_folder",
+          "kind": "update_folder",
+          "stage": "claim",
+          "title": "Updating this folder",
+          "of": 3,
+          "done": 0,
+          "total": 0,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "",
+          "code": "",
+          "lock": "",
+          "step": 3,
+          "steps": [
+            {
+              "label": "Downloading what changed",
+              "state": "done"
+            },
+            {
+              "label": "Switching at the restart",
+              "state": "done"
+            },
+            {
+              "label": "Becoming the backup PC",
+              "state": "active"
+            }
+          ]
+        }
+      },
+      "state": "update-claim",
+      "expect": "Becoming the backup PC again",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 3,
+        "of": 3,
+        "pct": null
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "update-failed",
+      "cloud": {
+        "state": "error",
+        "error": "Another PC is the backup PC now. This PC stays paused instead of overwriting newer changes.",
+        "error_code": "not_owner",
+        "error_action": "recover",
+        "error_at": 1794103500000,
+        "task": {
+          "id": "sample-update_folder",
+          "kind": "update_folder",
+          "stage": "downloading",
+          "title": "Updating this folder",
+          "of": 3,
+          "done": 0,
+          "total": 0,
+          "bytes_done": 41943040,
+          "bytes_total": 125829120,
+          "since": 1794275940000,
+          "error": "Not enough free disk space next to the library for the update.",
+          "code": "",
+          "lock": "",
+          "step": 1,
+          "steps": [
+            {
+              "label": "Downloading what changed",
+              "state": "active"
+            },
+            {
+              "label": "Switching at the restart",
+              "state": "waiting"
+            },
+            {
+              "label": "Becoming the backup PC",
+              "state": "waiting"
+            }
+          ]
+        }
+      },
+      "rec": {
+        "update": {
+          "eligible": true,
+          "reason": "eligible",
+          "message": "",
+          "bytes": 125829120,
+          "files": 46,
+          "nothing": false,
+          "local_changes": 0,
+          "published": 1794189900000,
+          "owner_at": 1794103500000,
+          "last_backup": 1794017100000,
+          "account": "sample@example.com"
+        }
+      },
+      "state": "update-failed",
+      "expect": "Updating this folder stopped.",
+      "expected_primary": "retry-update",
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 1,
+        "of": 3,
+        "pct": 33.333333333333336
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "update-claim-failed",
+      "cloud": {
+        "state": "error",
+        "error": "Can't reach Google Drive.",
+        "error_code": "offline",
+        "task": {
+          "id": "sample-update_folder",
+          "kind": "update_folder",
+          "stage": "claim",
+          "title": "Updating this folder",
+          "of": 3,
+          "done": 0,
+          "total": 0,
+          "bytes_done": 0,
+          "bytes_total": 0,
+          "since": 1794275940000,
+          "error": "Can't reach Google Drive. Nothing changed. Brainamon retries when the connection is back.",
+          "code": "offline",
+          "lock": "",
+          "step": 3,
+          "steps": [
+            {
+              "label": "Downloading what changed",
+              "state": "done"
+            },
+            {
+              "label": "Switching at the restart",
+              "state": "done"
+            },
+            {
+              "label": "Becoming the backup PC",
+              "state": "active"
+            }
+          ]
+        }
+      },
+      "state": "update-claim-failed",
+      "expect": "Updated, but this PC is not the backup PC yet.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 3,
+        "of": 3,
+        "pct": null
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "updated",
+      "cloud": {},
+      "rec": {
+        "updated": {
+          "at": 1794269100000,
+          "published": 1794189900000,
+          "kept": 3,
+          "folder": "before-update-2026-11-10"
+        }
+      },
+      "state": "updated",
+      "expect": "This PC is the backup PC again.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "reconnect-checking",
+      "cloud": {
+        "on": false,
+        "running": false,
+        "state": "off",
+        "key_missing": true,
+        "phones": null,
+        "recovery_activity": {
+          "action": "reconnect",
+          "state": "running",
+          "step": "Checking the Google account and that this folder matches the latest upload…",
+          "started": 1794276280000,
+          "step_index": 2,
+          "step_count": 4
+        }
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "activity",
+      "expect": "Keeping this folder…",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 2,
+        "of": 4,
+        "pct": null
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "reconnect-writing",
+      "cloud": {
+        "on": false,
+        "running": false,
+        "state": "off",
+        "key_missing": true,
+        "phones": null,
+        "recovery_activity": {
+          "action": "reconnect",
+          "state": "running",
+          "step": "Saving the new recovery setup and uploader record in Google Drive…",
+          "started": 1794276280000,
+          "step_index": 3,
+          "step_count": 4
+        }
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "activity",
+      "expect": "Keeping this folder…",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 3,
+        "of": 4,
+        "pct": null
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "reconnect-failed",
+      "cloud": {
+        "on": false,
+        "running": false,
+        "state": "off",
+        "key_missing": true,
+        "phones": null,
+        "last_publish": 1793844300000,
+        "recovery_activity": {
+          "action": "reconnect",
+          "state": "error",
+          "step": "Reconnect was interrupted after it started writing to Drive. Drive may now hold a new recovery setup or uploader record; this PC kept its previous key and recovery settings. Uploads stay off. Find your library again before retrying.",
+          "started": 1794276280000,
+          "code": "other",
+          "next": "none"
+        }
+      },
+      "rec": {
+        "configured": false,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0,
+        "setup_at": 0,
+        "account": "",
+        "fingerprint": ""
+      },
+      "state": "key-missing",
+      "expect": "this PC no longer has the key that opens it",
+      "expected_primary": "unlock",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "reconnected",
+      "cloud": {
+        "on": false,
+        "running": false,
+        "state": "off",
+        "last_publish": 1793844300000,
+        "phones": null
+      },
+      "rec": {
+        "verified": false,
+        "verified_at": 0,
+        "saved_at": 0
+      },
+      "state": "backup-off",
+      "expect": "Backup is off. Last backup:",
+      "expected_primary": "turn-on",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "copying",
+      "cloud": {
+        "on": false,
+        "running": false,
+        "state": "off",
+        "paused_since": 1794276120000
+      },
+      "rec": {
+        "job": {
+          "state": "restoring",
+          "done": 2100,
+          "total": 5678,
+          "error": "",
+          "destination": "D:\\Sample\\Brainamon-restored"
+        }
+      },
+      "state": "copying",
+      "expect": "Copying your backup into a new folder: 2,100 of 5,678 files.",
+      "expected_primary": null,
+      "expected_safe_claim": false,
+      "expected_task": {
+        "step": 1,
+        "of": 1,
+        "pct": 36.984853821768226
+      },
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "copied",
+      "cloud": {
+        "on": false,
+        "running": false,
+        "state": "off",
+        "paused_since": 1794274500000
+      },
+      "rec": {
+        "job": {
+          "state": "complete",
+          "done": 5678,
+          "total": 5678,
+          "error": "",
+          "destination": "D:\\Sample\\Brainamon-restored"
+        }
+      },
+      "state": "copied",
+      "expect": "Drive was not changed.",
+      "expected_primary": "restart",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "copy-failed",
+      "cloud": {
+        "on": false,
+        "running": false,
+        "state": "off",
+        "paused_since": 1794274500000
+      },
+      "rec": {
+        "job": {
+          "state": "error",
+          "done": 900,
+          "total": 5678,
+          "error": "Recovery could not finish. Check Drive access and disk space, then retry. Your current library is unchanged.",
+          "destination": "D:\\Sample\\Brainamon-restored"
+        }
+      },
+      "state": "copy-failed",
+      "expect": "Copying your backup stopped.",
+      "expected_primary": "open-recover",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "copy-stopped",
+      "cloud": {
+        "on": false,
+        "running": false,
+        "state": "off",
+        "paused_since": 1794274500000
+      },
+      "rec": {
+        "job": {
+          "state": "cancelled",
+          "done": 900,
+          "total": 5678,
+          "error": "Recovery cancelled. Current library and Drive are unchanged.",
+          "destination": "D:\\Sample\\Brainamon-restored"
+        }
+      },
+      "state": "copy-stopped",
+      "expect": "Copying was stopped.",
+      "expected_primary": "open-recover",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "restart-restored",
+      "cloud": {
+        "on": false,
+        "running": false,
+        "state": "off"
+      },
+      "rec": {
+        "restored": true,
+        "restart_required": true,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0
+      },
+      "state": "restart-restored",
+      "expect": "The restored library is ready. Restart Brainamon to open it.",
+      "expected_primary": "restart",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "restored",
+      "cloud": {
+        "on": false,
+        "running": false,
+        "state": "off",
+        "phones": null,
+        "last_publish": 1794017100000
+      },
+      "rec": {
+        "restored": true,
+        "enrolled": false,
+        "verified": false,
+        "verified_at": 0,
+        "takeover_ready": true
+      },
+      "state": "restored",
+      "expect": "This restored library is not backed up yet.",
+      "expected_primary": "takeover",
+      "expected_safe_claim": false,
+      "expected_task": null,
+      "expected_checked_file_claim": false,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "phones-none",
+      "cloud": {
+        "phones": null
+      },
+      "state": "safe",
+      "expect": "Your library is safe",
+      "expected_primary": null,
+      "expected_safe_claim": true,
+      "expected_task": null,
+      "expected_checked_file_claim": true,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "phones-list",
+      "cloud": {},
+      "state": "safe",
+      "expect": "2 phones have reported a sync.",
+      "expected_primary": null,
+      "expected_safe_claim": true,
+      "expected_task": null,
+      "expected_checked_file_claim": true,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "phones-unlicensed",
+      "cloud": {
+        "licensed": false,
+        "phones": null
+      },
+      "state": "safe",
+      "expect": "Your library is safe",
+      "expected_primary": null,
+      "expected_safe_claim": true,
+      "expected_task": null,
+      "expected_checked_file_claim": true,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "phones-ignored",
+      "cloud": {
+        "ignored_changes": 4,
+        "rotation": "complete",
+        "rotation_locked_at": 1794017100000,
+        "phones": [
+          {
+            "device": "a1",
+            "name": "Pixel 8",
+            "seen": 1794276060000
+          }
+        ]
+      },
+      "local": {
+        "dismissedNotice": true
+      },
+      "state": "safe",
+      "expect": "Your library is safe",
+      "expected_primary": null,
+      "expected_safe_claim": true,
+      "expected_task": null,
+      "expected_checked_file_claim": true,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "vault-starting",
+      "cloud": {
+        "vault": {
+          "on": true,
+          "folder": "D:\\Sample\\Brainamon vault"
+        },
+        "vault_running": true,
+        "vault_state": "starting",
+        "vault_last": 1794276180000,
+        "vault_summary": "3 sent, 1 received",
+        "vault_devices": null,
+        "vault_members": [
+          "Pixel 8"
+        ]
+      },
+      "state": "safe",
+      "expect": "Your library is safe",
+      "expected_primary": null,
+      "expected_safe_claim": true,
+      "expected_task": null,
+      "expected_checked_file_claim": true,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "vault-syncing",
+      "cloud": {
+        "vault": {
+          "on": true,
+          "folder": "D:\\Sample\\Brainamon vault"
+        },
+        "vault_running": true,
+        "vault_state": "syncing",
+        "vault_last": 1794276180000,
+        "vault_summary": "3 sent, 1 received",
+        "vault_devices": [
+          {
+            "device": "Pixel 8",
+            "ok": true
+          }
+        ],
+        "vault_members": [
+          "Pixel 8"
+        ],
+        "vault_step": "Sending files",
+        "vault_done": 420,
+        "vault_total": 1800,
+        "vault_since": 1794276260000
+      },
+      "state": "safe",
+      "expect": "Your library is safe",
+      "expected_primary": null,
+      "expected_safe_claim": true,
+      "expected_task": null,
+      "expected_checked_file_claim": true,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "vault-on",
+      "cloud": {
+        "vault": {
+          "on": true,
+          "folder": "D:\\Sample\\Brainamon vault"
+        },
+        "vault_running": true,
+        "vault_state": "idle",
+        "vault_last": 1794276180000,
+        "vault_summary": "3 sent, 1 received",
+        "vault_devices": [
+          {
+            "device": "Pixel 8",
+            "ok": true
+          }
+        ],
+        "vault_members": [
+          "Pixel 8"
+        ]
+      },
+      "state": "safe",
+      "expect": "Your library is safe",
+      "expected_primary": null,
+      "expected_safe_claim": true,
+      "expected_task": null,
+      "expected_checked_file_claim": true,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "vault-brake",
+      "cloud": {
+        "vault": {
+          "on": true,
+          "folder": "D:\\Sample\\Brainamon vault"
+        },
+        "vault_running": true,
+        "vault_state": "brake",
+        "vault_last": 1794276180000,
+        "vault_summary": "3 sent, 1 received",
+        "vault_devices": [
+          {
+            "device": "Pixel 8",
+            "ok": true
+          }
+        ],
+        "vault_members": [
+          "Pixel 8"
+        ],
+        "vault_reason": "This round would delete 240 of 1,800 files on the PC."
+      },
+      "state": "safe",
+      "expect": "Your library is safe",
+      "expected_primary": null,
+      "expected_safe_claim": true,
+      "expected_task": null,
+      "expected_checked_file_claim": true,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "vault-error",
+      "cloud": {
+        "vault": {
+          "on": true,
+          "folder": "D:\\Sample\\Brainamon vault"
+        },
+        "vault_running": true,
+        "vault_state": "error",
+        "vault_last": 1794276180000,
+        "vault_summary": "3 sent, 1 received",
+        "vault_devices": [
+          {
+            "device": "Pixel 8",
+            "ok": true
+          }
+        ],
+        "vault_members": [
+          "Pixel 8"
+        ],
+        "vault_reason": "The vault folder could not be read."
+      },
+      "state": "safe",
+      "expect": "Your library is safe",
+      "expected_primary": null,
+      "expected_safe_claim": true,
+      "expected_task": null,
+      "expected_checked_file_claim": true,
+      "expected_waiting_ids": []
+    },
+    {
+      "id": "vault-devices",
+      "cloud": {
+        "vault": {
+          "on": true,
+          "folder": "D:\\Sample\\Brainamon vault"
+        },
+        "vault_running": true,
+        "vault_state": "idle",
+        "vault_last": 1794276180000,
+        "vault_summary": "3 sent, 1 received",
+        "vault_devices": [
+          {
+            "device": "Pixel 8",
+            "ok": true
+          },
+          {
+            "device": "Galaxy A54",
+            "ok": false
+          }
+        ],
+        "vault_members": [
+          "Pixel 8",
+          "Galaxy A54"
+        ]
+      },
+      "state": "safe",
+      "expect": "Your library is safe",
+      "expected_primary": null,
+      "expected_safe_claim": true,
+      "expected_task": null,
+      "expected_checked_file_claim": true,
+      "expected_waiting_ids": []
+    }
+  ]
+}

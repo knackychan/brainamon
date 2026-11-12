@@ -8,6 +8,8 @@
   import { isDesktop, pickPath } from '../lib/pick'
   import { toast } from '../lib/ui.svelte'
   import type { ToolsView, InstallView } from '../lib/setup'
+  import type { Line } from '../lib/backup-state'
+  import { videoLine } from '../lib/settings-lines'
   import { toolsReady, toolState } from '../lib/onboarding'
   import Button from './ui/Button.svelte'
   import Disclosure from './ui/Disclosure.svelte'
@@ -19,7 +21,7 @@
   import TextButton from './ui/TextButton.svelte'
   import ToolStatus from './ui/ToolStatus.svelte'
   // lead: Check and set up may be the state's primary (Settings gives the lead to one unfinished group at a time)
-  let { initial, initialInstall, titleId = '', lead = true, onready = (_ready: boolean) => {} }: { initial?: ToolsView; initialInstall?: InstallView; titleId?: string; lead?: boolean; onready?: (ready: boolean) => void } = $props()
+  let { initial, initialInstall, titleId = '', lead = true, onready = (_ready: boolean) => {}, onstatus = (_line: Line) => {} }: { initial?: ToolsView; initialInstall?: InstallView; titleId?: string; lead?: boolean; onready?: (ready: boolean) => void; onstatus?: (line: Line) => void } = $props()
   let tools = $state<ToolsView | null>(untrack(() => initial ?? null))
   let install = $state<InstallView | null>(untrack(() => initialInstall ?? null))
   let toolsDir = $state(untrack(() => initial?.tools_dir ?? ''))
@@ -45,6 +47,8 @@
   const installRunning = $derived(install?.state === 'running')
   const ready = $derived(!!tools && toolsReady(tools))
   const pending = $derived(checking || toolsBusy || !tools && !toolsError)
+  const summary = $derived(videoLine({ tools, install, checking, starting, error: toolsError || startError || (terminalOpened ? 'Finish setup in the terminal, then check again.' : '') }))
+  $effect(() => { onstatus(summary) })
   $effect(() => { if (tools) onready(toolsReady(tools)) })
   // Advanced details: what each tool is for, under its state
   const TOOL_HINT: Record<string, string> = {
@@ -73,7 +77,7 @@
       const [t, i] = await Promise.all([api.get<ToolsView>('/api/settings/tools'), api.get<InstallView>('/api/settings/tools/install')])
       tools = t; install = i; toolsDir = t.tools_dir
       if (i.state === 'running') pollInstall()
-    } catch (e) { toolsError = (e as Error).message; toast(toolsError, 'w') }
+    } catch (e) { toolsError = (e as Error).message; tools = null; install = null; toast(toolsError, 'w') }
   }
   async function checkAgain() {
     if (checking) return
@@ -89,12 +93,12 @@
     while (!disposed && install?.state === 'running') {
       await new Promise(r => setTimeout(r, 1500))
       if (disposed) return
-      try { install = await api.get<InstallView>('/api/settings/tools/install') } catch { return }
+      try { install = await api.get<InstallView>('/api/settings/tools/install') } catch (e) { toolsError = (e as Error).message; tools = null; install = null; return }
     }
     if (disposed) return
     tools = await api.get<ToolsView>('/api/settings/tools')
     if (install?.state === 'done') toast(toolsReady(tools) ? 'Video tools are ready' : 'Some tools still need attention. Open Advanced details.', toolsReady(tools) ? undefined : 'w')
-    } catch (e) { toast((e as Error).message, 'w') } finally { polling = false }
+    } catch (e) { toolsError = (e as Error).message; tools = null; toast(toolsError, 'w') } finally { polling = false }
   }
   // `starting` covers the request itself, so a second click cannot start a second install
   async function runInstall() {
@@ -130,22 +134,22 @@
   onMount(() => {
     if (!tools) checkAgain()
     else if (installRunning) pollInstall()
-    const off = on('settings_changed', checkAgain)
-    return () => { disposed = true; off() }
+    const offs = [on('settings_changed', checkAgain), on('hello', checkAgain)]
+    return () => { disposed = true; offs.forEach(off => off()) }
   })
 </script>
 
 <GroupBox active={starting || installRunning} aria-label="Video tools" aria-busy={checking || toolsBusy || starting || installRunning || polling}>
   <Label as="span" id={titleId || undefined} tabindex={titleId ? -1 : undefined}>Video tools</Label>
   <div>
-    {#if ready}<Status on role="status">The required tools passed their local checks. Saving links and notes needs no extra tools.</Status>
-    {:else}<Hint>For video downloads, analysis and transcription; links and notes need none. Check and set up downloads what is missing with Windows Package Manager; Windows may ask for permission.</Hint>
+    <Status state={summary.tone} role="status">{summary.text}</Status>
+    {#if !ready}<Hint>For video downloads, analysis and transcription; links and notes need none. Check and set up downloads what is missing with Windows Package Manager; Windows may ask for permission.</Hint>
       {#if needs.length}<p class="sr" role="status">Video tools need attention: {needs.join(', ')}.</p>{/if}{/if}
     <div class="chips">
       {#each names as name (name)}<ToolStatus name={CHIP[name]} state={chipState(name)} />{/each}
       <ToolStatus name="YouTube EJS" state={ejsState} />
     </div>
-    <Disclosure summary="Advanced details and tool folders">
+    <Disclosure id={titleId ? 'set-s-tools-more' : undefined} tabindex={titleId ? -1 : undefined} summary="More: tool folders, install by hand">
       <div class="tool-checklist">
         {#each names as name (name)}
           {@const t = tools?.tools.find(t => t.name === name)}
@@ -190,7 +194,7 @@
     {#if install?.error && !installRunning}<Hint tone="error" role="alert">{install.error}</Hint>{/if}
     {#if blocked}
       {#if install?.winget}<Hint>Windows blocked setup or a tool still needs attention. If permission is needed, continue in an administrator terminal and approve the Windows prompt.</Hint>
-      {:else}<Hint>Automatic setup needs <a href="https://apps.microsoft.com/detail/9nblggh4nns1" target="_blank" rel="noopener noreferrer">Microsoft App Installer</a>. Install or update it, then try again. Manual downloads are under Advanced details.</Hint>{/if}
+      {:else}<Hint>Automatic setup needs <a href="https://apps.microsoft.com/detail/9nblggh4nns1" target="_blank" rel="noopener noreferrer">Microsoft App Installer</a>. Install or update it, then try again. Manual downloads are under More: tool folders, install by hand.</Hint>{/if}
       {#if terminalOpened}<Hint role="status">Terminal opened. Finish the commands there, then click Check and set up to verify the tools.</Hint>{/if}
     {/if}
     {#if checking || toolsBusy}<Progress label="Looking for tools and checking that they work…" />{/if}

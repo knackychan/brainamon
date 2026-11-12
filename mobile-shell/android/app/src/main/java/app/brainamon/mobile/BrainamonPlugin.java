@@ -7,7 +7,6 @@ import android.content.ClipboardManager;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.net.Uri;
 import android.net.ConnectivityManager;
@@ -17,8 +16,6 @@ import android.os.Build;
 import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
-import android.security.keystore.KeyGenParameterSpec;
-import android.security.keystore.KeyProperties;
 import android.util.Base64;
 import androidx.activity.result.ActivityResult;
 import androidx.activity.result.ActivityResultLauncher;
@@ -58,18 +55,12 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.io.OutputStream;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.security.KeyStore;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import javax.crypto.Cipher;
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.GCMParameterSpec;
 
 /**
  * What the Brainamon phone page needs from Android (projects/mobile-app/PLAN.md Phase 6), called from
@@ -85,8 +76,7 @@ import javax.crypto.spec.GCMParameterSpec;
  * - "sharedFile" event: a picture, PDF or .md / .txt file shared to Brainamon (ACTION_SEND with
  *   EXTRA_STREAM), read from its content URI as base64 {name, type, data} or {error}; kept the same way
  * - deviceName: the name the PC's Phones list shows (D13): Settings.Global.DEVICE_NAME from API 25, else maker and model
- * - site*: the phone site reader (projects/phone-site-reader) through SiteBridge. The reader is only in the
- *   Contributor (debug) build and is found by name, so in a release build these reject with "unavailable"
+ * - site*: the phone site reader (projects/phone-site-reader) through SiteBridge.
  */
 @CapacitorPlugin(name = "Brainamon")
 public class BrainamonPlugin extends Plugin {
@@ -267,8 +257,6 @@ public class BrainamonPlugin extends Plugin {
         super.handleOnDestroy();
     }
 
-    private static final String PREFS = "brainamon-secrets";
-    private static final String KEY_ALIAS = "brainamon-secrets-v1";
     private static final String DRIVE_APPDATA = "https://www.googleapis.com/auth/drive.appdata";
 
     private ActivityResultLauncher<IntentSenderRequest> consent;
@@ -295,12 +283,14 @@ public class BrainamonPlugin extends Plugin {
                 AuthorizationResult r = Identity.getAuthorizationClient(getActivity()).getAuthorizationResultFromIntent(result.getData());
                 resolveToken(call, r);
             } catch (ApiException e) {
-                call.reject("Google Drive was not connected.", "denied", e);
+                JSObject detail = new JSObject();
+                detail.put("status", e.getStatusCode());
+                call.reject("Google Drive was not connected.", "denied", e, detail);
             } catch (RuntimeException e) { // the sheet closed with no answer: the page must hear back, or Connect looks dead
                 call.reject("Google sign-in failed: " + e.getMessage(), "failed", e);
             }
         });
-        // the site reader (Contributor build only): profiles forgotten earlier go before any profile is loaded
+        // Forgotten site profiles go before any profile is loaded.
         SiteBridge sites = sites();
         if (sites != null) sites.startup(getContext());
     }
@@ -361,75 +351,35 @@ public class BrainamonPlugin extends Plugin {
 
     // ── secrets ──────────────────────────────────────────────────────────────
 
-    private SecretKey key() throws Exception {
-        KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
-        ks.load(null);
-        if (ks.containsAlias(KEY_ALIAS)) return ((KeyStore.SecretKeyEntry) ks.getEntry(KEY_ALIAS, null)).getSecretKey();
-        KeyGenerator g = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
-        g.init(
-            new KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
-                .build()
-        );
-        return g.generateKey();
-    }
-
-    private SharedPreferences prefs() {
-        return getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-    }
-
     @PluginMethod
     public void secretGet(PluginCall call) {
-        String name = call.getString("key", "");
-        String stored = prefs().getString(name, null);
-        JSObject out = new JSObject();
-        if (stored == null) {
-            out.put("value", null);
-            call.resolve(out);
-            return;
-        }
         try {
-            byte[] all = Base64.decode(stored, Base64.NO_WRAP);
-            ByteBuffer b = ByteBuffer.wrap(all);
-            byte[] iv = new byte[12];
-            b.get(iv);
-            byte[] ct = new byte[b.remaining()];
-            b.get(ct);
-            Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
-            c.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(128, iv));
-            out.put("value", new String(c.doFinal(ct), StandardCharsets.UTF_8));
-        } catch (Exception e) {
-            prefs().edit().remove(name).apply(); // another key (a restored backup): unreadable, start again
-            out.put("value", null);
-        }
-        call.resolve(out);
+            JSObject out = new JSObject();
+            out.put("value", PhoneSecrets.get(getContext(), call.getString("key", "")));
+            call.resolve(out);
+        } catch (Exception e) { call.reject("Saved sign-in could not be read.", e); }
     }
 
     @PluginMethod
     public void secretSet(PluginCall call) {
-        String name = call.getString("key", "");
-        String value = call.getString("value");
-        if (value == null) {
-            prefs().edit().remove(name).apply();
-            call.resolve();
-            return;
-        }
+        String name = call.getString("key", ""), value = call.getString("value");
         try {
-            Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
-            c.init(Cipher.ENCRYPT_MODE, key());
-            byte[] iv = c.getIV();
-            byte[] ct = c.doFinal(value.getBytes(StandardCharsets.UTF_8));
-            byte[] all = ByteBuffer.allocate(iv.length + ct.length).put(iv).put(ct).array();
-            prefs().edit().putString(name, Base64.encodeToString(all, Base64.NO_WRAP)).apply();
+            if (name.equals("bp-pair")) {
+                org.json.JSONObject next = new org.json.JSONObject(value == null ? "{}" : value);
+                boolean changed = false;
+                try {
+                    String before = PhoneSecrets.get(getContext(), name);
+                    org.json.JSONObject old = new org.json.JSONObject(before == null ? "{}" : before);
+                    for (String field : new String[]{"k", "l", "g", "solo", "backupTask"})
+                        if (!old.optString(field).equals(next.optString(field))) changed = true;
+                } catch (Exception unreadable) { changed = true; }
+                // A damaged saved credential must still allow an explicit sign-out or new pairing.
+                if (changed) SyncWork.barrier(getContext());
+            }
+            PhoneSecrets.set(getContext(), name, value);
             call.resolve();
-        } catch (Exception e) {
-            call.reject("The phone could not store the secret: " + e.getMessage(), e);
-        }
+        } catch (Exception e) { call.reject("The phone could not store the secret.", e); }
     }
-
-    // ── Google Drive ─────────────────────────────────────────────────────────
 
     /**
      * {silent}: true never shows anything (fails with "consent" when the user must agree first).
@@ -793,8 +743,7 @@ public class BrainamonPlugin extends Plugin {
         }
     }
 
-    // ── the phone site reader (projects/phone-site-reader/plans/01-engine.md), Contributor (debug) build only.
-    // SiteReader is looked up by name, so a release build has none of its code; there every call rejects "unavailable". ──
+    // ── the phone site reader (projects/phone-site-reader) ──
     private SiteBridge siteBridge;
     private boolean siteLooked;
 
@@ -843,6 +792,7 @@ public class BrainamonPlugin extends Plugin {
         try {
             Intent i = s.openIntent(getContext(), call.getString("site", ""), call.getArray("known", new JSArray()),
                 Boolean.TRUE.equals(call.getBoolean("full", false)), Boolean.TRUE.equals(call.getBoolean("complete", false)));
+            i.putExtra("unsave", Boolean.TRUE.equals(call.getBoolean("unsave", false)));
             startActivityForResult(call, i, "siteClosed");
         } catch (Exception e) {
             siteReject(call, e);

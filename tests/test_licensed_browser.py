@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-from tests.phone_groups import open_group  # noqa: E402  (About is a group on the phone's Settings, projects/phone-settings)
+from tests.phone_pages import open_group  # noqa: E402  (About is a group on the phone's Settings, projects/phone-settings)
 
 
 @unittest.skipUnless(importlib.util.find_spec('playwright'), 'requires installed Playwright and Edge')
@@ -34,9 +34,10 @@ class LicensedBrowser(unittest.TestCase):
             issuer_keys = list(license.PUBLIC_KEYS)
             key = mirror.MirrorKey.generate()
             signing = sync_license.signer(root / 'signer.pem', create=True)
-            grant = json.loads(sync_license.record(key, signing))
-            access = json.loads(sync_license.access_record(key, signing))
-            disabled = json.loads(sync_license.access_record(key, signing, False))
+            with mock.patch('core.sync_license.time.time', return_value=int(time.time())):
+                grant = json.loads(sync_license.record(key, signing))
+                access = json.loads(sync_license.access_record(key, signing))
+                disabled = json.loads(sync_license.access_record(key, signing, False))
             license.remove()
             data = root / 'data'
             db = Database(data / 'content_manager.db')
@@ -54,6 +55,7 @@ class LicensedBrowser(unittest.TestCase):
             # No actual sign-in, user settings, registry, production issuer or installer.
             with mock.patch.object(drive_client, 'API', base_drive + '/drive/v3'), \
                  mock.patch.object(drive_client, 'UPLOAD', base_drive + '/upload/drive/v3'), \
+                 mock.patch.object(drive_client, 'BATCH', base_drive + '/batch/drive/v3'), \
                  mock.patch.object(drive_client, 'sign_in', return_value={'access_token':'fixture','refresh_token':'fixture','expires_at':4e9}), \
                  mock.patch('core.config.google_client', return_value=('fixture','fixture')), \
                  mock.patch.object(ytdlp, 'registry_get', return_value=''), \
@@ -88,12 +90,15 @@ class LicensedBrowser(unittest.TestCase):
                                 expect(panel.get_by_text('Needs a license',exact=True)).to_have_count(0)
                                 expect(panel.get_by_role('button',name='Back up to Google Drive',exact=True)).to_be_enabled()
                                 panel.get_by_role('button',name='Back up to Google Drive',exact=True).click()
-                                expect(panel.get_by_label('Google account').get_by_text('fixture@example.com',exact=True)).to_be_visible(timeout=15000)
+                                board = panel.get_by_role('region', name='Is my library safe')
+                                expect(board.get_by_text('fixture@example.com', exact=True)).to_be_visible(timeout=15000)
+                                board.get_by_role('button', name='Show Recovery').click()
                                 expect(panel.get_by_role('button',name='Recover a library…',exact=True).or_(page.locator('.set-win .cw-foot').get_by_role('button',name='Recover a library…',exact=True)).first).to_be_visible()
                                 page.locator('#set-tobsidian').click()
                                 self.assertTrue(app.state.sync.status()['licensed'])
                                 expect(panel.get_by_text('Choose a vault above first.',exact=False)).to_be_visible()
                                 page.locator('#set-tbackup').click()
+                                board.get_by_role('button', name='Show Phones').click()
                                 expect(panel.get_by_role('button',name='Add a phone',exact=True)).to_be_visible(timeout=15000)
                                 panel.get_by_role('button',name='Add a phone',exact=True).click()
                                 expect(panel.get_by_role('img',name='Phone pairing QR code')).to_be_visible()
@@ -112,7 +117,9 @@ class LicensedBrowser(unittest.TestCase):
                                 self.assertTrue(app.state.sync.status()['licensed'])
                                 self.assertEqual(mirror.MirrorKey.load(app.state.sync.key_path).fingerprint, fingerprint)
                                 page.locator('#set-tbackup').click()
-                                if panel.get_by_role('img',name='Phone pairing QR code').count() == 0:
+                                if not panel.get_by_role('img',name='Phone pairing QR code').is_visible():
+                                    if board.get_by_role('button', name='Show Phones').is_visible():
+                                        board.get_by_role('button', name='Show Phones').click()
                                     panel.get_by_role('button',name='Add a phone',exact=True).click()
                                 expect(panel.get_by_role('img',name='Phone pairing QR code')).to_be_visible()
                                 # Status comes from the backend even after closing/reopening Settings.

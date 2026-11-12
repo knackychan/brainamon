@@ -2,6 +2,7 @@ import type { messages as English } from '../en/backup.ts'
 import type { Localized } from '../en/index.ts'
 
 export const messages = {
+  "backup.vault.verified": "上次驗證：{done}/{total} 個電腦檔案",
 
 
 
@@ -255,7 +256,7 @@ export const messages = {
   "backup.state.keyScan": "請掃描電腦上的新配對碼：設定 > 備份與手機 > 新增手機。",
   "backup.state.keyLink": "請開啟電腦上的新配對連結：設定 > 備份與手機 > 新增手機。",
   "backup.state.backupOff": "電腦未備份資料庫。",
-  "backup.state.backupOffHelp": "在電腦上：設定 > 備份與手機 > 開啟備份。",
+  "backup.state.backupOffHelp": "在電腦上：Settings > Backup & phones > Turn on backup 或 Resume backup。",
   "backup.state.noLibrary": "Google 雲端硬碟中尚無資料庫。",
   "backup.state.connecting": "正在連結 Google 雲端硬碟…",
   "backup.state.checking": "正在檢查 Google 雲端硬碟…",
@@ -325,7 +326,7 @@ export const messages = {
   "backup.pair.withPc": "與電腦配對",
   "backup.warning.pair": "請掃描電腦上的配對碼（設定 > 備份與手機 > 新增手機）。此處儲存的所有內容都會傳送到電腦。",
   "backup.action.removeLocal": "從此手機移除",
-  "backup.warning.removeLocal": "移除此手機的本機副本。獨立副本會保留在你儲存的位置。",
+  "backup.warning.removeLocal": "移除此手機的資料庫、離線儲存內容、待傳送變更及擷取草稿。獨立副本會保留在原本的位置。",
   "backup.warning.lostKey": "遺失的金鑰無法解密舊內容。你可以保留此手機的本機資料庫並取代選定備份，或刪除該備份並中斷連線。",
   "backup.help.choices": "此處僅顯示獨立手機備份。短 ID 可區分備份；加密名稱無法辨識是哪支手機建立的。復原檔案與獨立副本會保留在原本儲存的位置。",
   "backup.warning.taskSync": "本機內容和佇列中的變更會保留在此處。其他備份仍在雲端硬碟中。一般同步會等待此工作完成。",

@@ -3,8 +3,8 @@
 // the phone's empty library and the focused Scrapers guide. No runes and no imports, so
 // tests/test_onboarding_js.py runs it under Node.
 
-export type Site = 'instagram' | 'facebook' | 'reddit' | 'youtube'
-export const SITE_NAME: Record<Site, string> = { instagram: 'Instagram', facebook: 'Facebook', reddit: 'Reddit', youtube: 'YouTube' }
+export type Site = 'instagram' | 'facebook' | 'reddit' | 'youtube' | 'threads'
+export const SITE_NAME: Record<Site, string> = { instagram: 'Instagram', facebook: 'Facebook', reddit: 'Reddit', youtube: 'YouTube', threads: 'Threads' }
 export const isSite = (a: string): a is Site => Object.prototype.hasOwnProperty.call(SITE_NAME, a)
 export const SETUP_STEPS = ['library', 'tools', 'content', 'ai', 'drive', 'phone'] as const
 export type SetupStep = typeof SETUP_STEPS[number] | 'summary'
@@ -104,6 +104,7 @@ const STEP2: Record<Site, string> = {
   instagram: 'Open your profile, then Saved, then All posts. Press F12, choose Console, paste with Ctrl+V, press Enter.',
   facebook: 'On the Saved page that opens, press F12, choose Console, paste with Ctrl+V, press Enter.',
   reddit: 'On the Saved page that opens, press F12, choose Console, paste with Ctrl+V, press Enter.',
+  threads: 'On the Saved page that opens, press F12, choose Console, paste with Ctrl+V, press Enter.',
   youtube: 'Choose View full playlist / Afficher la playlist complète for one playlist, not the overview. Press F12, choose Console, paste with Ctrl+V, press Enter.',
 }
 // the focused Scrapers window: the browser helper when it is installed (Facebook, Instagram, Reddit),

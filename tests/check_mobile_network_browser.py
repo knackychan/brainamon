@@ -17,7 +17,7 @@ from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from tests.phone_groups import open_group  # noqa: E402  (Wi-Fi only sits in Settings > Sync, projects/phone-settings)
+from tests.phone_pages import open_group  # noqa: E402  (Wi-Fi only sits in Settings > Sync, projects/phone-settings)
 ART = ROOT / 'local/ui-blocks/shots/mobile-wifi'
 
 PROXIED = ('/api', '/thumb', '/cards', '/files', '/wiskit')
@@ -33,6 +33,7 @@ if (!localStorage.getItem('bp-pair')) localStorage.setItem('bp-pair', JSON.strin
 
 
 def main():
+    expect.set_options(timeout=15_000)
     ART.mkdir(parents=True, exist_ok=True)
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
@@ -128,7 +129,8 @@ def main():
                       const {mirrorSource:m}=await import('/src/mobile/state.svelte.ts');
                       await m.changes.load(); return m.changes.unsent === 1;
                     }""")
-                    page.evaluate("__network('wifi')")
+                    with page.expect_response(lambda r: '/fake-drive/' in r.url and r.request.method == 'POST'):
+                        page.evaluate("__network('wifi')")
                     page.wait_for_function("""async () => {
                       const {mirrorSource:m,phone}=await import('/src/mobile/state.svelte.ts');
                       return !phone.refreshing && m.changes.unsent === 0;

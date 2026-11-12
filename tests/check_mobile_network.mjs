@@ -19,7 +19,8 @@ function load(path, deps, globals) {
   return exports
 }
 
-async function setup(isApp, saved) {
+const language = load('web/src/mobile/language-switch.ts', {}, {})
+async function setup(isApp, saved, savePolicy = async () => {}) {
   const storage = new Map(saved === undefined ? [] : [['bp-wifi', saved]])
   const browser = new EventTarget(), document = new EventTarget(), connection = new EventTarget()
   connection.type = 'cellular'
@@ -27,7 +28,7 @@ async function setup(isApp, saved) {
   let status = { connected: true, type: 'cellular' }, change, requests = 0, transport
   const policy = load('web/src/mobile/network.svelte.ts', { './native': {
     isApp, networkStatus: async () => status, onNetworkChange: async fn => { change = fn },
-  } }, { $state: x => x, navigator, document, window: browser,
+  }, './sync/native.svelte': { nativeSyncPolicy: savePolicy, nativeSync: {} }, './language-switch.ts': language }, { $state: x => x, navigator, document, window: browser,
     localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) } })
   const pairing = { k: 'synthetic', l: 'synthetic', solo: false }
   const { Drive } = load('web/src/mobile/mirror/drive.ts', {
@@ -115,17 +116,52 @@ for (const isApp of [false, true]) {
 const allowed = await setup(true, 'off')
 assert.equal(allowed.policy.network.wifiOnly, false)
 assert.equal(allowed.policy.syncPaused(), false)
-allowed.policy.setSyncPaused(true)
+await allowed.policy.setSyncPaused(true)
 assert.equal(allowed.storage.get('bp-sync-paused'), 'on')
 assert.equal(allowed.policy.syncPaused(), true)
-allowed.policy.setSyncPaused(false)
+await allowed.policy.setSyncPaused(false)
 assert.equal(allowed.policy.syncPaused(), false)
+
+// A pause is acknowledged only after native persistence; resume stays blocked until its commit too.
+let commitPolicy, failPolicy
+const durable = await setup(true, 'off', () => new Promise((resolve, reject) => { commitPolicy = resolve; failPolicy = reject }))
+let durableResumes = 0
+durable.browser.addEventListener('brainamon-sync-resume', () => durableResumes++)
+let acknowledged = false
+const pausing = durable.policy.setSyncPaused(true).then(ok => { acknowledged = ok })
+await new Promise(resolve => setImmediate(resolve))
+assert.equal(acknowledged, false)
+assert.equal(durable.policy.network.pausePending, true)
+assert.equal(durable.policy.syncPauseReason(t), t('settings.sync.savingPolicy'))
+const switchWhileSaving = () => language.switchLanguage('fr', 'en', async () => {}, { setItem() {} }, () => {})
+assert.equal((await switchWhileSaving()).status, 'blocked')
+commitPolicy(); await pausing
+assert.equal(acknowledged, true)
+assert.equal(durable.policy.network.pausePending, false)
+const resuming = durable.policy.setSyncPaused(false)
+assert.equal(durable.policy.syncPaused(), true)
+assert.equal(durable.storage.get('bp-sync-paused'), 'on')
+assert.equal(durableResumes, 0, 'resume triggers must wait for native persistence')
+commitPolicy(); assert.equal(await resuming, true)
+assert.equal(durableResumes, 1)
+assert.equal(durable.policy.syncPaused(), false)
+assert.equal(durable.storage.get('bp-sync-paused'), 'off')
+const refused = durable.policy.setSyncPaused(true)
+failPolicy(Error('synthetic policy save failure'))
+assert.equal(await refused, false)
+assert.equal(durable.policy.network.pauseFailed, true)
+assert.equal(durable.policy.syncPaused(), true)
+assert.equal(durable.policy.syncPauseReason(t), t('settings.sync.policyFailed'))
+assert.equal((await switchWhileSaving()).status, 'blocked')
+const retryPause = durable.policy.setSyncPaused(true)
+commitPolicy(); assert.equal(await retryPause, true)
+assert.equal(durable.policy.network.pauseFailed, false)
+assert.equal((await switchWhileSaving()).status, 'reloaded')
 
 // Manual/forced vault rounds and PC status reads share the gate; reconnect waits for a prior round to end.
 const v = await setup(true)
 let rounds = 0, pcReads = 0
 Object.assign(v.browser, { setInterval, setTimeout })
-const language = load('web/src/mobile/language-switch.ts', {}, {})
 let finishRemove
 const vaultSource = { syncVault: async () => { rounds++; return { state: 'idle', summary: 'Done' } },
   vaultPc: async () => { pcReads++; return null }, vaultRemoveLegacy: () => new Promise(resolve => { finishRemove = resolve }) }
@@ -133,6 +169,7 @@ const vault = load('web/src/mobile/vault/auto.svelte.ts', {
   '../../lib/i18n/index.ts': { t }, '../../lib/i18n/format.ts': { fmtDate, fmtTime },
   '../settings-words': { phoneWords, nativeError },
   '../language-switch.ts': language,
+  '../sync/native.svelte': { nativeSyncPolicy: async () => {}, nativeSyncSupported: async () => false, readNativeStatus: async () => {}, nativeSync: {} },
   '../obsidian': { setVaultName() {} },
   '../native': { isApp: true }, '../network.svelte': v.policy,
   '../store': { kv: { get: async () => undefined, set: async () => {} } },
@@ -276,7 +313,7 @@ let journalDurable = true
 const journal = load('web/src/mobile/mirror/changes.ts', {
   '../language-switch.ts': language,
   '../store': { changes: journalDb, journal: async () => journalDurable, kv: { get: async () => undefined } },
-  '../ai/canvas.ts': {}, '../ai/describe.ts': {}, './resend': {}, './pairing': {},
+  '../ai/canvas.ts': {}, '../ai/describe.ts': {}, './resend': { resendPending: () => false }, './pairing': { requeueWaiting: () => false },
 }, { crypto: { getRandomValues: x => x } })
 const changes = new journal.Changes()
 const addChange = changes.add({ op: 'link', url: 'https://example.test' })
@@ -318,5 +355,32 @@ journalDb.delConfirmed = async id => { deleted.push(id); return true }
 await volatileChanges.dropQueuedNote('synthetic.md')
 assert.equal((await attempt()).status, 'reloaded')
 assert.deepEqual(deleted, [42, 42])
+
+// Native handoff freezes a large backlog durably without marking uploads complete.
+const backlog = new journal.Changes()
+await backlog.load()
+backlog.list = Array.from({ length: 1251 }, (_, i) => ({ id: i + 100, op: 'link', uid: String(i), url: 'https://example.test/' + i, at: i + 1, state: 'queued' }))
+const staged = []
+await backlog.prepareUploads(async doc => { staged.push(structuredClone(doc)) }, 'p0000000001', true, true)
+assert.equal(staged.length, 6)
+assert.equal(staged.reduce((n, d) => n + d.changes.length, 0), 1251)
+assert.ok(backlog.list.every(e => e.state === 'sending'))
+const repeat = []
+await backlog.prepareUploads(async doc => { repeat.push(structuredClone(doc)) }, 'p0000000001', true, true)
+assert.deepEqual(staged, repeat, 'restart/retry preserves frozen batch identities')
+await backlog.flush(async doc => 'chg-' + String(doc.seq).padStart(32, '0'), 'p0000000001', true, true)
+assert.ok(backlog.list.every(e => e.state === 'sent'))
+const stream = staged[0].stream
+await backlog.prune(0, { delivery: 2, published: 10, receipts: { [stream]: { seq: 0, want: 1 } } })
+const requested = []
+await backlog.prepareUploads(async doc => requested.push(doc), 'p0000000001', true, true)
+assert.equal(requested.length, 1); assert.ok(requested[0].previous)
+assert.equal(requested[0].seq, staged[0].seq)
+journalDurable = false
+const unsafe = new journal.Changes(); await unsafe.load()
+unsafe.list = [{ id: 9, op: 'link', uid: 'unsafe', at: 1, state: 'queued' }]
+let handedOff = false
+await assert.rejects(() => unsafe.prepareUploads(async () => { handedOff = true }, 'p0000000001', true, true), /storage could not save/)
+assert.equal(handedOff, false)
 
 console.log('Mobile network policy passed: defaults, persistence, native/browser changes, retries, active requests/bodies and vault pause/resume.')

@@ -1,7 +1,4 @@
-"""Phone site reader, build gate (projects/phone-site-reader/plans/01-engine.md): the reader's code lives
-only in the Contributor (debug) build. The plugin finds it by name; the main source set, the main manifest
-and a release bundle carry none of it (packaging/payload_guard.py --release-mobile, which
-mobile-shell/scripts/release.py runs on the AAB and the APK). The bundles here are small fakes."""
+"""Phone site reader build wiring and release payload gate; bundles here are small fakes."""
 import importlib.util
 import subprocess
 import sys
@@ -25,17 +22,16 @@ def text(path: Path) -> str:
 
 
 class SiteReaderLayoutTest(unittest.TestCase):
-    def test_reader_classes_only_in_debug(self):
+    def test_reader_classes_in_both_builds(self):
         for name in READER:
-            self.assertTrue((SRC / 'debug' / JAVA / name).is_file(), name)
-            self.assertFalse((SRC / 'main' / JAVA / name).exists(), name)
+            self.assertTrue((SRC / 'main' / JAVA / name).is_file(), name)
+            self.assertFalse((SRC / 'debug' / JAVA / name).exists(), name)
         self.assertTrue((SRC / 'main' / JAVA / 'SiteBridge.java').is_file())
 
     def test_manifests(self):
-        self.assertNotIn('SiteActivity', text(SRC / 'main' / 'AndroidManifest.xml'))
-        debug = text(SRC / 'debug' / 'AndroidManifest.xml')
-        self.assertIn('android:name=".SiteActivity"', debug)
-        self.assertIn('android:exported="false"', debug)
+        main = text(SRC / 'main' / 'AndroidManifest.xml')
+        self.assertIn('android:name=".SiteActivity"', main)
+        self.assertIn('android:exported="false"', main)
 
     def test_plugin_finds_the_reader_by_name_only(self):
         plugin = text(SRC / 'main' / JAVA / 'BrainamonPlugin.java')
@@ -49,10 +45,10 @@ class SiteReaderLayoutTest(unittest.TestCase):
                 self.assertFalse('addJavascriptInterface' in text(java), java.name)
 
     def test_build_wiring(self):
-        self.assertIn('debugImplementation "androidx.webkit:webkit:$androidxWebkitVersion"',
+        self.assertIn('implementation "androidx.webkit:webkit:$androidxWebkitVersion"',
                       text(ROOT / 'mobile-shell' / 'android' / 'app' / 'build.gradle'))
-        self.assertIn("'../android/app/src/debug/assets/sites/'", text(ROOT / 'mobile-shell' / 'scripts' / 'www.mjs'))
-        self.assertIn('app/src/debug/assets/sites', text(ROOT / 'mobile-shell' / 'android' / '.gitignore'))
+        self.assertIn("'../android/app/src/main/assets/sites/'", text(ROOT / 'mobile-shell' / 'scripts' / 'www.mjs'))
+        self.assertIn('app/src/main/assets/sites', text(ROOT / 'mobile-shell' / 'android' / '.gitignore'))
         self.assertIn("'--release-mobile'", text(ROOT / 'mobile-shell' / 'scripts' / 'release.py'))
 
 
@@ -73,24 +69,23 @@ class ReleaseGateTest(unittest.TestCase):
         return subprocess.run([sys.executable, str(ROOT / 'packaging' / 'payload_guard.py'), str(path), *flags],
                               capture_output=True, text=True).returncode
 
-    def test_reader_parts_are_found(self):
-        # a release dex keeps SiteBridge and the reader's name as a plain string: both are allowed
-        clean_dex = b'dex\n035\x00Lapp/brainamon/mobile/BrainamonPlugin;\x00app.brainamon.mobile.SiteReader\x00Lapp/brainamon/mobile/SiteBridge;'
+    def test_reader_parts_required(self):
+        base_dex = b'dex\n035\x00Lapp/brainamon/mobile/BrainamonPlugin;\x00app.brainamon.mobile.SiteReader\x00Lapp/brainamon/mobile/SiteBridge;'
+        reader_dex = base_dex + b'\x00'.join(guard.SITE_CLASSES)
         page = b'<!doctype html><title>Brainamon</title>'
-        apk = self.bundle('asset.apk', {'classes.dex': clean_dex, 'assets/public/mobile.html': page,
-                                        'assets/sites/facebook.js': b'var SITE = {}'})
-        aab = self.bundle('activity.aab', {'base/dex/classes.dex': clean_dex,
-                                           'base/dex/classes2.dex': b'dex\x00Lapp/brainamon/mobile/SiteActivity;'})
-        dex = self.bundle('reader.apk', {'classes3.dex': b'dex\x00Lapp/brainamon/mobile/SiteReader;'})
-        clean = self.bundle('clean.apk', {'classes.dex': clean_dex, 'assets/public/mobile.html': page})
-        self.assertEqual(guard.site_reader_parts(apk), ['assets/sites/facebook.js'])
-        self.assertEqual(guard.site_reader_parts(aab), ['base/dex/classes2.dex'])
-        self.assertEqual(guard.site_reader_parts(dex), ['classes3.dex'])
-        self.assertEqual(guard.site_reader_parts(clean), [])
-        for bad in (apk, aab, dex):
+        scripts = {f'assets/sites/{p.name}': b'var SITE = {}' for p in (ROOT / 'scrapers' / 'sites').glob('*.js')
+                   if p.name.islower()}
+        complete = self.bundle('complete.apk', {'classes.dex': reader_dex, 'assets/public/mobile.html': page, **scripts})
+        missing_script = self.bundle('missing-script.aab', {'base/dex/classes.dex': reader_dex,
+                                                              **{k: v for k, v in scripts.items() if not k.endswith('/_runner.js')}})
+        missing_class = self.bundle('missing-class.apk', {'classes.dex': base_dex, **scripts})
+        self.assertEqual(guard.missing_site_reader_parts(complete), [])
+        self.assertIn('_runner.js', guard.missing_site_reader_parts(missing_script))
+        self.assertIn('Lapp/brainamon/mobile/SiteReader;', guard.missing_site_reader_parts(missing_class))
+        self.assertEqual(self.cli(complete, '--release-mobile'), 0)
+        for bad in (missing_script, missing_class):
             self.assertEqual(self.cli(bad, '--release-mobile'), 1, bad.name)
-        self.assertEqual(self.cli(clean, '--release-mobile'), 0)
-        self.assertEqual(self.cli(apk), 0)        # without the flag (the debug APK in CI) the reader is allowed
+        self.assertEqual(self.cli(missing_class), 0)  # Contributor uses the private-file gate only.
 
 
 if __name__ == '__main__':

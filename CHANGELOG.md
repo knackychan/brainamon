@@ -2,6 +2,21 @@
 
 Every release bumps `core/version.py` and adds a section here in the same commit. Newest first.
 
+## 1.1.4 - 2026-11-12
+
+- Desktop: redesigned Settings, backup status and recovery progress.
+- Phone: redesigned Settings, backup and recovery screens with clearer status and controls.
+- Desktop: Threads saved-post import, clearer scraper setup and safer Facebook CSV checkpoints before unsaving.
+- Desktop: Obsidian copy progress reports checking and saving files.
+- Phone: Drive and Obsidian sync continue through Android background work, with saved checkpoints, resumable transfers and clearer progress.
+- Phone: safer saved-post removal and improved Facebook and Instagram saved-list reading.
+
+## Android 137.1.04 - 2026-11-12
+
+- Redesigned Settings, backup and recovery screens with clearer status and controls.
+- Background Drive and Obsidian sync with saved checkpoints, resumable transfers and clearer progress.
+- Safer saved-post removal and improved Facebook and Instagram saved-list reading.
+
 ## 1.1.3 - 2026-11-10
 
 - Phone and desktop: phone languages foundation (English, French, Taiwan Traditional Chinese preview) across Add, import and Voice.

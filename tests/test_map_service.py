@@ -165,11 +165,31 @@ class CoordinationTest(Base):
         release = self.hold_vault_lock()
         self.assertFalse(self.maps.run_pass())
         self.assertTrue(self.maps.status()['pending'])
+        self.assertEqual(self.maps.status()['pending_reason'], 'vault')
         self.assertFalse((self.vault / 'Brainamon').exists())
         release()
         self.assertTrue(self.maps.run_pass())
         self.assertFalse(self.maps.status()['pending'])
         self.assertTrue((self.vault / 'Brainamon' / 'Knowledge Map.md').is_file())
+
+    def test_update_publishes_real_progress_and_clears_stale_error(self):
+        self.vault.mkdir(parents=True)
+        self.setting('obsidian_vault', str(self.vault))
+        self.setting('obsidian_mode', 'owner')
+        self.maps._set(error='Old failure', pending=True, pending_reason='vault')
+        with mock.patch.object(self.maps, '_set', wraps=self.maps._set) as updates:
+            self.assertTrue(self.maps.run_pass())
+        snapshots = [c.kwargs for c in updates.call_args_list]
+        self.assertTrue(any(s.get('state') == 'preparing' for s in snapshots))
+        for stage in ('checking', 'saving'):
+            counts = [s['progress'] for s in snapshots if s.get('state') == stage]
+            self.assertEqual(counts[0]['done'], 0)
+            self.assertGreater(counts[-1]['total'], 0)
+            self.assertEqual(counts[-1]['done'], counts[-1]['total'])
+        self.assertEqual(self.maps.status()['state'], 'idle')
+        self.assertIsNone(self.maps.status()['progress'])
+        self.assertEqual(self.maps.status()['error'], '')
+        self.assertEqual(self.maps.status()['pending_reason'], '')
 
     def test_thread_retries_a_pending_pass(self):
         self.vault.mkdir(parents=True)                           # the render never creates a missing vault

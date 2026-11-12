@@ -1,6 +1,5 @@
-// Vault sync on the phone (projects/vault-sync/plans/03-phone-side.md): one round at a time, on "Sync now" and
-// "Apply anyway" (Vault.svelte), when the app comes to the foreground, after each read of Google Drive and every
-// 2 minutes while the page is open (startVault, from Mobile.svelte, so it runs whatever screen is shown).
+// Vault sync controls and foreground fallback. Supported Android devices use the shared native worker;
+// WorkManager owns periodic checks. Older devices retain visible-page rounds every two minutes.
 // Android app paired to a PC only.
 // The PC's side (state, step, done/total) comes from the status file its rounds write to Drive (readPc, watchPc).
 //
@@ -21,17 +20,18 @@ import { kv } from '../store'
 import { isApp, vaultPick } from '../native'
 import { setVaultName } from '../obsidian'
 import { driveStatus, phone, solo, source } from '../state.svelte'
-import type { PcStatus } from './sync'
+import type { FileCounts, PcStatus } from './sync'
 import { progress, type Progress } from '../../lib/progress'
 import { syncPaused, syncPauseReason } from '../network.svelte'
+import { nativeSyncPolicy, nativeSyncSupported, readNativeStatus, nativeSync } from '../sync/native.svelte'
 import { languageWorkChanged, registerLanguageCheck } from '../language-switch.ts'
 
 export interface VaultOpts { on: boolean; uri: string; name: string }
 // outcome: how the last round ended ('' before the first one)
 export type VaultOutcome = '' | 'ok' | 'waiting' | 'error' | 'brake' | 'stopped'
-export const vault = $state({ opts: { on: false, uri: '', name: '' } as VaultOpts, busy: false, stopping: false, queued: false, line: '', brake: '', step: '',
+export const vault = $state({ opts: { on: false, uri: '', name: '' } as VaultOpts, busy: false, picking: false, stopping: false, queued: false, line: '', brake: '', step: '',
                               outcome: '' as VaultOutcome, lastAt: 0,
-                              prog: null as Progress | null, pc: null as PcStatus | null, pcRead: false,
+                              files: null as FileCounts | null, pc: null as PcStatus | null, pcRead: false,
                               legacy: 0 })      // leftover Content Manager/ copies the last round kept (spec 1b decision 3)
 
 export const PC_FIRST = 'The PC has not reported a vault round yet. It runs one every 30 seconds once "Sync my Obsidian vault" is on, so this can take a few minutes.'
@@ -81,23 +81,49 @@ export function watchPc(): () => void {
   return () => { live = false; clearTimeout(timer) }
 }
 
-export async function saveVaultOpts() { await kv.set('vault', { ...vault.opts }) }
+export async function saveVaultOpts() { await kv.setRequired('vault', { ...vault.opts }) }
 
 let halt: (() => void) | null = null        // the running round's Stop
 let running = false                         // a round's own promise has not ended (an abandoned one still counts)
-registerLanguageCheck(() => vault.busy || vault.queued || running ? 'settings.language.unsavedWork' : null)
+registerLanguageCheck(() => vault.busy || vault.picking || vault.queued || running ? 'settings.language.unsavedWork' : null)
 
 // Stop syncing: the round stops after the file it is on; the panel shows it at once
-export function stopVault() { halt?.() }
+export function stopVault() {
+  halt?.()
+  vault.opts = { ...vault.opts, on: false }
+  void Promise.all([kv.setRequired('vault', { ...vault.opts }), nativeSyncPolicy({ vault: false })]).catch(e => { vault.line = nativeError('vault', e) })
+}
 
 // Choose / Start / Stop, shared by Settings > Sync (the vault's row) and Settings > Obsidian
 export async function pickVaultFolder() {
+  if (vault.picking || vault.busy || vault.queued || running) return
+  vault.picking = true
+  languageWorkChanged()
   // the chosen folder is the vault, so Open in Obsidian uses its name from now on (a name typed later still wins)
-  try { const r = await vaultPick(); if (r.name) setVaultName(r.name); vault.opts = { ...vault.opts, uri: r.uri, name: r.name }; await saveVaultOpts(); await kv.del('vault-state'); vault.line = '' }
+  try {
+    const r = await vaultPick(), opts = { ...vault.opts, uri: r.uri, name: r.name }
+    await kv.delRequired('vault-state')
+    await kv.setRequired('vault', opts)
+    await nativeSyncPolicy({ uri: opts.uri, vault: opts.on })
+    vault.opts = opts
+    if (r.name) setVaultName(r.name)
+    vault.line = ''
+  }
   catch (e) { if ((e as Error).message !== 'cancelled') vault.line = nativeError('vault', e) }
+  finally { vault.picking = false; languageWorkChanged() }
 }
 // Stop syncing is asked of the round first (it finishes the file it is on), then saved
-export async function setVaultOn(on: boolean) { if (!on) stopVault(); vault.opts = { ...vault.opts, on }; await saveVaultOpts(); if (on) runVault() }
+export async function setVaultOn(on: boolean) {
+  if (vault.picking) return
+  if (!on) stopVault()
+  try {
+    const opts = { ...vault.opts, on }
+    await nativeSyncPolicy({ vault: on })
+    await kv.setRequired('vault', opts)
+    vault.opts = opts
+    if (on) await runVault()
+  } catch (e) { vault.line = nativeError('vault', e) }
+}
 
 // Remove old Brainamon pages (spec 1b decision 3): what is left of the classic Content Manager/ folder goes to
 // .trash, on the user's click, between rounds
@@ -119,7 +145,7 @@ export async function removeOldPages() {
 export const driveReading = () => phone.refreshing || (!!phone.sync && !phone.sync.end) || !phone.tried
 
 export async function runVault(force = false, auto = false) {
-  if (vault.busy || vault.queued || !vault.opts.on || !vault.opts.uri || !source.syncVault) return
+  if (vault.picking || vault.busy || vault.queued || !vault.opts.on || !vault.opts.uri || !source.syncVault) return
   if (syncPaused()) return
   if (auto && Date.now() - vault.lastAt < MIN_GAP_MS) return
   if (running) { vault.line = t('backup.vault.stillFinishing'); return }
@@ -133,8 +159,8 @@ export async function runVault(force = false, auto = false) {
   }
   const stop = new AbortController()
   const t0 = Date.now()
-  let tick = t0, stepAt = t0, stoppedAt = 0, step = '', displayStep = '', over = false          // over: the panel no longer waits for this round
-  vault.busy = true; vault.stopping = false; vault.brake = ''; vault.line = ''; vault.step = t('backup.vault.starting'); vault.prog = { pct: 0, left: '' }
+  let tick = t0, stoppedAt = 0, step = '', displayStep = '', over = false          // over: the panel no longer waits for this round
+  vault.busy = true; vault.stopping = false; vault.brake = ''; vault.line = ''; vault.step = t('backup.vault.starting'); vault.files = null
   languageWorkChanged()
   halt = () => {
     if (vault.stopping) return
@@ -144,6 +170,7 @@ export async function runVault(force = false, auto = false) {
   let cut: (why: string) => void = () => {}
   const cutting = new Promise<{ cut: string }>(res => { cut = why => res({ cut: why }) })
   const dog = window.setInterval(() => {
+    if (nativeSync.supported) return       // the native worker owns its deadline, including while this page sleeps
     if (vault.stopping) { if (Date.now() - stoppedAt > STOP_GRACE_MS) cut(t('backup.vault.stoppedBackground')) }
     else if (Date.now() - tick > (step === LISTING ? 2 * STALL_MS : STALL_MS)) {
       stop.abort()
@@ -152,13 +179,13 @@ export async function runVault(force = false, auto = false) {
   }, 2000)
   readPc()
   running = true
-  const round = source.syncVault(force, (name, done, total, overall = 0, display) => {
+  const round = source.syncVault(force, (name, done, total, _overall, display, files) => {
     tick = Date.now()
     if (over || vault.stopping) return
-    if (name !== step) { step = name; stepAt = tick }
+    step = name
     displayStep = display ?? name
-    vault.prog = { pct: Math.min(99, Math.floor(overall * 100)), left: total > 0 ? progress(done, total, stepAt, Date.now(), phoneWords).left : '' }
-    vault.step = `${display ?? name}${total > 0 ? ` ${done}/${total}` : ''}${vault.prog.left ? ` · ${vault.prog.left}` : ''}`
+    if (files) vault.files = files
+    vault.step = `${display ?? name}${total > 0 ? ` ${done}/${total}` : ''}`
   }, stop.signal, phoneWords).then(r => ({ r }), (e: Error) => ({ e }))
   round.finally(() => { running = false; languageWorkChanged() })
   try {
@@ -175,7 +202,7 @@ export async function runVault(force = false, auto = false) {
   } finally {
     clearInterval(dog)
     halt = null
-    vault.busy = false; vault.stopping = false; vault.step = ''; vault.prog = null; vault.lastAt = Date.now()
+    vault.busy = false; vault.stopping = false; vault.step = ''; vault.lastAt = Date.now()
     languageWorkChanged()
   }
 }
@@ -184,7 +211,7 @@ export function startVault(): () => void {
   if (!isApp || solo || !source.syncVault) return () => {}
   kv.get<VaultOpts>('vault').then(o => { if (o) vault.opts = o; runVault(false, true) })
   kv.get<{ legacy?: number }>('vault-state').then(s => { vault.legacy = s?.legacy ?? 0 })
-  const visible = () => { if (document.visibilityState === 'visible') runVault(false, true) }
+  const visible = () => { if (document.visibilityState === 'visible') { void readNativeStatus(); runVault(false, true) } }
   let resumeT = 0
   const resume = () => {
     if (syncPaused()) return
@@ -193,6 +220,6 @@ export function startVault(): () => void {
   }
   document.addEventListener('visibilitychange', visible)
   window.addEventListener('brainamon-sync-resume', resume)
-  const timer = window.setInterval(() => runVault(false, true), 2 * 60 * 1000)
+  const timer = window.setInterval(async () => { if (!document.hidden && !await nativeSyncSupported()) runVault(false, true) }, 2 * 60 * 1000)
   return () => { document.removeEventListener('visibilitychange', visible); window.removeEventListener('brainamon-sync-resume', resume); clearInterval(timer); clearTimeout(resumeT) }
 }

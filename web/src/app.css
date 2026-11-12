@@ -645,6 +645,7 @@ html.cm-rest *,html.cm-rest *::before,html.cm-rest *::after{animation-play-state
 .group-box.summary>div>*+*{margin-top:0}
 .group-box.summary .text-btn{min-height:0;padding:0 2px;margin-left:auto}
 @media (max-width:600px){.group-box.summary .text-btn{min-height:28px;padding:4px 2px}}
+@media (pointer:coarse){.set-win .group-box.summary .text-btn{min-height:44px}}
 .group-box>div>.set-pair>*+*{margin-top:0}
 .group-box:focus-visible,.group-box>.fl:focus-visible{outline:2px solid var(--rw-ink);outline-offset:3px}
 @media (max-width:600px){.set-calm{gap:10px}}

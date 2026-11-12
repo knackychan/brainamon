@@ -51,8 +51,9 @@ def seed_items(page, mode='mirror'):
     page.evaluate(r"""async mode => {
       const {phone,source}=await import('/src/mobile/state.svelte.ts');
       const {items}=await import('/src/mobile/store.ts');
-      const f=window.__items={fail:'',edits:[],deletes:[],descriptions:{},reports:{},transcripts:{},slow:false,waits:[],reads:0};
+      const f=window.__items={fail:'',edits:[],deletes:[],descriptions:{},reports:{},transcripts:{},slow:false,waits:[],slowText:false,textWaits:[],reads:0};
       f.release=()=>{f.slow=false;for(const resolve of f.waits.splice(0))resolve()};
+      f.releaseText=()=>{f.slowText=false;for(const resolve of f.textWaits.splice(0))resolve()};
       const rows=Array.from({length:80},(_,i)=>({id:i+1,title:i===0?'Level hard.':`Saved item ${i+1}`,
         creator:'@chef.marco',type:'Reel',cat:'Art',tags:'',desc:'Example caption',url:`https://example.com/post/${i+1}`,
         src:'instagram',thumb:i%3===0,ai:false,an:false,nd:2,fav:false,created:Date.UTC(2026,10,6)-i,tv:0}));
@@ -66,7 +67,7 @@ def seed_items(page, mode='mirror'):
         files:{thumb:r.thumb,report:!!f.reports[id],transcript:!!f.transcripts[id],frames:0,frame_names:[],video:false}}};
       source.kind=mode;
       source.item=async id=>{if(f.slow)await new Promise(resolve=>f.waits.push(resolve));f.reads++;return full(id)};
-      source.itemText=async(id,which)=>(which==='report'?f.reports:f.transcripts)[id]||'';
+      source.itemText=async(id,which)=>{if(f.slowText)await new Promise(resolve=>f.textWaits.push(resolve));return (which==='report'?f.reports:f.transcripts)[id]||''};
       source.related=async id=>id===999?[]:[f.rows.get(999)].filter(Boolean);
       source.rows=async()=>({rows:[...f.rows.values()],cats:phone.cats});
       source.rowsByIds=async ids=>ids.map(id=>f.rows.get(id)).filter(Boolean);
@@ -422,7 +423,13 @@ class PhoneGalleryBrowser(unittest.TestCase):
                     page.route('**/thumbs-proxy.js', lambda r: r.fulfill(path=OUT.parents[1] / 'web/public/thumbs-proxy.js'))
                     page.goto(base + '/mobile.html#/lib')
                     seed_items(page, mode)
+                    if paired:
+                        page.evaluate('window.__items.slow=true')
                     page.locator('.m-cell-a[href="#/item/1"]').click()
+                    if paired:
+                        page.wait_for_function('()=>window.__items.waits.length===1')
+                        expect(page.locator('.m-rep')).to_contain_text('Example caption')
+                        page.evaluate('window.__items.release()')
                     expect(page.locator('.m-rep')).to_contain_text('Example caption')
                     key = page.get_by_role('button', name='Keep on this phone', exact=True)
                     expect(key).to_have_attribute('aria-pressed', 'true' if mode == 'desktop' else 'false')
@@ -495,10 +502,18 @@ class PhoneGalleryBrowser(unittest.TestCase):
                         expect(page.locator('.m-rep')).to_contain_text('Fresh description from Tools')
                         page.keyboard.press('Escape')
                         expect(panel).to_have_count(0)
-                        # New report/transcript and delayed direct-PC-like row updates reload details.
-                        page.evaluate("async()=>{const {phone}=await import('/src/mobile/state.svelte.ts');window.__items.reports[1]='# Fresh report';window.__items.transcripts[1]='Fresh transcript';phone.rows=phone.rows.map(r=>r.id===1?{...r,an:true}:r)}")
+                        # The new description appears before slow report text; Report gets its own tab.
+                        page.evaluate("async()=>{const {phone}=await import('/src/mobile/state.svelte.ts');window.__items.slowText=true;window.__items.descriptions[1]='New source description';window.__items.reports[1]='# Fresh report';window.__items.transcripts[1]='Fresh transcript';phone.rows=phone.rows.map(r=>r.id===1?{...r,an:true}:r)}")
+                        page.wait_for_function('()=>window.__items.textWaits.length===2')
+                        expect(page.locator('.m-rep')).to_contain_text('New source description')
+                        expect(page.get_by_role('button', name='Description', exact=True)).to_have_attribute('aria-pressed', 'true')
+                        page.evaluate('window.__items.releaseText()')
                         expect(page.get_by_role('button', name='Report', exact=True)).to_be_visible()
+                        expect(page.get_by_role('button', name='Description', exact=True)).to_have_attribute('aria-pressed', 'true')
+                        page.get_by_role('button', name='Report', exact=True).click()
                         expect(page.locator('.m-rep')).to_contain_text('Fresh report')
+                        page.get_by_role('button', name='Description', exact=True).click()
+                        expect(page.locator('.m-rep')).to_contain_text('New source description')
                         page.get_by_role('button', name='Transcript', exact=True).click()
                         expect(page.locator('.m-rep')).to_contain_text('Fresh transcript')
                     # Edit errors keep the old category. Delete always asks and restores focus on dismissal.

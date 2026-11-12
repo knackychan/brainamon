@@ -2,6 +2,12 @@ import type { messages as English } from '../en/recovery.ts'
 import type { Localized } from '../en/index.ts'
 
 export const messages = {
+  "recovery.step.file": "Fichier de récupération",
+  "recovery.step.fileSaved": "Fichier de récupération enregistré {when}",
+  "recovery.step.check": "Vérifier le fichier de récupération",
+  "recovery.step.unlock": "Déverrouiller la sauvegarde",
+  "recovery.step.checkPhone": "Vérifier ce téléphone",
+  "recovery.step.keep": "Conserver ou restaurer",
 
 
 
@@ -10,7 +16,7 @@ export const messages = {
 
 
   "recovery.state.exportSaved": "Fichier de récupération enregistré dans {folder}. Gardez une copie hors de ce téléphone.",
-  "recovery.state.exportDownloaded": "Fichier de récupération téléchargé. Gardez-le hors de ce téléphone et ne le partagez jamais.",
+  "recovery.state.exportDownloaded": "Téléchargement du fichier de récupération demandé. Vérifiez vos téléchargements et gardez une copie hors de ce téléphone. Ne le partagez jamais.",
   "recovery.eligibility.eligible": "Ce téléphone correspond à sa dernière sauvegarde Drive. Gardez son contenu et reconnectez-le au lieu de restaurer sur un téléphone vide.",
   "recovery.eligibility.paired_pc": "Ce téléphone est associé à un PC. Les bibliothèques PC se restaurent sur PC ; la reconnexion concerne un téléphone utilisé sans PC.",
   "recovery.eligibility.not_connected": "Ce téléphone n’est pas connecté à Google Drive, donc sa sauvegarde ne peut pas être vérifiée. Restaurer sur un téléphone vide fonctionne sans cela.",

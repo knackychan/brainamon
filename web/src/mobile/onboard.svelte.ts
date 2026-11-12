@@ -32,14 +32,16 @@ if (typeof window !== 'undefined') window.addEventListener('hashchange', () => {
 // open More (when not on it: Backup & phones and Recover a library are More's screens too) and bring the box
 // into view once it is on screen; `fallback` when More, in its current state, has no `id`
 export async function openMoreBox(id: string, fallback = '') {
-  if (phone.route.tab !== 'more' || phone.route.imp || phone.route.backup || phone.route.recover) location.hash = '#/more'
+  const group = id === 'm-ai' ? 'wiskit' : id === 'm-vault' ? 'obsidian' : ['m-desktop', 'm-app-info'].includes(id) ? 'about' : ''
+  const hash = group ? `#/more/${group}` : '#/more'
+  if (location.hash !== hash) location.hash = hash
   await reveal(id, fallback)
 }
 
 // the same for a box of Settings > Backup & phones (a phone paired with a PC or used without one: This phone, Google account,
 // Recovery)
 export async function openBackupBox(id: string, fallback = '') {
-  if (!phone.route.backup) location.hash = '#/backup'
+  if (!phone.route.backup || phone.route.manage) location.hash = '#/backup'
   await reveal(id, fallback)
 }
 
@@ -47,14 +49,15 @@ async function reveal(id: string, fallback: string) {
   for (let i = 0; i < 20; i++) {
     await tick()
     const el = document.getElementById(id) ?? (fallback ? document.getElementById(fallback) : null)
-    if (el) {
-      // a target inside a closed group (ui/MGroup.svelte, projects/phone-settings spec section 5.2): open the group
-      // first ('m-group-open' is groups.svelte.ts OPEN_GROUP), then put focus on its row for a screen reader
-      const group = el.closest?.('.m-group')
-      const row = group?.querySelector<HTMLElement>('.m-group-row')
-      if (group && row?.getAttribute('aria-expanded') === 'false') { group.dispatchEvent(new Event('m-group-open')); await tick() }
-      row?.focus({ preventScroll: true })
-      el.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    if (el && el.getClientRects().length) {
+      for (let node: HTMLElement | null = el; node; node = node.parentElement) {
+        if (node instanceof HTMLDetailsElement) node.open = true
+      }
+      await tick()
+      const row = el.matches('input, button, a, [tabindex]') ? el : el.querySelector<HTMLElement>('.m-srow, .m-group-row') ?? el
+      if (!row.hasAttribute('tabindex') && !row.matches('input, button, a')) row.setAttribute('tabindex', '-1')
+      ;(row as HTMLElement).focus({ preventScroll: true })
+      el.scrollIntoView({ block: 'start', behavior: phone.motionOff || matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })
       return
     }
     await new Promise(r => requestAnimationFrame(r))

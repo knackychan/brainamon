@@ -210,7 +210,7 @@ def scrape_grid(page, stop_at: str, thumbs: bool, max_empty_scrolls: int, scroll
 
 def write_csv(rows: list[dict], out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"instagram_saved_{time.strftime('%Y-%m-%d')}.csv"
+    out_path = out_dir / f"instagram_saved_{time.strftime('%Y-%m-%d')}_{time.time_ns()}.csv"
     with out_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=FIELDS)
         writer.writeheader()

@@ -137,13 +137,14 @@ function scroll() {
 }
 
 async function main(port) {
-  var init = null, signed = false, active = true, last = ''
+  var init = null, signed = false, active = true, last = '', batchId = 0, receipt = null, signedReplies = 0
   function on(e) {
     var m = null
     try { m = JSON.parse(typeof e.data === 'string' ? e.data : '') } catch (x) { return }
     if (!m || typeof m !== 'object') return
     if (m.t === 'init' && !init && Array.isArray(m.known)) { init = m; signed = !!m.signed; active = m.active !== false }
-    else if (m.t === 'signed') { signed = !!m.on; active = m.active !== false }
+    else if (m.t === 'stored' && m.batch === batchId && Array.isArray(m.urls)) receipt = m.urls
+    else if (m.t === 'signed') { signed = !!m.on; active = m.active !== false; signedReplies++ }
   }
   if (typeof port.addEventListener === 'function') port.addEventListener('message', on)
   else port.onmessage = on
@@ -158,8 +159,16 @@ async function main(port) {
   if (!init) return
   var opt = { known: {}, full: !!init.full, complete: !!init.complete }
   for (var k = 0; k < init.known.length; k++) if (typeof init.known[k] === 'string') opt.known[init.known[k]] = 1
+  var removing = init.unsave === true && typeof SITE.unsave === 'function'
   var run = loadRun(String(init.run)), doc = newDoc()
   var settled = false, idle = 0, pinged = 0
+
+  async function canRemove() {
+    var before = signedReplies
+    post({ t: 'ping' })
+    for (var i = 0; i < 20 && signedReplies === before; i++) await sleep(100)
+    return signedReplies > before && active && signed && document.visibilityState !== 'hidden' && navigator.onLine !== false && !hasAuthForm(document)
+  }
 
   function status(phase) {
     var s = JSON.stringify({ t: 'status', phase: phase, known: run.known, other: run.other })
@@ -212,8 +221,24 @@ async function main(port) {
     if (!active || document.visibilityState === 'hidden' || navigator.onLine === false ||
       where(location.pathname, signed, hasAuthForm(document), !!SITE.onSaved(location, document)) !== 'saved') continue
     var r = step(run, doc, cards, opt)
-    for (var b = 0; b < r.send.length; b += BATCH) post({ t: 'batch', items: r.send.slice(b, b + BATCH) })
+    for (var b = 0; b < r.send.length; b += BATCH) {
+      var items = r.send.slice(b, b + BATCH)
+      receipt = null
+      post({ t: 'batch', batch: ++batchId, items: items })
+      if (!removing) continue
+      // The native reply is sent only after SiteRunFile.append has synced the results to disk.
+      for (var ack = 0; ack < 150 && receipt === null; ack++) await sleep(100)
+      if (!receipt || !items.every(function (item) { return receipt.indexOf(item.url) >= 0 })) return end('failure')
+    }
     saveRun(run)
+    if (removing) {
+      for (var u = 0; u < r.send.length; u++) {
+        if (!active || document.visibilityState === 'hidden' || navigator.onLine === false ||
+          where(location.pathname, signed, hasAuthForm(document), !!SITE.onSaved(location, document)) !== 'saved') return end('stop')
+        if (!await SITE.unsave(document, r.send[u].url, canRemove)) return end('unsave-failed')
+        await sleep(1500)
+      }
+    }
     status('read')
     if (r.stop) return end(r.stop)
     scroll()

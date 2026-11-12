@@ -11,7 +11,12 @@
   import { onMount, tick } from 'svelte'
   import MButton from './ui/MButton.svelte'
   import MDisclosure from './ui/MDisclosure.svelte'
-  import MGroup from './ui/MGroup.svelte'
+  import MCard from './ui/MCard.svelte'
+  import MSteps from './ui/MSteps.svelte'
+  import MRunBar from './ui/MRunBar.svelte'
+  import { backup } from './backup.svelte'
+  import { recoverySteps, toneKind } from './settings-steps'
+  import './tools.css'
   import MHint from './ui/MHint.svelte'
   import MInfo from './ui/MInfo.svelte'
   import MRow from './ui/MRow.svelte'
@@ -39,8 +44,9 @@
   const setup = $derived((phone.recoveryAt, m?.pair.recovery))
   const set = $derived(fact !== 'none' && setup ? day(setup.kit.record.header.created * 1000, phoneLocale()) : '')
   const savedAt = $derived(setup?.saved ? ` ${day(setup.saved, phoneLocale())}` : '')
-  const available = $derived(signedIn && !!m && !rec.busy && !working)
-  const waitReason = $derived(rec.busy ? rec.activity : phone.connecting
+  const gated = $derived(!!backup.task || backup.busy)
+  const available = $derived(signedIn && !!m && !rec.busy && !working && !gated)
+  const waitReason = $derived(gated ? t('shared.native.backup.saved-task') : rec.busy ? rec.activity : phone.connecting
     ? t('recovery.warning.connecting')
     : working ? t('recovery.warning.syncing')
     : !signedIn ? t('recovery.warning.connectSetup') : '')
@@ -68,37 +74,27 @@
   }
 </script>
 
-<MGroup title={t('recovery.group.title')} id="m-recovery" line={recoveryLine(true, fact, phoneWords)} tone={recoveryTone(st, true, fact)} infoTitle={t('recovery.help.title')}>
+<MCard title={t('recovery.group.title')} id="m-recovery" line={recoveryLine(true, fact, phoneWords)} kind={toneKind(recoveryTone(st, true, fact, signedIn))} infoTitle={t('recovery.help.title')}>
   {#snippet info()}
     <p>{t('recovery.help.soloMaterial')}</p>
     <p>{t('recovery.help.check')}</p>
     <p>{t('recovery.help.restore')}</p>
   {/snippet}
-  <ForgotPassphrase mobile words={phoneWords} workingLabel={t('recovery.action.anotherPassphrase')} workingReason={waitReason}
-    methodReason={rec.busy ? rec.activity : ''}
-    onworking={guidePassphrase} onfile={() => { location.hash = '#/recover/file' }} oncode={guideCode}
-    onnone={() => { location.hash = '#/backup/manage' }} />
-  <!-- the row says "Not set up"; the open group does not say it again (spec section 3.5) -->
-  {#if fact === 'prepared'}
-    <MStatus tone="done" text={t('recovery.state.passphraseAt', { when: set })} detail={t('recovery.warning.alsoSave')} />
-  {:else if fact === 'saved'}
-    <MStatus tone="next" text={t('recovery.state.fileAt', { when: savedAt })} detail={t('recovery.warning.openOnce')} />
-    <MHint>{t('recovery.state.passphraseAtSentence', { when: set })}</MHint>
-  {:else if fact === 'checked'}
-    <MStatus tone="done" text={t('recovery.state.checkedAt', { when: set })} detail={t('recovery.warning.keepOutside')} />
-  {/if}
+
+  <MSteps steps={recoverySteps(fact, set, phoneWords, savedAt)} />
+  {#if rec.busy}<MRunBar lead={rec.activity} right="" total={1} done={0} run label={t('recovery.group.title')} />{/if}
   {#if !rec.mode && (fact !== 'none' || (signedIn && !above('set-up-recovery')))}
     <div class="m-row" style="flex-wrap:wrap">
       {#if fact === 'none'}
         <MButton variant={lead ? 'pri' : 'default'} size="sm" disabled={!available} aria-describedby={waitReason ? 'phone-recovery-wait' : undefined} onclick={() => open('setup')}>{t('backup.action.recovery')}</MButton>
       {:else if fact === 'prepared'}
-        <MButton variant={lead ? 'pri' : 'default'} size="sm" disabled={rec.busy} onclick={() => saveFile()}>{t('recovery.action.saveFile')}</MButton>
+        <MButton variant={lead ? 'pri' : 'default'} size="sm" disabled={gated || rec.busy} onclick={() => saveFile()}>{t('recovery.action.saveFile')}</MButton>
         <MTextButton disabled={!available} aria-describedby={waitReason ? 'phone-recovery-wait' : undefined} onclick={() => open('setup')}>{t('recovery.action.anotherPassphrase')}</MTextButton>
       {:else if fact === 'saved'}
         {#if !above('check-file')}<MButton variant={lead ? 'pri' : 'default'} size="sm" disabled={!available} aria-describedby={waitReason ? 'phone-recovery-wait' : undefined} onclick={() => checkFile()}>{t('backup.action.checkFile')}</MButton>{/if}
-        <MTextButton disabled={rec.busy} onclick={() => saveFile()}>{t('recovery.action.saveCopy')}</MTextButton>
+        <MTextButton disabled={gated || rec.busy} onclick={() => saveFile()}>{t('recovery.action.saveCopy')}</MTextButton>
       {:else}
-        <MTextButton disabled={rec.busy} onclick={() => saveFile()}>{t('recovery.action.saveCopy')}</MTextButton>
+        <MTextButton disabled={gated || rec.busy} onclick={() => saveFile()}>{t('recovery.action.saveCopy')}</MTextButton>
         <MTextButton disabled={!available} aria-describedby={waitReason ? 'phone-recovery-wait' : undefined} onclick={() => open('setup')}>{t('recovery.action.anotherPassphrase')}</MTextButton>
       {/if}
     </div>
@@ -117,15 +113,23 @@
     </div>
   {/if}
   {#if waitReason}<MHint id="phone-recovery-wait" role="status">{waitReason}</MHint>{/if}
-  {#if rec.message}<MHint role="status">{rec.message}</MHint>{/if}
+  {#if rec.message && !(fact === 'checked' && rec.message === t('recovery.state.fileChecked'))}<MHint role="status">{rec.message}</MHint>{/if}
   {#if rec.error}<MHint tone="error" role="alert">{rec.error}</MHint>{/if}
   {#if m && !rec.mode}
-    <MRow title={t('recovery.action.restoreDrive')}><MButton as="a" size="sm" href="#/recover">{t('recovery.action.recoverEllipsis')}</MButton></MRow>
+    <MRow wrap title={t('recovery.action.restoreDrive')}><MButton as="a" size="sm" href="#/recover">{t('recovery.action.recoverEllipsis')}</MButton></MRow>
+  {/if}
+  <MDisclosure foot summary={t('common.showMore')} less={t('common.showLess')}>
+  <ForgotPassphrase mobile words={phoneWords} workingLabel={t('recovery.action.anotherPassphrase')} workingReason={waitReason}
+    methodReason={gated ? waitReason : rec.busy ? rec.activity : ''}
+    onworking={guidePassphrase} onfile={() => { location.hash = '#/recover/file' }} oncode={guideCode}
+    onnone={() => { location.hash = '#/backup/manage' }} />
+  {#if m && !rec.mode}
     <MDisclosure summary={t('recovery.method.original')} open={showCode} id="phone-original-code" tabindex={-1}>
-      <MRow title={t('recovery.method.original')} desc={t('recovery.warning.originalKey', { fingerprint: m.pair.f, development: m.pair.d ? t('backup.pair.development') : '' })}><MTextButton onclick={() => (showCode = !showCode)}>{showCode ? t('recovery.action.hide') : t('recovery.action.show')}</MTextButton></MRow>
+      <MRow wrap title={t('recovery.method.original')} desc={t('recovery.warning.originalKey', { fingerprint: m.pair.f, development: m.pair.d ? t('backup.pair.development') : '' })}><MTextButton onclick={() => (showCode = !showCode)}>{showCode ? t('recovery.action.hide') : t('recovery.action.show')}</MTextButton></MRow>
       {#if showCode}
-        <MRow desc={codeNote || t('recovery.warning.original')}>{#snippet title()}<span style="font-family:var(--mono, monospace);word-break:break-all;font-size:12px">{m.pair.k}</span>{/snippet}<MButton size="sm" onclick={copyCode}>{t('recovery.action.copy')}</MButton></MRow>
+        <MRow wrap desc={codeNote || t('recovery.warning.original')}>{#snippet title()}<span style="font-family:var(--mono, monospace);word-break:break-all;font-size:12px">{m.pair.k}</span>{/snippet}<MButton size="sm" onclick={copyCode}>{t('recovery.action.copy')}</MButton></MRow>
       {/if}
     </MDisclosure>
   {/if}
-</MGroup>
+  </MDisclosure>
+</MCard>

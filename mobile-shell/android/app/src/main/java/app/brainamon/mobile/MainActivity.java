@@ -16,6 +16,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(BrainamonPlugin.class);
+        registerPlugin(SyncPlugin.class);
         super.onCreate(savedInstanceState);
         // Draw under the status and navigation bars on every Android version, as Android 15+ forces.
         // Capacitor's SystemBars lifts the WebView by the keyboard's inset, which counts from the bottom of

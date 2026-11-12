@@ -55,9 +55,13 @@ PLATFORMS = {
         'Reddit (saved)', 'reddit_scraper.js',
         'https://www.reddit.com/user/me/saved/', 'reddit_saved_',
     ),
+    'threads': (
+        'Threads (saved)', 'threads_scraper.js',
+        'https://www.threads.com/saved', 'threads_saved_',
+    ),
 }
 
-CSV_PREFIXES = tuple(p[3] for p in PLATFORMS.values()) + ('threads_saved_',)
+CSV_PREFIXES = tuple(p[3] for p in PLATFORMS.values())
 
 
 def default_downloads_dir() -> Path:
@@ -82,7 +86,10 @@ def build_script(text: str, key: str, unsave: bool, stop_at: str) -> str:
 def script_for(key: str, unsave: bool = False, stop_at: str = '') -> str:
     """The ready-to-paste script of a platform. KeyError for an unknown key; OSError if missing."""
     _label, js_name, _url, _prefix = PLATFORMS[key]
-    return build_script((SCRAPERS_DIR / js_name).read_text(encoding='utf-8'), key, unsave, stop_at)
+    text = (SCRAPERS_DIR / js_name).read_text(encoding='utf-8')
+    if key == 'threads':
+        text = text.replace('// THREADS_SITE', (SCRAPERS_DIR / 'sites' / 'threads.js').read_text(encoding='utf-8'), 1)
+    return build_script(text, key, unsave, stop_at)
 
 
 def playwright_args(watch_dir: Path, stop_at: str = '', unsave: bool = False, cookies: str = '',

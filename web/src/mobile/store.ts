@@ -122,6 +122,7 @@ export const kv = {
     })
   },
   del: (k: string) => tx('kv', 'readwrite', s => { s.delete(k) }),
+  delRequired: (k: string) => requiredTx('kv', 'readwrite', s => s.delete(k)),
 }
 
 // Canvas review commits must report storage failures and keep the pending card retryable.
@@ -195,6 +196,7 @@ export const items = {
   put: (v: StoredItem) => tx('items', 'readwrite', s => { s.put(v) }),
   putRequired: (v: StoredItem) => requiredTx<IDBValidKey>('items', 'readwrite', s => s.put(v)),
   del: (id: number) => tx('items', 'readwrite', s => { s.delete(id) }),
+  delRequired: (id: number) => requiredTx('items', 'readwrite', s => s.delete(id)),
   clear: () => tx('items', 'readwrite', s => { s.clear() }),
 }
 
@@ -366,8 +368,23 @@ export async function storageUse(rows: Row[]) {
 
 // the phone's copy, refetched on the next refresh; queued changes and what was saved for offline stay
 export async function wipe() {
-  for (const s of await items.all()) if (!s.saved) await items.del(s.id)
-  await files.clear()
-  for (const k of ['rows', 'cats', 'tints', 'notes', 'mynotes', 'canvases', 'chats', 'synced', 'manifest']) await kv.del(k)
-  try { await caches.delete('bp-thumbs-v1') } catch { /* no cache API */ }
+  for (const s of await requiredTx<StoredItem[]>('items', 'readonly', s => s.getAll())) if (!s.saved) await items.delRequired(s.id)
+  await requiredTx('files', 'readwrite', s => s.clear())
+  for (const k of ['rows', 'cats', 'tints', 'notes', 'mynotes', 'canvases', 'chats', 'synced', 'manifest']) await requiredTx('kv', 'readwrite', s => s.delete(k))
+  if (typeof caches !== 'undefined') await caches.delete('bp-thumbs-v1')
+}
+
+// Explicit standalone removal includes offline saves, captures and queued changes, never cloud files.
+export async function removeLocalLibrary() {
+  const d = await open()
+  if (!d) throw Object.assign(new Error('Phone storage is unavailable.'), { displayKey: 'common.error.storageUnavailable' })
+  await new Promise<void>((resolve, reject) => {
+    const transaction = d.transaction(['kv', 'items', 'files', 'changes', 'outbox'], 'readwrite')
+    transaction.oncomplete = () => resolve()
+    transaction.onerror = transaction.onabort = () => reject(transaction.error || new Error('Phone storage could not complete the operation.'))
+    try {
+      for (const name of ['kv', 'items', 'files', 'changes', 'outbox']) transaction.objectStore(name).clear()
+    } catch (error) { transaction.abort(); reject(error) }
+  })
+  if (typeof caches !== 'undefined') for (const name of ['bp-thumbs-v1', 'bp-mirror-v1', 'bp-offline-v1']) await caches.delete(name)
 }

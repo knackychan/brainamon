@@ -556,7 +556,7 @@ def main():
                 add.click()
                 expect(page).to_have_url(base + '/mobile.html#/more')
                 expect(page.locator('#m-ai')).to_be_visible()
-                expect(page.locator('#m-ai .m-group-row')).to_have_attribute('aria-expanded', 'true')
+                expect(page.locator('#m-ai')).to_be_visible()
                 page.evaluate(UP)
                 expect(page).to_have_url(base + '/mobile.html#/synth/sits')
                 ctx.close()

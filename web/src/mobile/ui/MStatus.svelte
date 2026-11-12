@@ -6,27 +6,31 @@
   // sentence as the title, the detail, then the key.
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import MBadge from './MBadge.svelte'
+  import type { Kind } from '../settings-steps'
   import MInfo from './MInfo.svelte'
   // no ShellIcon here: tests/test_ui_blocks.py renders MStatus under plain Node, which cannot resolve tabicons.ts's
   // extensionless imports; the kicker's chevron is drawn by settings.css (.m-hero-chev)
 
   type Props = HTMLAttributes<HTMLDivElement> & {
-    tone: 'done' | 'todo' | 'next' | 'busy'; text: string; detail?: string; look?: 'line' | 'hero'
+    tone: 'done' | 'todo' | 'next' | 'busy'; text: string; detail?: string; look?: 'line' | 'hero' | 'page'; kind?: Kind
     kicker?: string; href?: string; infoTitle?: string; info?: Snippet; children?: Snippet
   }
-  let { tone, text, detail = '', look = 'line', kicker = '', href, infoTitle = '', info, class: cls, children, ...rest }: Props = $props()
+  let { tone, kind, text, detail = '', look = 'line', kicker = '', href, infoTitle = '', info, class: cls, children, ...rest }: Props = $props()
 </script>
 
 {#if look === 'hero'}
   <div {...rest} class={['m-status', 'm-hero', cls]}>
     <div class="m-hero-k">
-      {#if href}<a class="m-hero-kick" {href}><i class={['m-status-dot', tone]} aria-hidden="true"></i><span>{kicker}</span><i class="m-hero-chev" aria-hidden="true"></i></a>
-      {:else}<span class="m-hero-kick"><i class={['m-status-dot', tone]} aria-hidden="true"></i><span>{kicker}</span></span>{/if}
+      {#if href}<a class="m-hero-kick" {href}>{#if kind}<MBadge {kind} />{:else}<i class={['m-status-dot', tone]} aria-hidden="true"></i>{/if}<span>{kicker}</span><i class="m-hero-chev" aria-hidden="true"></i></a>
+      {:else}<span class="m-hero-kick">{#if kind}<MBadge {kind} />{:else}<i class={['m-status-dot', tone]} aria-hidden="true"></i>{/if}<span>{kicker}</span></span>{/if}
       {#if info}<MInfo title={infoTitle || kicker}>{@render info()}</MInfo>{/if}
     </div>
     <p><b>{text}</b>{#if detail}<small>{detail}</small>{/if}</p>
     {#if children}<div class="m-hero-key">{@render children()}</div>{/if}
   </div>
+{:else if look === 'page'}
+  <div {...rest} class={['m-page-status', cls]}>{#if kind}<MBadge {kind} />{/if}<div><b>{text}</b>{#if detail}<small>{detail}</small>{/if}{#if children}<div class="m-hero-key">{@render children()}</div>{/if}</div></div>
 {:else}
-  <div {...rest} class={['m-status', cls]}><p><b><i class={['m-status-dot', tone]} aria-hidden="true"></i>{text}</b>{#if detail}<small>{detail}</small>{/if}</p>{@render children?.()}</div>
+  <div {...rest} class={['m-status', cls]}><p><b>{#if kind}<MBadge {kind} />{:else}<i class={['m-status-dot', tone]} aria-hidden="true"></i>{/if}{text}</b>{#if detail}<small>{detail}</small>{/if}</p>{@render children?.()}</div>
 {/if}

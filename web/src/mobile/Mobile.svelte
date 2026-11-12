@@ -27,6 +27,12 @@
   import Wiskit from './screens/Wiskit.svelte'
   import Notes from './screens/Notes.svelte'
   import More from './screens/More.svelte'
+  import Sync from './screens/settings/Sync.svelte'
+  import WiskitSettings from './screens/settings/Wiskit.svelte'
+  import Storage from './screens/settings/Storage.svelte'
+  import Look from './screens/settings/Look.svelte'
+  import About from './screens/settings/About.svelte'
+  import Vault from './Vault.svelte'
   import Import from './screens/Import.svelte'
   import Backup from './screens/Backup.svelte'
   import Recover from './screens/Recover.svelte'
@@ -39,7 +45,7 @@
   import MKey from './ui/MKey.svelte'
   import ShellIcon from './ShellIcon.svelte'
   import CaptureKey from './CaptureKey.svelte'
-  import { runVault, startVault } from './vault/auto.svelte'
+  import { runVault, startVault, vault, watchPc } from './vault/auto.svelte'
   import { syncPaused } from './network.svelte'
   import Welcome from './Welcome.svelte'
   import Coach from './Coach.svelte'
@@ -47,6 +53,11 @@
 
   const r = $derived(phone.route)
   const title = $derived(r.item ? t('shell.route.item') : r.imp ? t('shell.route.import') : r.save ? t('shell.route.save') : tabName(r.tab))
+  $effect(() => { if (r.tab === 'more' && isApp && !solo && vault.opts.on && source.vaultPc && !syncPaused()) return watchPc() })
+  $effect(() => {
+    if ((!mirrorSource && ['sync', 'wiskit'].includes(r.group ?? ''))) go('#/more', true)
+    if (r.manage && !solo) go('#/backup', true)
+  })
   // a section page (top bar and dock), or a sheet over the last one (shell.base); `under` is the screen in .m-main
   const section = $derived(isSection(r))
   const compose = $derived(isCompose(r))
@@ -210,7 +221,18 @@
     {:else if r.recover}
       <Recover scroller={main} />
     {:else}
-      <More />
+      {#if r.group !== 'wiskit' || !mirrorSource}
+      {#key r.group}
+        {#if r.group === 'sync' && mirrorSource}<Sync />
+        {:else if r.group === 'obsidian'}<Vault />
+        {:else if r.group === 'storage'}<Storage />
+        {:else if r.group === 'look'}<Look />
+        {:else if r.group === 'about'}<About />
+        {:else}<More />{/if}
+      {/key}
+      {/if}
+      <!-- Keep key drafts and their language guard alive while moving between settings pages. -->
+      {#if mirrorSource}<div hidden={r.group !== 'wiskit'}><WiskitSettings active={r.group === 'wiskit'} /></div>{/if}
     {/if}
   </main>
 

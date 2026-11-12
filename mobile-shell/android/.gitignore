@@ -94,8 +94,8 @@ capacitor-cordova-android-plugins
 
 # Copied web assets
 app/src/main/assets/public
-# The phone site reader's page scripts, copied from scrapers/sites/ by scripts/www.mjs (debug build only)
-app/src/debug/assets/sites
+# The phone site reader's page scripts, copied from scrapers/sites/ by scripts/www.mjs
+app/src/main/assets/sites
 
 # Generated Config files
 app/src/main/assets/capacitor.config.json

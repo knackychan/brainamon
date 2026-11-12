@@ -157,7 +157,7 @@ class ShellRulesTest(unittest.TestCase):
               names: Object.keys(EXTRA),
               path: shellIcon('search').length > 0 && shellIcon('lib', true) !== shellIcon('lib', false) }))
         """))
-        self.assertEqual(out, {'ok': True, 'names': ['columns', 'search', 'plus', 'rows', 'sort', 'tools', 'back', 'open', 'star', 'tag', 'bin', 'phone', 'check', 'down', 'send', 'stop', 'photo', 'file', 'paste', 'import', 'text', 'play', 'retry', 'x', 'dash', 'mic'], 'path': True})
+        self.assertEqual(out, {'ok': True, 'names': ['cloud', 'sync', 'cat', 'gem', 'disk', 'look', 'info', 'pc', 'key', 'wifi', 'pause', 'clock', 'bang', 'win', 'doc', 'columns', 'search', 'plus', 'rows', 'sort', 'tools', 'back', 'open', 'star', 'tag', 'bin', 'phone', 'check', 'down', 'send', 'stop', 'photo', 'file', 'paste', 'import', 'text', 'play', 'retry', 'x', 'dash', 'mic'], 'path': True})
 
 
     def test_item_strip_arithmetic_and_snapshot(self):

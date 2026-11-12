@@ -22,8 +22,8 @@ export interface CloudTask {
 }
 export interface PhoneRecord { device: string; name: string; seen: number }
 
-export interface CloudView {
-  recovery_activity?: RecoveryActivity | null; upload_step?: string; upload_since?: number
+export interface CloudSnapshot {
+  recovery_activity?: RecoveryActivity | null; recovery_gate_active?: boolean; pair_ready?: boolean; upload_step?: string; upload_since?: number
   licensed: boolean; rotation?: string; rotation_lock?: string; rotation_locked_at?: number; rotation_locked_by?: number; ignored_changes?: number
   paused_since?: number; key_missing?: boolean; task?: CloudTask | null
   token_expired?: boolean; token_issued?: number; error_code?: string; error_action?: string; error_at?: number; error_account?: string
@@ -33,14 +33,17 @@ export interface CloudView {
   done: number; total: number; bytes_done?: number; bytes_total?: number; error: string; files: number; size: number; last_publish: number; last_summary: string
   items_done?: number; items_total?: number
   skipped?: number; skipped_note?: string      // files the last backup left out because recovery would refuse their size, and the sentence about them ('' for none)
-  account: string; used: number; limit: number; options: { videos: 'off' | 'fav' | 'all'; canvases: boolean }
-  phone_url: string; web_client: boolean; phone_keys: string[]; last_intake: number; intake_summary: string
+  account: string; used: number; limit: number; last_intake: number; intake_summary: string
   vault: { on: boolean; folder: string }; vault_running: boolean
   vault_devices: { device: string; ok: boolean }[] | null
   vault_members: string[]
   vault_state: 'locked' | 'off' | 'starting' | 'idle' | 'syncing' | 'stopping' | 'brake' | 'error'; vault_reason: string; vault_summary: string; vault_last: number
   vault_step: string; vault_done: number; vault_total: number; vault_since: number
   vault_skipped?: number; vault_skipped_note?: string      // files the last vault round left out for their size, and the sentence about them ('' for none)
+}
+export interface CloudView extends CloudSnapshot {
+  options: { videos: 'off' | 'fav' | 'all'; canvases: boolean }
+  phone_url: string; web_client: boolean; phone_keys: string[]
 }
 export interface Sizes { base: number; canvases: number; videos_fav: number; videos_all: number; videos_fav_count: number; videos_all_count: number; items?: number; files?: number }
 

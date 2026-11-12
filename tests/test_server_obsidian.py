@@ -68,6 +68,7 @@ class ObsidianRoutesTest(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in self.vault.iterdir()), ['.brainamon', '.obsidian', 'Brainamon'])
         v = self.view()
         self.assertEqual((v['mode'], v['vault'], v['first_open']), ('owner', str(self.vault), 'pending'))
+        self.assertEqual(self.c.get('/api/cloud').json()['vault']['folder'], str(self.vault))
         self.assertEqual(self.c.post('/api/obsidian/first-open/done', headers=W).status_code, 200)
         self.assertEqual(self.view()['first_open'], '')
         self.assertTrue(self.c.get('/api/export/defaults').json()['owner'])
@@ -149,6 +150,7 @@ class ObsidianRoutesTest(unittest.TestCase):
         self.assertTrue((self.vault / '.obsidian').is_dir())
         v = self.view()
         self.assertEqual((v['mode'], v['vault'], v['legacy']), ('owner', str(self.vault), False))
+        self.assertEqual(self.c.app.state.sync.status()['vault']['folder'], str(self.vault))
         self.assertTrue(old.is_dir())
 
     def test_reset_reclaim_options(self):
@@ -158,14 +160,14 @@ class ObsidianRoutesTest(unittest.TestCase):
         page.write_text('edited', encoding='utf-8')
         self.assertTrue(self.c.app.state.maps.run_pass())
         self.assertEqual(self.view()['status']['adopted'], [f'Brainamon/Items/hip-airplane-{self.a}.md'])
-        self.assertEqual(self.c.post('/api/obsidian/reset', json={'path': 'Mine.md'}, headers=W).status_code, 400)
-        r = self.c.post('/api/obsidian/reset', json={'path': f'Brainamon/Items/hip-airplane-{self.a}.md'}, headers=W)
+        self.assertEqual(self.c.post('/api/obsidian/reset', json={'path': 'Mine.md', 'expected_vault': str(self.vault)}, headers=W).status_code, 400)
+        r = self.c.post('/api/obsidian/reset', json={'path': f'Brainamon/Items/hip-airplane-{self.a}.md', 'expected_vault': str(self.vault)}, headers=W)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(page.read_text(encoding='utf-8'), original)
         (self.vault / V.MANIFEST).unlink()
         self.assertTrue(self.c.app.state.maps.run_pass())
         self.assertGreater(self.view()['status']['unlisted'], 0)
-        r = self.c.post('/api/obsidian/reclaim', headers=W)
+        r = self.c.post('/api/obsidian/reclaim', json={'expected_vault': str(self.vault)}, headers=W)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertGreater(r.json()['reclaimed'], 0)
         self.assertEqual(self.view()['status']['unlisted'], 0)
@@ -180,7 +182,7 @@ class ObsidianRoutesTest(unittest.TestCase):
         V.write_manifest(self.vault, man)
         self.assertTrue(self.c.app.state.maps.run_pass())
         self.assertTrue(self.view()['status']['other_library'])
-        r = self.c.post('/api/obsidian/takeover', headers=W)
+        r = self.c.post('/api/obsidian/takeover', json={'expected_vault': str(self.vault)}, headers=W)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertFalse(self.view()['status']['other_library'])
         mine = self.c.app.state.writer.read(lambda db: db.get_setting('library_id'))
@@ -205,9 +207,59 @@ class ObsidianRoutesTest(unittest.TestCase):
         self.assertEqual((v['mode'], v['vault'], v['earlier_vault']), ('owner', str(self.vault), False))
         mine = self.c.app.state.writer.read(lambda db: db.get_setting('library_id'))
         self.assertEqual(V.read_manifest(self.vault)['library_id'], mine)
-        r = self.c.post('/api/obsidian/leftovers/remove', headers=W)
+        r = self.c.post('/api/obsidian/leftovers/remove', json={'expected_vault': str(self.vault)}, headers=W)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(r.json()['removed'], 0)
+
+    def test_stale_vault_actions_preserve_both_vaults(self):
+        rel = f'Brainamon/Items/hip-airplane-{self.a}.md'
+        other = self.docs / 'Other Vault'
+        for vault in (self.vault, other):
+            r = self.c.put('/api/obsidian/vault', json={'path': str(vault), 'create': True}, headers=W)
+            self.assertEqual(r.status_code, 200, r.text)
+            (vault / rel).write_text(f'Personal edits in {vault.name}', encoding='utf-8')
+            self.c.app.state.maps.run_pass()
+        before = {vault: ((vault / rel).read_bytes(), (vault / V.MANIFEST).read_bytes()) for vault in (self.vault, other)}
+        for action in ('reset', 'reclaim', 'takeover', 'leftovers/remove'):
+            with self.subTest(action=action):
+                r = self.c.post('/api/obsidian/' + action,
+                                json={'path': rel, 'expected_vault': str(self.vault)}, headers=W)
+                self.assertEqual(r.status_code, 409, r.text)
+                self.assertEqual(r.json()['detail'], MS.VAULT_CHANGED)
+                for vault, contents in before.items():
+                    self.assertEqual(((vault / rel).read_bytes(), (vault / V.MANIFEST).read_bytes()), contents)
+
+    def test_vault_actions_require_reviewed_target(self):
+        self.c.put('/api/obsidian/vault', json={'path': str(self.vault), 'create': True}, headers=W)
+        before = (self.vault / V.MANIFEST).read_bytes()
+        for action in ('reset', 'reclaim', 'takeover', 'leftovers/remove'):
+            for expected in (None, '', 123):
+                with self.subTest(action=action, expected=expected):
+                    body = {'path': f'Brainamon/Items/hip-airplane-{self.a}.md'}
+                    if expected is not None:
+                        body['expected_vault'] = expected
+                    r = self.c.post('/api/obsidian/' + action, json=body, headers=W)
+                    self.assertEqual(r.status_code, 409, r.text)
+        self.assertEqual((self.vault / V.MANIFEST).read_bytes(), before)
+
+    def test_reset_rechecks_target_after_waiting_for_vault_lock(self):
+        rel = f'Brainamon/Items/hip-airplane-{self.a}.md'
+        other = self.docs / 'Other Vault'
+        for vault in (other, self.vault):
+            self.c.put('/api/obsidian/vault', json={'path': str(vault), 'create': True}, headers=W)
+            (vault / rel).write_text('Personal edits', encoding='utf-8')
+            self.c.app.state.maps.run_pass()
+        lock = MS.with_vault_lock
+
+        def switch_before_lock(fn, cancel, on_wait=None):
+            self.c.app.state.writer.call(lambda db: db.set_setting(MS.S_VAULT, str(other)))
+            return lock(fn, cancel, on_wait)
+
+        with mock.patch.object(MS, 'with_vault_lock', side_effect=switch_before_lock):
+            r = self.c.post('/api/obsidian/reset', json={'path': rel, 'expected_vault': str(self.vault)}, headers=W)
+        self.assertEqual(r.status_code, 409, r.text)
+        for vault in (self.vault, other):
+            self.assertEqual((vault / rel).read_text(encoding='utf-8'), 'Personal edits')
 
     def test_cancel_and_classic_export_pointer(self):
         self.assertEqual(self.c.post('/api/obsidian/cancel', headers=W).status_code, 200)

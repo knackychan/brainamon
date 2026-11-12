@@ -49,14 +49,28 @@ class ObsidianCopyTest(unittest.TestCase):
     def test_status_line(self):
         st = {'pending': False, 'busy': '', 'waiting': False, 'error': '', 'last_render': 0, 'last_maintenance': 0,
               'adopted': [], 'unlisted': 0, 'other_library': False, 'stale': 0, 'topics': 0, 'pending_summaries': 0, 'written': 0, 'removed': 0, 'state': 'idle'}
-        self.assertEqual(run(f'o.statusLine({json.dumps(st)})'), 'Not rendered yet.')
-        self.assertEqual(run(f"o.statusLine({json.dumps({**st, 'pending': True})})"), 'Render pending: the vault is busy, Brainamon retries every minute.')
+        self.assertEqual(run(f'o.statusLine({json.dumps(st)})'), 'Obsidian notes have not been created yet.')
+        self.assertEqual(run(f"o.statusLine({json.dumps({**st, 'pending': True})})"), 'Obsidian notes update waiting. Brainamon retries every minute.')
         self.assertEqual(run(f"o.statusLine({json.dumps({**st, 'busy': 'move', 'waiting': True})})"), 'Waiting for the vault to be free.')
         self.assertEqual(run(f"o.statusLine({json.dumps({**st, 'other_library': True})})"), 'This vault belongs to another Brainamon library.')
         line = run(f"o.statusLine({json.dumps({**st, 'last_render': 1, 'stale': 2, 'adopted': ['a', 'b', 'c']})})")
         self.assertTrue(line.startswith('Last refresh '))
         self.assertIn('2 topics out of date', line)
         self.assertIn('3 adopted pages', line)
+
+    def test_update_progress_and_wait_reasons(self):
+        base = {'state': 'idle', 'adopted': []}
+        cases = [
+            ({'pending': True, 'error': 'Disk full'}, 'Could not update the Obsidian notes: Disk full Brainamon retries every minute.'),
+            ({'pending': True, 'pending_reason': 'vault'}, 'Obsidian notes update waiting. Another Brainamon task is using the vault. Brainamon retries every minute.'),
+            ({'pending': True, 'pending_reason': 'map'}, 'Obsidian notes update waiting. Another Brainamon task is updating the knowledge map. Brainamon retries every minute.'),
+            ({'state': 'checking', 'pending': True, 'progress': {'done': 3, 'total': 12}}, 'Checking existing Obsidian files: 3 of 12.'),
+            ({'state': 'saving', 'progress': {'done': 1, 'total': 2}}, 'Saving changes to Obsidian files: 1 of 2.'),
+            ({'state': 'preparing'}, 'Preparing Obsidian notes from your library…'),
+        ]
+        for fields, expected in cases:
+            with self.subTest(fields=fields):
+                self.assertEqual(run(f'o.statusLine({json.dumps({**base, **fields})})'), expected)
 
     def test_reconnect_leftovers_missing(self):
         c = run('o.COPY')

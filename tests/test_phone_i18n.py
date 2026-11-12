@@ -364,8 +364,8 @@ class PhoneLanguageCoreTest(unittest.TestCase):
           vm.runInNewContext(ts.transpileModule(fs.readFileSync('web/src/mobile/mirror/recovery.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,
             {exports:result,require:s=>{assert.ok(s in deps,s);return deps[s]},TextEncoder,Date})
           const pair={k:'synthetic-key',f:'synthetic-fingerprint'}
-          assert.equal(await result.exportPhoneRecovery(pair),'Recovery file downloaded. Keep it outside this phone and never share it.')
-          assert.equal(await result.exportPhoneRecovery(pair,phoneWords),'Recovery file downloaded. Keep it outside this phone and never share it.')
+          assert.equal(await result.exportPhoneRecovery(pair),'Recovery file download requested. Check your downloads and keep a copy outside this phone. Never share it.')
+          assert.equal(await result.exportPhoneRecovery(pair,phoneWords),'Recovery file download requested. Check your downloads and keep a copy outside this phone. Never share it.')
           assert.deepEqual(downloads[0][0],downloads[1][0]);assert.equal(downloads[0][0].key,pair.k)
           assert.equal(downloads[0][0].instructions,'This file unlocks the original encrypted Drive mirror. Keep it separate from your devices. It is not a library backup. On a replacement PC: Settings > Backup & phones > Recover a library…, then Recovery file.')
           native=true;assert.equal(await result.exportPhoneRecovery(pair),'Recovery file saved in Original folder. Keep a copy outside this phone.')
@@ -373,9 +373,14 @@ class PhoneLanguageCoreTest(unittest.TestCase):
         """)
 
     def test_cloud_gate_blocks_nested_work_and_rechecks_during_switch(self):
-        node("""
+        node(TS_RESOLVE + """
           import assert from 'node:assert/strict'
-          import * as gate from './web/src/mobile/mirror/gate.ts'
+          import { registerHooks } from 'node:module'
+          registerHooks({resolve(s,c,next){
+            if(s==='../sync/native.svelte')return {url:'data:text/javascript,export const nativeSync={};export const nativeSyncPolicy=async()=>{};export const nativeSyncBarrier=async()=>{}',shortCircuit:true}
+            return next(s,c)
+          }})
+          const gate = await import('./web/src/mobile/mirror/gate.ts')
           import { registerLanguageCheck, switchLanguage } from './web/src/mobile/language-switch.ts'
           let writes = 0
           const change = () => switchLanguage('fr','en',async()=>{}, {setItem(){writes++}},()=>{})

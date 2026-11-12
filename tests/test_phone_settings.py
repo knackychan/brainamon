@@ -72,6 +72,47 @@ class SettingsLinesTest(unittest.TestCase):
                                         {'sync': 'busy', 'phone': 'done', 'ai': 'done'}])
         self.assertEqual(out['every'], [])
 
+    def test_badges_steps_and_task_gates_follow_facts(self):
+        test_phone_js.node(test_phone_js.TS_RESOLVE + r"""
+          import assert from 'node:assert/strict'
+          import fs from 'node:fs'
+          import * as S from './web/src/mobile/settings-steps.ts'
+          import * as L from './web/src/mobile/settings-lines.ts'
+          const fixture = JSON.parse(fs.readFileSync('tests/fixtures/phone_states.json','utf8'))
+          for (const {expect:st} of fixture.cases) {
+            const want = st.tone === 'done' ? 'done' : st.tone === 'busy' ? 'working'
+              : st.tone === 'next' ? ['unreachable','access-invalid'].includes(st.id) ? 'failed' : 'attention'
+              : st.id === 'paused' ? 'paused' : ['offline','wifi','confirming','waiting-pc'].includes(st.id) ? 'waiting' : 'empty'
+            assert.equal(S.kindOf(st), want, st.id)
+            assert.equal(S.connectionGuide(st,false), ['connect','account-mismatch','replaced','removed','confirming','waiting-pc','license','access-invalid','webview','first-backup','no-library','key','backup-off'].includes(st.id))
+            assert.equal(S.connectionGuide(st,true),true)
+          }
+          const words = (key,p={}) => key + JSON.stringify(p)
+          const opts = {signedIn:true,connecting:false,refreshing:false,reachable:false,account:'a',pcAccount:'a',connectStep:'',diagnosis:'',count:'2'}
+          for (const id of ['connect','account-mismatch','removed','waiting-pc','first-backup','no-library','key','backup-off']) {
+            const steps = S.connectionSteps({id,tone:'next',lamp:'access removed'},opts,words)
+            assert.equal(steps.length,4)
+            if (['connect','account-mismatch'].includes(id)) assert.equal(steps[1].kind,'attention')
+            if (['first-backup','no-library','key','backup-off'].includes(id)) assert.equal(steps[2].kind,'done')
+            if (id==='removed') assert.equal(steps[2].line,'access removed')
+          }
+          for (const [fact,kinds] of [['none',['empty','empty','empty']],['prepared',['done','empty','empty']],['saved',['done','done','attention']],['checked',['done','done','done']]])
+            assert.deepEqual(S.recoverySteps(fact,'passphrase date',words,'file date').map(s=>s.kind),kinds)
+          assert.match(S.recoverySteps('saved','passphrase date',words,'file date')[1].label,/file date/)
+          for (const kind of ['replace','delete']) for (const phase of ['prepare','upload','install','delete','disconnect','done']) for (const paused of [false,true]) {
+            const steps = S.taskSteps({kind,phase,paused},true,'',words)
+            assert.equal(steps.length,kind==='delete'?2:4)
+            if(phase!=='done') assert.equal(steps.filter(s=>s.kind===(paused?'paused':'working')).length,1)
+          }
+          assert.equal(S.kindOf({id:'backup-task',tone:'next'},'failed'),'failed')
+          assert.equal(L.thisPhoneLine({solo:true,name:'',unsent:0,signedIn:false}),'Backup off · no PC paired')
+          assert.equal(L.thisPhoneTone(null,0,false),'todo')
+          for (const id of ['replaced','removed','key','waiting-pc','confirming','access-invalid']) assert.equal(L.thisPhoneTone({id,tone:'next',action:null},0),'next')
+          assert.equal(L.recoveryTone(null,true,'saved'),'next')
+          assert.equal(L.recoveryTone(null,true,'none',true),'next')
+          assert.equal(L.recoveryTone(null,true,'none',false),'todo')
+        """)
+
 
 class SettingsPagesTest(unittest.TestCase):
     def test_each_page_draws_its_own_keys_before_its_content(self):
@@ -95,42 +136,30 @@ class SettingsPagesTest(unittest.TestCase):
         self.assertIn("const title = $derived(r.item ? t('shell.route.item') : r.imp ? t('shell.route.import') : r.save ? t('shell.route.save') : tabName(r.tab))", mobile)
         self.assertEqual([english('shell.route.item'), english('shell.route.import'), english('shell.route.save')], ['Item', 'Import', 'Save'])
 
-    def test_the_rows_are_groups_and_the_links_open_them(self):
-        more, backup, recovery, vault = source('screens/More.svelte'), source('screens/Backup.svelte'), source('PhoneRecovery.svelte'), source('Vault.svelte')
-        self.assertIn('setGroups()', more)
-        self.assertIn('setGroups()', backup)
-        for title in ('Sync', 'Wiskit on this phone', 'Storage', 'Look', 'About', 'Use without a PC', 'Recover a library…', 'Your PC', 'Your phone'):
-            key = {'Sync': 'shell.sync.title', 'Wiskit on this phone': 'settings.group.ai', 'Storage': 'settings.group.storage', 'Look': 'settings.group.look', 'About': 'settings.group.about', 'Use without a PC': 'settings.group.solo', 'Recover a library…': 'recovery.action.recoverEllipsis', 'Your PC': 'settings.group.pc', 'Your phone': 'settings.group.phone'}[title]
-            self.assertIn(f"<MGroup title={{t('{key}')}}", more)
-            self.assertEqual(english(key), title)
-        self.assertIn('<MGroup title="Obsidian"', vault)
-        for title in ('Google account', 'This phone', 'Recovery'):
-            key = {'Google account': 'backup.group.account', 'This phone': 'backup.group.thisPhone', 'Recovery': 'recovery.group.title'}[title]
-            self.assertIn(f"<MGroup title={{t('{key}')}}", backup)
-            self.assertEqual(english(key), title)
-        self.assertIn('<MGroup title={t(\'recovery.group.title\')} id="m-recovery"', recovery)
-        self.assertNotIn('text="Not set up"', recovery)                         # the row says it; the open group does not again
-        self.assertNotIn('id="m-phone"', more)                                   # only the page it opens carries the id
-        self.assertEqual(more.count('<MGroup title={t(\'settings.group.pc\')} href="#/backup"'), 1)
-        group = source('ui/MGroup.svelte')
-        self.assertIn('<h3><button type="button" class="m-group-row"', group)
-        self.assertIn('aria-expanded={open} aria-controls={panelId}', group)
-        self.assertIn('hidden={!open}', group)
-        self.assertIn("export const OPEN_GROUP = 'm-group-open'", source('ui/groups.svelte.ts'))
-        onboard = source('onboard.svelte.ts')
-        self.assertIn("group.dispatchEvent(new Event('m-group-open'))", onboard)
-        self.assertNotIn("from './ui/groups.svelte'", onboard)                             # the box openers' Node test stubs svelte
-        for rel in ('screens/More.svelte', 'screens/Backup.svelte', 'PhoneRecovery.svelte', 'Vault.svelte'):
-            self.assertIn("variant={lead ? 'pri' : 'default'}", source(rel), rel)   # one orange key per screen
-        self.assertEqual(english('settings.storage.clearCopy'), "Clear the phone's copy")
-        self.assertIn("{confirmClear ? t('settings.storage.confirmClear') : t('settings.storage.clear')}", more)
-        self.assertEqual([english('settings.storage.confirmClear'), english('settings.storage.clear')], ['Sure? Clear', 'Clear'])
-        self.assertFalse((MOBILE / 'SetupList.svelte').exists())
+    def test_hub_rows_open_pages_and_anchors_reveal_disclosures(self):
+        more = source('screens/More.svelte')
+        for route in ('sync', 'wiskit', 'obsidian', 'storage', 'look', 'about'):
+            self.assertIn(f'href="#/more/{route}"', more)
+        self.assertIn('href="#/backup"', more)
+        self.assertNotIn('setGroups()', more)
+        self.assertNotIn('setGroups()', source('screens/Backup.svelte'))
+        self.assertIn('node instanceof HTMLDetailsElement', source('onboard.svelte.ts'))
+        self.assertNotIn("new Event('m-group-open')", source('onboard.svelte.ts'))
+        for rel in ('screens/settings/About.svelte', 'screens/Backup.svelte', 'PhoneRecovery.svelte', 'Vault.svelte'):
+            self.assertIn("variant={lead ? 'pri' : 'default'}", source(rel), rel)
+        self.assertIn("{confirmClear ? t('settings.storage.confirmClear') : t('settings.storage.clear')}", source('screens/settings/Storage.svelte'))
+        self.assertIn('MSteps', source('PhoneRecovery.svelte'))
+        self.assertIn('MSteps', source('PhoneBackupChoices.svelte'))
+        self.assertNotIn('<TaskSteps', source('PhoneBackupChoices.svelte'))
+        for rel in ('screens/Backup.svelte', 'screens/Recover.svelte', 'PhoneRecovery.svelte'):
+            self.assertIn('const gated = $derived(!!backup.task || backup.busy)', source(rel))
+        self.assertIn('connectionGuide(st, pairingGuide)', source('screens/Backup.svelte'))
+        self.assertNotIn('pairingGuide || !phone.reachable', source('screens/Backup.svelte'))
 
     def test_the_pill_and_the_hero(self):
         button, status = source('ui/MButton.svelte'), source('ui/MStatus.svelte')
         self.assertIn("shape?: 'rect' | 'pill'", button)
-        self.assertIn("look?: 'line' | 'hero'", status)
+        self.assertIn("look?: 'line' | 'hero' | 'page'", status)
         css = source('settings.css')
         self.assertIn('.m-btn.pill.pri{border-color:color-mix(in srgb,var(--accent) 78%,#000)', css)
         self.assertNotRegex(css, r'#(?!000\b|fff\b)[0-9a-fA-F]{3,6}\b(?![-\w])')     # tokens, plus the spec's #000 and #fff

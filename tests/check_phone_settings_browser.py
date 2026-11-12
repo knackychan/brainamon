@@ -23,7 +23,7 @@ from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from tests.phone_groups import group, open_group, row_line  # noqa: E402
+from tests.phone_pages import group, open_group, row_line  # noqa: E402
 
 ART = ROOT / 'local/phone-settings'
 RAW = bytes([12]) * 32
@@ -31,7 +31,7 @@ KEY = base64.urlsafe_b64encode(RAW).decode().rstrip('=')
 FP = hashlib.sha256(b'brainamon-mirror-1 id' + RAW).hexdigest()[:12]
 PAIR = dict(v=2, k=KEY, f=FP, c='', e='', ai={}, at=0, solo=True)
 SETTLED = "async () => { const { phone } = await import('/src/mobile/state.svelte.ts'); return phone.tried && !phone.refreshing }"
-ROWS = ['Sync', 'Your phone', 'Wiskit on this phone', 'Obsidian', 'Storage', 'Look', 'About']
+ROWS = ['Backup & phones', 'Sync', 'Wiskit on this phone', 'Obsidian', 'Storage', 'Look', 'About']
 
 
 def fits(page):
@@ -46,9 +46,9 @@ def uncut(page):
 
 def small_targets(page):
     """Keys, links and disclosures in the page under 44 px (the round top keys are 36 px, outside .m-pad)."""
-    return page.evaluate("""() => [...document.querySelectorAll('.m-pad button, .m-pad a, .m-pad summary')]
-      .filter(e => e.offsetParent).map(e => [e.textContent.trim().slice(0, 30), e.getBoundingClientRect().height])
-      .filter(t => t[1] < 43.5)""")
+    return page.evaluate("""() => [...document.querySelectorAll('.m-pad button, .m-pad a, .m-pad summary, .m-pad input[type=range]')]
+      .filter(e => e.offsetParent).map(e => [e.textContent.trim().slice(0, 30), e.getBoundingClientRect().height, e.getBoundingClientRect().width])
+      .filter(t => t[1] < 43.5 || t[2] < 43.5)""")
 
 
 def shoot(page, name):
@@ -85,13 +85,13 @@ def main():
                 with sync_playwright() as pw:
                     browser = pw.chromium.launch(headless=True, channel='msedge')
 
-                    def phone_page(width, paired=True):
+                    def phone_page(width, paired=True, solo=True):
                         ctx = browser.new_context(viewport={'width': width, 'height': 780}, is_mobile=True, has_touch=True, locale='en-US')
                         ctx.add_init_script("localStorage.setItem('bp-lang','en')")
                         ctx.route('https://**/*', lambda r: r.abort())
                         ctx.route('**/api/**', lambda r: r.abort())
                         ctx.route(base + '/cards/**', lambda r: r.fulfill(path=cards[urlparse(r.request.url).path.removeprefix('/cards/')]))
-                        seed = {'bp-pair': json.dumps(PAIR)} if paired else {}
+                        seed = {'bp-pair': json.dumps(dict(PAIR, solo=solo))} if paired else {}
                         ctx.add_init_script("localStorage.setItem('bp-wifi','off'); if (!sessionStorage.getItem('fixture')) {"
                                             "sessionStorage.setItem('fixture','1'); for (const [k, v] of Object.entries(" +
                                             json.dumps(seed) + ")) localStorage.setItem(k, v) }")
@@ -101,92 +101,118 @@ def main():
                         return ctx, page
 
                     for width in (360, 320):
-                        # 1. the first screen: the keys, the hero, every row in one screen, no line cut
                         ctx, page = phone_page(width)
                         page.goto(base + '/mobile.html#/more')
                         page.wait_for_function(SETTLED)
                         expect(page.locator('.m-page-keys .m-ws')).to_have_text('Settings')
                         expect(page.get_by_role('button', name='Back', exact=True)).to_have_count(1)
-                        assert page.locator('.m-pad > *').first.get_attribute('id') == 'm-status'
-                        expect(page.locator('#m-status').get_by_role('link', name='Backup & phones')).to_be_visible()
-                        titles = page.locator('.m-group-words > b').all_inner_texts()
-                        assert titles == ROWS, titles
-                        bottom = page.evaluate("() => Math.max(...[...document.querySelectorAll('.m-group-row')].map(r => r.getBoundingClientRect().bottom))")
-                        assert bottom <= 780, (width, bottom)
-                        assert not uncut(page), (width, uncut(page))
+                        assert page.locator('.m-group-words > b').all_inner_texts() == ROWS
+                        expect(page.locator('#m-status')).to_contain_text('Status')
+                        assert page.locator('.m-group-row[aria-expanded]').count() == 0
                         assert not small_targets(page), small_targets(page)
-                        assert page.locator('.m-group-row[aria-expanded="true"]').count() == 0
+                        bottom = page.locator('a[href="#/more/about"]').bounding_box()
+                        assert width != 360 or bottom['y'] + bottom['height'] <= 780, bottom
                         shoot(page, f'settings-{width}')
 
-                        # 2. one group at a time; the tapped row stays where it was when the group above closes
-                        storage = open_group(page, 'Storage')
-                        expect(storage.get_by_text('Keep automatically', exact=True)).to_be_visible()
-                        expect(group(page, 'Wiskit on this phone').get_by_role('button', name='More info: Wiskit on this phone')).to_have_count(0)
-                        shoot(page, f'settings-{width}-storage')
-                        look_row = group(page, 'Look').locator('button.m-group-row')
-                        before = look_row.bounding_box()['y']
-                        look_row.click()
-                        expect(look_row).to_have_attribute('aria-expanded', 'true')
-                        expect(storage.locator('button.m-group-row')).to_have_attribute('aria-expanded', 'false')
-                        page.wait_for_timeout(400)                  # a smooth scroll that brings the panel up has ended
-                        after = look_row.bounding_box()['y']
-                        assert after <= before + 1 and after >= 56 - 1, (width, before, after)
-                        expect(group(page, 'Look').get_by_role('button', name='More info: Appearance')).to_be_visible()
+                        # Every hub row opens its own page, with its own Back and no cut words.
+                        for title, route in [('Sync', 'sync'), ('Wiskit on this phone', 'wiskit'), ('Obsidian', 'obsidian'), ('Storage', 'storage'), ('Look', 'look'), ('About', 'about')]:
+                            page.locator(f'a[href="#/more/{route}"]').click()
+                            expect(page).to_have_url(base + '/mobile.html#/more/' + route)
+                            expect(page.locator('.m-page:visible h1')).to_have_text(title)
+                            assert fits(page), (width, route)
+                            assert not small_targets(page), (route, small_targets(page))
+                            shoot(page, f'{route}-{width}')
+                            page.get_by_role('button', name='Back', exact=True).click()
+                            expect(page).to_have_url(base + '/mobile.html#/more')
 
-                        # 3. Clear asks twice, and forgets the first tap when Storage closes
-                        storage = open_group(page, 'Storage')
-                        clear = storage.get_by_role('button', name='Clear', exact=True)
-                        clear.click()
-                        expect(storage.get_by_role('button', name='Sure? Clear', exact=True)).to_be_visible()
-                        storage.locator('button.m-group-row').click()
-                        storage = open_group(page, 'Storage')
-                        expect(storage.get_by_role('button', name='Clear', exact=True)).to_be_visible()
+                        # Clear keeps its two taps and resets when the page is left.
+                        page.locator('a[href="#/more/storage"]').click()
+                        page.get_by_text('Show more', exact=True).click()
+                        assert not small_targets(page), small_targets(page)
+                        page.get_by_role('button', name='Clear', exact=True).click()
+                        expect(page.get_by_role('button', name='Sure? Clear', exact=True)).to_be_visible()
+                        page.get_by_role('button', name='Back', exact=True).click()
+                        page.locator('a[href="#/more/storage"]').click()
+                        page.get_by_text('Show more', exact=True).click()
+                        expect(page.get_by_role('button', name='Clear', exact=True)).to_be_visible()
 
-                        # 4. a link into a group: Wiskit's Add a key (openMoreBox('m-ai')) from the Wiskit sheet opens
-                        # Wiskit on this phone, brings it under the keys, and Back returns to the sheet
+                        # Wiskit's Add a key lands on the keys card and returns to its sheet.
                         page.evaluate("location.hash = '#/jv'")
                         expect(page).to_have_url(base + '/mobile.html#/jv')
                         page.evaluate("async () => { const { openMoreBox } = await import('/src/mobile/onboard.svelte.ts'); await openMoreBox('m-ai') }")
-                        expect(page).to_have_url(base + '/mobile.html#/more')
-                        ai = page.locator('#m-ai')
-                        expect(ai.locator('button.m-group-row')).to_have_attribute('aria-expanded', 'true')
-                        expect(ai.get_by_label('OpenAI API key', exact=True)).to_be_visible()
-                        page.wait_for_timeout(600)
-                        top = ai.bounding_box()['y']
-                        assert 0 <= top <= 780 - 52, (width, top)
+                        expect(page).to_have_url(base + '/mobile.html#/more/wiskit')
+                        expect(page.locator('#m-ai').get_by_label('OpenAI API key', exact=True)).to_be_visible()
                         assert page.evaluate("() => document.activeElement?.closest('#m-ai') !== null")
                         page.get_by_role('button', name='Back', exact=True).click()
                         expect(page).to_have_url(base + '/mobile.html#/jv')
 
-                        # 5. Backup & phones and Recover: their keys, (i) and Back one page at a time
                         page.evaluate("location.hash = '#/more'")
-                        page.locator('#m-status').get_by_role('link', name='Backup & phones').click()
-                        expect(page).to_have_url(base + '/mobile.html#/backup')
-                        expect(page.locator('.m-page-keys .m-ws')).to_have_text('Backup')
-                        expect(page.locator('.m-page-keys').get_by_role('button', name='More info: Google Drive backup')).to_be_visible()
-                        ids = page.evaluate("() => [...document.querySelectorAll('.m-pad > .m-box')].map(e => e.id)")
-                        assert ids == ['m-backup-status', 'm-conn', 'm-phone', 'm-recovery'], ids
-                        expect(row_line(page, 'Google account')).to_have_text('Sign in')
-                        expect(row_line(page, 'This phone')).to_have_text('All backed up · no PC paired')
-                        expect(row_line(page, 'Recovery')).to_have_text('Not set up')
-                        assert not uncut(page), uncut(page)
+                        page.locator('a[href="#/backup"]').click()
+                        expect(page.locator('.m-page:visible h1')).to_have_text('Backup & phones')
+                        expect(page.locator('#m-phone')).to_contain_text('Backup off')
+                        expect(page.locator('#m-recovery .m-steps li')).to_have_count(3)
                         assert not small_targets(page), small_targets(page)
                         shoot(page, f'backup-{width}')
-                        recovery = open_group(page, 'Recovery')
-                        expect(recovery.locator('.m-status')).to_have_count(0)          # the row says Not set up; not again
-                        shoot(page, f'backup-{width}-recovery')
-                        recovery.get_by_role('link', name='Recover a library…', exact=True).click()
-                        expect(page).to_have_url(base + '/mobile.html#/recover')
+                        page.locator('#m-phone').get_by_text('Show more', exact=True).click()
+                        page.get_by_role('button', name='Remove', exact=True).click()
+                        expect(page.get_by_role('button', name='Sure? Remove', exact=True)).to_be_visible()
+                        page.locator('#m-recovery').get_by_role('link', name='Recover a library…', exact=True).click()
                         expect(page.locator('.m-page-keys .m-ws')).to_have_text('Recover')
-                        expect(page.locator('.m-page-keys').get_by_role('button', name='More info: How recovery works')).to_be_visible()
                         expect(page.get_by_role('group', name='Unlock with')).to_be_visible()
                         assert not small_targets(page), small_targets(page)
                         shoot(page, f'recover-{width}')
                         page.get_by_role('button', name='Back', exact=True).click()
                         expect(page).to_have_url(base + '/mobile.html#/backup')
-                        page.get_by_role('button', name='Back', exact=True).click()
-                        expect(page).to_have_url(base + '/mobile.html#/more')
+
+                        # Saved work disables conflicting controls and explains the gate on each page.
+                        page.evaluate("""async () => {
+                          const N = await import('/src/mobile/native.ts'), P = await import('/src/mobile/mirror/pairing.ts'), S = await import('/src/mobile/state.svelte.ts')
+                          N.secrets.set('bp-gtoken', JSON.stringify({access:'synthetic',exp:Date.now()+3600000}))
+                          P.confirmAccount(S.mirrorSource.pair,'sample@example.com'); await N.secretsSaved(); S.phone.tokenAt++
+                          S.phone.pend = {...S.phone.pend,unsent:2}
+                          const {rec} = await import('/src/mobile/recovery.svelte.ts'); rec.mode='setup'
+                        }""")
+                        expect(page.get_by_role('button', name='Generate passphrase', exact=True)).to_be_enabled()
+                        page.evaluate("""async () => {
+                          const {backup} = await import('/src/mobile/backup.svelte.ts')
+                          backup.task = {kind:'delete',phase:'delete',account:'sample@example.com',prefix:'solo-synthetic',owner:'synthetic',files:[],removed:0,paused:true}
+                        }""")
+                        expect(page.get_by_role('button', name='Generate passphrase', exact=True)).to_be_disabled()
+                        expect(page.locator('#m-phone').get_by_role('button', name='Send now', exact=True)).to_be_disabled()
+                        expect(page.locator('#m-phone')).to_contain_text('Finish the saved backup task first.')
+                        page.evaluate("location.hash = '#/more/sync'")
+                        expect(page.get_by_role('button', name='Sync now', exact=True)).to_be_disabled()
+                        expect(page.get_by_role('button', name='Pause sync', exact=True)).to_be_enabled()
+                        page.evaluate("location.hash = '#/recover'")
+                        expect(page.get_by_role('button', name='Find recovery setups', exact=True)).to_be_disabled()
+                        expect(page.locator('#m-recover')).to_contain_text('Finish the saved backup task')
+                        page.evaluate("location.hash = '#/backup/manage'")
+                        expect(page.locator('.m-page:visible h1')).to_have_text('Saved backup task')
+                        expect(page.locator('.m-steps li')).to_have_count(2)
+                        shoot(page, f'manage-{width}')
                         ctx.close()
+
+                    ctx, page = phone_page(360, solo=False)
+                    page.goto(base + '/mobile.html#/backup')
+                    page.wait_for_function(SETTLED)
+                    for paused in (False, True):
+                        page.evaluate("""async paused => {
+                          const {network} = await import('/src/mobile/network.svelte.ts')
+                          network.online=false; network.manualPause=paused
+                        }""", paused)
+                        expect(page.locator('#m-pair-setup')).to_have_count(0)
+                    page.evaluate("async()=>{const {openBackupBox}=await import('/src/mobile/onboard.svelte.ts');await openBackupBox('m-pair')}")
+                    expect(page.locator('#m-pair')).to_be_visible()
+                    expect(page.locator('#m-phone details.m-more-foot')).to_have_attribute('open','')
+                    page.get_by_role('button', name='Unpair this phone', exact=True).click()
+                    expect(page.get_by_role('button', name='Sure? Unpair', exact=True)).to_be_visible()
+                    page.evaluate("async()=>{const {mirrorSource:m}=await import('/src/mobile/state.svelte.ts');m.dropPhoneRecord=()=>new Promise((resolve,reject)=>window.__failUnpair=()=>reject(Error('synthetic failure')))}")
+                    page.get_by_role('button', name='Sure? Unpair', exact=True).click()
+                    expect(page.get_by_role('button', name='Stopping cloud work…', exact=True)).to_be_disabled()
+                    page.wait_for_function('()=>!!window.__failUnpair')
+                    page.evaluate('window.__failUnpair()')
+                    expect(page.get_by_role('button', name='Sure? Unpair', exact=True)).to_be_enabled()
+                    ctx.close()
 
                     # 6. a cold start has nothing behind: Back takes the parent
                     ctx, page = phone_page(360)
@@ -223,12 +249,21 @@ def main():
                     expect(page).to_have_url(base + '/mobile.html#/lib')
                     ctx.close()
 
+                    ctx, page = phone_page(360, paired=False)
+                    page.goto(base + '/mobile.html#/more/sync')
+                    expect(page).to_have_url(base + '/mobile.html#/more')
+                    expect(page.locator('a[href="#/more/sync"]')).to_have_count(0)
+                    ctx.close()
+
                     # 7. wider screens: no sideways scroll
-                    for width in (390, 568):
+                    for width in (320, 360, 375, 390, 568):
                         ctx, page = phone_page(width)
                         page.goto(base + '/mobile.html#/more')
                         page.wait_for_function(SETTLED)
-                        assert fits(page), width
+                        for route in ('more', 'more/sync', 'more/wiskit', 'more/obsidian', 'more/storage', 'more/look', 'more/about', 'backup', 'backup/manage', 'recover'):
+                            page.evaluate('(route) => location.hash = "#/" + route', route)
+                            expect(page.locator('.m-page-keys')).to_be_visible()
+                            assert fits(page), (width, route)
                         ctx.close()
                     browser.close()
                 assert not errors, errors

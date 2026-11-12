@@ -2,6 +2,12 @@ import type { messages as English } from '../en/recovery.ts'
 import type { Localized } from '../en/index.ts'
 
 export const messages = {
+  "recovery.step.file": "復原檔案",
+  "recovery.step.fileSaved": "復原檔案已於 {when} 儲存",
+  "recovery.step.check": "檢查復原檔案",
+  "recovery.step.unlock": "解鎖備份",
+  "recovery.step.checkPhone": "檢查這支手機",
+  "recovery.step.keep": "保留或還原",
 
 
 
@@ -10,7 +16,7 @@ export const messages = {
 
 
   "recovery.state.exportSaved": "復原檔案已儲存於 {folder}。請另存副本到此手機以外的地方。",
-  "recovery.state.exportDownloaded": "復原檔案已下載。請另存於此手機以外的地方，切勿分享。",
+  "recovery.state.exportDownloaded": "已要求下載復原檔案。請檢查下載項目，並在此手機以外的地方保留副本。請勿分享此檔案。",
   "recovery.eligibility.eligible": "此手機符合雲端硬碟中的最新備份。你可以保留內容並重新連線，無需在空白手機上還原。",
   "recovery.eligibility.paired_pc": "此手機已與電腦配對。電腦資料庫需在電腦上還原；重新連線適用於未搭配電腦使用的手機。",
   "recovery.eligibility.not_connected": "此手機未連結 Google 雲端硬碟，因此無法與備份比對。在空白手機上還原不需要此連線。",

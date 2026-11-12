@@ -80,20 +80,19 @@ export function googleTone(st: Status | null, o: { signedIn: boolean; driveOk: b
 }
 
 // This phone: its name and what it has not sent (paired), or what is not backed up yet (without a PC)
-export function thisPhoneLine(o: { solo: boolean; name: string; unsent: number }, words?: LineWords): string {
-  if (o.solo) return (words?.('settings.phone.soloSummary', { pending: o.unsent ? words('settings.phone.unbacked', { n: o.unsent }) : words('backup.state.allBacked') }) ?? `${o.unsent ? `${o.unsent} not backed up` : 'All backed up'} · no PC paired`)
+export function thisPhoneLine(o: { solo: boolean; name: string; unsent: number; signedIn?: boolean }, words?: LineWords): string {
+  if (o.solo) return (words?.('settings.phone.soloSummary', { pending: o.unsent ? words('settings.phone.unbacked', { n: o.unsent }) : words(o.signedIn === false ? 'settings.phone.backupOff' : 'backup.state.allBacked') }) ?? `${o.unsent ? `${o.unsent} not backed up` : o.signedIn === false ? 'Backup off' : 'All backed up'} · no PC paired`)
   return (words?.('settings.phone.pcSummary', { name: o.name || words('settings.phone.defaultName'), pending: o.unsent ? words('settings.phone.unsent', { n: o.unsent }) : words('settings.phone.allSent') }) ?? `${o.name || (words?.('settings.phone.defaultName') ?? 'This phone')} · ${o.unsent ? `${o.unsent} not sent` : 'all sent'}`)
 }
-export function thisPhoneTone(st: Status | null, unsent: number): Tone {
-  if (st?.action && (st.action.id === 'send' || st.action.id === 'scan')) return st.tone
-  return unsent ? 'todo' : 'done'
+export function thisPhoneTone(st: Status | null, unsent: number, signedIn = true): Tone {
+  if (st && (['replaced', 'removed', 'key', 'waiting-pc', 'confirming', 'access-invalid'].includes(st.id) || st.action?.id === 'send' || st.action?.id === 'scan')) return st.tone
+  return unsent || !signedIn ? 'todo' : 'done'
 }
 
 // Recovery: managed on the PC (paired), else what protects this phone's key (mirror/recovery-fact.ts)
 const FACT: Record<string, string> = { none: 'Not set up', prepared: 'Passphrase set', saved: 'File saved, not checked', checked: 'Passphrase set · file checked' }
 export const recoveryLine = (solo: boolean, fact: string, words?: LineWords): string => solo ? (words?.('settings.recovery.' + (Object.hasOwn(FACT, fact) ? fact : 'none')) ?? FACT[fact] ?? FACT.none) : (words?.('settings.recovery.pc') ?? 'Managed on your PC')
-export function recoveryTone(st: Status | null, solo: boolean, fact: string): Tone {
+export function recoveryTone(st: Status | null, solo: boolean, fact: string, signedIn = false): Tone {
   if (!solo) return 'todo'
-  if (st && (st.id === 'solo-recovery' || st.id === 'solo-check-file')) return st.tone
-  return fact === 'prepared' || fact === 'checked' ? 'done' : 'todo'
+  return fact === 'prepared' || fact === 'checked' ? 'done' : fact === 'saved' || signedIn || st?.id === 'solo-recovery' ? 'next' : 'todo'
 }

@@ -6,7 +6,10 @@
   import { lib } from '../lib/library.svelte'
   import { IC, pxPath } from '../lib/px'
   import { SRC_COLOR, SRC_MARK } from '../lib/cards/card'
-  import { ANSWERS, desktopTasks, startFor, SETUP_STEPS, type DriveState } from '../lib/onboarding'
+  import { ANSWERS, desktopTasks, startFor, SETUP_STEPS } from '../lib/onboarding'
+  import { backupState, pairingReason } from '../lib/backup-state'
+  import { openRecover } from '../lib/recover'
+  import type { CloudSnapshot, CloudView, RecoveryView } from '../lib/backup'
   import { loadInstallChecks, loadOnboarding, onb, runStart, saveOnboarding } from '../lib/onboarding.svelte'
   import type { SetupView } from '../lib/setup'
   import { restartApp } from '../lib/restart'
@@ -27,18 +30,28 @@
   let { close }: { close: () => void } = $props()
   type SetupFacts = Omit<SetupView, 'tools' | 'tool_status' | 'tool_install'>
   let v = $state<SetupFacts | null>(null), error = $state(''), checkError = $state('')
-  let cloud = $state<(DriveState & { last_publish?: number; account?: string; configured: boolean; licensed: boolean; rotation?: string;
-    running: boolean; vault_running: boolean; done: number; total: number; error: string; phone_keys: string[] }) | null>(null)
-  let recovery = $state<{ enrolled: boolean; verified: boolean; restored: boolean } | null>(null)
+  let cloud = $state<CloudView | null>(null)
+  let recovery = $state<RecoveryView | null | 'error'>(null)
+  const backup = $derived(backupState(cloud, recovery, Date.now()))
+  const pairWhy = $derived(pairingReason(cloud))
   let cloudBusy = $state(false), cloudError = $state(''), pairMessage = $state('')
   let pairKeys = $state<string[]>(['anthropic', 'openai'])
   let pairing = $state<{ url: string; svg: string; fingerprint: string; keys: string[] } | null>(null)
   const keyName: Record<string, string> = { anthropic: 'Anthropic', openai: 'OpenAI' }
   const cloudMoving = $derived(['signing-in', 'starting', 'stopping', 'disconnecting'].includes(cloud?.state ?? ''))
+  const uploadChoice = $derived.by(() => {
+    const action = backup.task?.primary ?? backup.hero.primary
+    return action && !['create-pass', 'check-recovery', 'save-file', 'check-file', 'retry-status', 'add-phone'].includes(action.id) ? action : null
+  })
+  const uploadWhy = $derived(cloudBusy ? 'Waiting for this backup action to finish.' : backup.blocked || (cloud?.recovery_gate_active
+    ? 'Wait for the current recovery change to finish.' : uploadChoice?.why || (!uploadChoice && (backup.task || ['working', 'failed', 'paused'].includes(backup.kind))
+      ? backup.hero.detail || backup.hero.text : cloudMoving ? 'Wait for the current backup transition to finish.' : !cloud?.signed_in ? 'Connect Google Drive first.' : '')))
+  const inlineUploadActions = ['connect', 'turn-on', 'resume', 'keep-going', 'try-again', 'recheck', 'sign-in-again', 'recover', 'unlock', 'open-recover']
+  const uploadLabel = $derived(uploadChoice ? inlineUploadActions.includes(uploadChoice.id) ? uploadChoice.label : 'Review backup' : cloud?.on ? 'Back up now' : 'Turn on backup')
   const titles = ['Your library', 'Tools & environment', 'Your first content', 'Wiskit AI', 'Drive & recovery', 'Connect your phone']
   const tasks = $derived(desktopTasks(onb.answer, { items: Math.max(v?.items ?? 0, v?.next_items ?? 0, onb.items, lib.rows.length), notes: Math.max(onb.notes, v?.next_notes ?? 0),
     wiskit: onb.wiskit, tools: onb.tools && onb.browser, drive: !!cloud?.signed_in && !!cloud.last_publish,
-    recovery: !!recovery?.enrolled, phone: !!v?.phone_seen }))
+    recovery: !!recovery && recovery !== 'error' && recovery.enrolled, phone: !!v?.phone_seen }))
   // A library folder chosen for the next start: its content counts before the restart loads it.
   const nextDir = $derived(v?.data_dir_next && v.data_dir_next !== v.data_dir ? v.data_dir_next : '')
   let restarting = $state(false)
@@ -70,21 +83,25 @@
     'Your local library stays usable. Content that has not been uploaded cannot be restored from Drive.',
     'Everything stays on this PC. You can pair your phone later, without payment.',
   ]
+  let cloudEpoch = 0, cloudSnap: CloudSnapshot | null = null
   function takeCloud(value: typeof cloud) {
+    if (value && cloudSnap && value.seq < cloudSnap.seq) value = { ...value, ...cloudSnap }
     if (value && cloud && value.seq < cloud.seq) return
-    if (cloud?.account !== value?.account || !value?.licensed || value.rotation === 'pending') pairing = null
+    if (cloud?.account !== value?.account || pairingReason(value)) pairing = null
     cloud = value
   }
   let loading = false
   async function load() {
     if (loading) return
     loading = true
+    const epoch = cloudEpoch
     try {
-      const [s, c, r] = await Promise.all([api.get<SetupFacts>('/api/app/setup?include_tools=false'), api.get<NonNullable<typeof cloud>>('/api/cloud').catch(() => null),
-        api.get<NonNullable<typeof recovery>>('/api/cloud/recovery').catch(() => null), loadOnboarding()])
-      v = s; takeCloud(c); recovery = r; if (r) onb.recovery = r.enrolled; onb.phone = !!s.phone_seen
-      error = c && r ? '' : 'Some optional setup checks could not finish. Retry checks before relying on their readiness.'
-    } catch (e) { error = (e as Error).message } finally { loading = false }
+      const [s, c, r] = await Promise.all([api.get<SetupFacts>('/api/app/setup?include_tools=false'), api.get<CloudView>('/api/cloud').catch(() => null),
+        api.get<RecoveryView>('/api/cloud/recovery').catch(() => 'error' as const), loadOnboarding()])
+      if (epoch !== cloudEpoch) return
+      v = s; takeCloud(c); recovery = r; if (r !== 'error') onb.recovery = r.enrolled; onb.phone = !!s.phone_seen
+      error = c && r !== 'error' ? '' : 'Some optional setup checks could not finish. Retry checks before relying on their readiness.'
+    } catch (e) { if (epoch === cloudEpoch) error = (e as Error).message } finally { if (epoch === cloudEpoch) loading = false }
   }
   async function checkTools() {
     checkError = await loadInstallChecks() ? '' : 'Some optional tool checks could not finish. Retry checks before relying on their readiness.'
@@ -94,20 +111,39 @@
   }
   onMount(() => {
     refreshChecks()
-    const offs = [on('settings_changed', refreshChecks), on('export_done', load), on('notes_changed', load), on('items_changed', load), on('cloud', load)]
+    const offs = [on('hello', () => { cloudEpoch++; cloudSnap = null; cloud = null; recovery = null; pairing = null; loading = false; void load() }),
+      on('settings_changed', refreshChecks), on('export_done', load), on('notes_changed', load), on('items_changed', load), on('cloud', (value: CloudSnapshot) => {
+      if (value.seq < (cloudSnap?.seq ?? 0)) return
+      cloudSnap = value
+      if (cloud) takeCloud({ ...cloud, ...value })
+      void load()
+    })]
     const refresh = () => { if (!document.hidden) void load() }
     window.addEventListener('focus', refresh)
     // Recovery and the library folder choice have no event of their own; refresh while their step is open.
     const timer = setInterval(() => { if (step === 0 || step === 4 || step === 5) void load() }, 4000)
-    return () => { offs.forEach(f => f()); clearInterval(timer); window.removeEventListener('focus', refresh) }
+    return () => { cloudEpoch++; offs.forEach(f => f()); clearInterval(timer); window.removeEventListener('focus', refresh) }
   })
   $effect(() => { if (step !== 5) { pairing = null; pairMessage = '' } })
   async function cloudAction(path: string) {
     if (cloudBusy) return
     cloudBusy = true; cloudError = ''
-    try { takeCloud(await api.post<NonNullable<typeof cloud>>(path)) }
-    catch (e) { cloudError = (e as Error).message }
+    const epoch = cloudEpoch
+    try { const result = await api.post<NonNullable<typeof cloud>>(path); if (epoch === cloudEpoch) takeCloud(result) }
+    catch (e) { if (epoch === cloudEpoch) cloudError = (e as Error).message }
     finally { cloudBusy = false }
+  }
+  function runUploadAction() {
+    if (uploadWhy) return
+    switch (uploadChoice?.id) {
+      case 'recover': case 'unlock': case 'open-recover': openRecover(); break
+      case 'sign-in-again': void cloudAction('/api/cloud/reauth'); break
+      case 'resume': case 'keep-going': void cloudAction('/api/cloud/resume'); break
+      case 'connect': case 'turn-on': void cloudAction('/api/cloud/connect'); break
+      case 'try-again': case 'recheck': void cloudAction('/api/cloud/publish'); break
+      case undefined: void cloudAction(cloud?.on ? '/api/cloud/publish' : '/api/cloud/connect'); break
+      default: openSettings('backup', 'set-s-sync-status')
+    }
   }
   // Step 1 and 3 shortcut: sign in to Google here, then continue on the Drive step where restore lives.
   async function restoreFromDrive() {
@@ -118,12 +154,13 @@
     await visit(4)
   }
   async function showPair() {
-    if (!cloud?.licensed || cloudBusy || cloud.rotation === 'pending') return
+    if (!cloud || pairWhy || cloudBusy) return
     const account = cloud.account
+    const epoch = cloudEpoch
     cloudBusy = true; cloudError = ''; pairMessage = ''
     try {
       const result = await api.post<NonNullable<typeof pairing>>('/api/cloud/pair', { keys: pairKeys.filter(k => cloud!.phone_keys.includes(k)) })
-      if (step === 5 && cloud?.account === account && cloud.licensed && cloud.rotation !== 'pending') pairing = result
+      if (epoch === cloudEpoch && step === 5 && cloud?.account === account && !pairingReason(cloud)) pairing = result
     } catch (e) { cloudError = (e as Error).message }
     finally { cloudBusy = false }
   }
@@ -239,19 +276,20 @@
           {#if !cloud.configured && !cloud.signed_in}<Hint>Google sign-in is not set up in this build.</Hint>{/if}
           <div id="setup-uploads" tabindex="-1" class="upload-controls">
             <SectionTitle>Library uploads</SectionTitle>
-            <Status on={cloud.running}>{cloud.running ? 'Automatic uploads on' : 'Library uploads off'}</Status>
+            <Status state={backup.rows.backup.tone}>{backup.rows.backup.text}</Status>
+            <Hint>{cloud.on ? 'Automatic backup is on.' : 'Automatic backup is off.'}</Hint>
             <Hint>{cloud.last_publish ? `Last successful upload: ${new Date(cloud.last_publish).toLocaleString()}.` : 'No successful library upload yet.'}</Hint>
             <Hint>Encrypted library content uploads to your Google Drive account. Google can see account, connection and file size/timing metadata. Connecting alone leaves uploads off.</Hint>
             {#if cloud.state === 'publishing' || cloud.state === 'starting'}<Progress label="Google Drive upload" pct={cloud.total ? cloud.done * 100 / cloud.total : undefined} />{/if}
             <div class="setup-actions">
-              {#if cloud.running}<Button disabled={cloudBusy || cloudMoving || cloud.state === 'publishing' || recovery?.restored} onclick={() => cloudAction('/api/cloud/publish')}>Upload now</Button>
-              {:else}<Button variant="pri" disabled={cloudBusy || cloudMoving || !cloud.signed_in || recovery?.restored} onclick={() => cloudAction('/api/cloud/connect')}>Turn on uploads</Button>{/if}
+              <Button variant={uploadChoice ? 'pri' : 'default'} disabled={!!uploadWhy} aria-describedby={uploadWhy ? 'setup-upload-why' : undefined} onclick={runUploadAction}>{uploadLabel}</Button>
               {#if cloud.running || cloud.vault_running}<Button disabled={cloudBusy || cloudMoving} onclick={() => cloudAction('/api/cloud/stop')}>Pause uploads and vault sync</Button>{/if}
             </div>
+            {#if uploadWhy}<Hint id="setup-upload-why" role="status">{uploadWhy}</Hint>{/if}
           </div>
           <div class="upload-controls" id="setup-recovery">
             <SectionTitle>Recovery</SectionTitle>
-            <Status on={!!recovery?.enrolled}>{!recovery ? 'Checking recovery…' : recovery.enrolled ? 'Recovery passphrase set' : 'No recovery passphrase yet'}</Status>
+            <Status state={backup.rows.recovery.tone}>{backup.rows.recovery.text}</Status>
             <Hint>Choose and check your recovery passphrase and file in Settings, on the Backup &amp; phones page. Recovery protects the key; only successful uploads protect the latest content.</Hint>
             <div class="setup-actions"><Button size="sm" disabled={!cloud.signed_in} aria-describedby={cloud.signed_in ? undefined : 'setup-recovery-why'} onclick={() => openSettings('backup', 'set-s-sync-recovery')}>Recovery in Backup &amp; phones</Button></div>
             {#if !cloud.signed_in}<Hint id="setup-recovery-why">Available once Google Drive is connected.</Hint>{/if}
@@ -271,9 +309,8 @@
               <div class="pairing-qr" role="img" aria-label="Phone pairing QR code">{@html pairing.svg}</div>
               <div><Hint>Scan in Brainamon on your phone: Settings &gt; Pair with your PC &gt; Scan (a phone already set up: Settings &gt; Backup &amp; phones &gt; This phone). Code check: {pairing.fingerprint}.</Hint><div class="setup-actions"><Button size="sm" onclick={copyPair}>Copy pairing link</Button><Button size="sm" onclick={() => { pairing = null; pairMessage = '' }}>Hide the QR code</Button></div></div>
             </div>
-          {:else}<Button variant="pri" disabled={cloudBusy || !cloud.licensed || cloud.rotation === 'pending'} onclick={showPair}>{cloudBusy ? 'Making the code…' : 'Show pairing QR'}</Button>{/if}
-          {#if !cloud.licensed}<Hint>Update Brainamon on this PC for payment-free phone pairing, then retry.</Hint>{/if}
-          {#if cloud.rotation === 'pending'}<Hint>Finish phone revocation in cloud settings before pairing again.</Hint>{/if}
+          {:else}<Button variant="pri" disabled={cloudBusy || !!pairWhy} aria-describedby={cloudBusy || pairWhy ? 'setup-pair-why' : undefined} onclick={showPair}>{cloudBusy ? 'Making the code…' : 'Show pairing QR'}</Button>{/if}
+          {#if cloudBusy || pairWhy}<Hint id="setup-pair-why">{cloudBusy ? 'Making the pairing code…' : pairWhy}</Hint>{/if}
         {/if}
         {#if pairMessage}<Hint role="status">{pairMessage}</Hint>{/if}
         <details><summary>Optional support and older receipts</summary><LicenseSettings idPrefix="setup-" /></details>

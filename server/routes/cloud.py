@@ -15,6 +15,7 @@ POST /api/cloud/unpair makes a new mirror key, which locks every paired phone ou
 """
 import base64
 import json
+import re
 
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -44,6 +45,15 @@ def require_license():
         raise HTTPException(403, 'license_required')
 
 
+def expected_account(body):
+    if 'expected_account' not in body:
+        return None
+    account = body['expected_account']
+    if not isinstance(account, str) or not account.strip() or len(account) > 320:
+        raise HTTPException(400, 'Invalid confirmation account.')
+    return account.strip()
+
+
 def _phone_url(request: Request, db=None) -> str:
     db = db or reader(request.app.state.db_path)
     return db.get_setting(S_PHONE_URL, '') or f'http://localhost:{request.app.state.port}/mobile.html'
@@ -53,11 +63,9 @@ def _view(request: Request) -> dict:
     sync = request.app.state.sync
     db = reader(request.app.state.db_path)
     o = read_options(db)
-    on = db.get_setting('cloud_upload', '') == 'on'
-    return {**sync.status(), 'on': on, 'options': {'videos': o.videos, 'canvases': o.canvases},
+    return {**sync.status(), 'options': {'videos': o.videos, 'canvases': o.canvases},
             'phone_url': _phone_url(request, db), 'web_client': bool(config.google_web_client()),
-            'phone_keys': sorted(config.phone_keys(config.PHONE_KEYS)),
-            'vault': {'on': db.get_setting('cloud_vault', '') == 'on', 'folder': db.get_setting('obsidian_vault', '') or ''}}
+            'phone_keys': sorted(config.phone_keys(config.PHONE_KEYS))}
 
 
 @router.get('/api/cloud')
@@ -90,7 +98,7 @@ def switch(request: Request, body: dict = Body(default={})):
     when asked and only after the new backup is complete."""
     try:
         flag = body.get('delete_old')
-        request.app.state.sync.switch(None if flag is None else bool(flag))
+        request.app.state.sync.switch(None if flag is None else bool(flag), expected_account=expected_account(body))
     except drive_client.DriveError as e:
         return refuse(request, e)
     return _view(request)
@@ -100,7 +108,7 @@ def switch(request: Request, body: dict = Body(default={})):
 def reset(request: Request, body: dict = Body(default={})):
     """Reset backup: a new key and a new first backup; the old backup is deleted once the new one is complete."""
     try:
-        request.app.state.sync.reset_backup(replace_existing=body.get('replace_existing') is True)
+        request.app.state.sync.reset_backup(replace_existing=body.get('replace_existing') is True, expected_account=expected_account(body))
     except (recovery.RecoveryError, drive_client.DriveError) as e:
         return refuse(request, e)
     return _view(request)
@@ -137,15 +145,37 @@ def publish(request: Request):
 
 
 @router.post('/api/cloud/pause')
-def pause(request: Request):
-    """Pause backup. It stays paused until Resume (D14); the time shows in `paused_since`."""
-    return stop(request)
+async def pause(request: Request):
+    raw = await request.body()
+    try:
+        body = json.loads(raw) if raw else {}
+    except (ValueError, UnicodeDecodeError):
+        raise HTTPException(400, 'Invalid pause request.')
+    if not isinstance(body, dict) or set(body) - {'source'} or 'source' in body and body['source'] != 'recovery':
+        raise HTTPException(400, 'Invalid pause request.')
+    try:
+        token = await run_in_threadpool(request.app.state.sync.turn_off, body.get('source', 'user'))
+    except drive_client.DriveError as e:
+        return refuse(request, e)
+    view = await run_in_threadpool(_view, request)
+    return {**view, 'pause_token': token} if body.get('source') == 'recovery' else view
 
 
 @router.post('/api/cloud/resume')
-def resume(request: Request):
-    """Resume backup after a pause (D14)."""
-    return connect(request)
+async def resume(request: Request):
+    raw = await request.body()
+    try:
+        body = json.loads(raw) if raw else {}
+    except (ValueError, UnicodeDecodeError):
+        raise HTTPException(400, 'Invalid resume request.')
+    if (not isinstance(body, dict) or set(body) - {'pause_token'} or
+            'pause_token' in body and (not isinstance(body['pause_token'], str) or not re.fullmatch(r'[0-9a-f]{32}', body['pause_token']))):
+        raise HTTPException(400, 'Invalid pause token.')
+    try:
+        await run_in_threadpool(request.app.state.sync.resume, body.get('pause_token'))
+    except drive_client.DriveError as e:
+        return refuse(request, e)
+    return await run_in_threadpool(_view, request)
 
 
 @router.post('/api/cloud/cancel-sign-in')
@@ -158,7 +188,8 @@ def cancel_sign_in(request: Request):
 @router.post('/api/cloud/sign-out')
 def sign_out(request: Request, body: dict = Body(default={})):
     try:
-        request.app.state.sync.request_disconnect(delete_mirror=body.get('delete_mirror') is True, delete_existing=body.get('delete_existing') is True)
+        request.app.state.sync.request_disconnect(delete_mirror=body.get('delete_mirror') is True, delete_existing=body.get('delete_existing') is True,
+                                                  expected_account=expected_account(body))
     except (Busy, recovery.RecoveryError) as e:
         return refuse(request, e)
     except drive_client.DriveError as e:
@@ -219,7 +250,7 @@ def unpair(request: Request, body: dict = Body(default={})):
         new_password = body.get('new_passphrase', '')
         if not isinstance(new_password, str) or len(new_password) > 1024:
             raise recovery.RecoveryError('Invalid new recovery passphrase.')
-        fp = request.app.state.sync.unpair(password, new_password)
+        fp = request.app.state.sync.unpair(password, new_password, expected_account=expected_account(body))
     except (recovery.RecoveryError, Busy) as e:
         return refuse(request, e)
     except (OSError, drive_client.DriveError) as e:
@@ -311,8 +342,6 @@ async def options(request: Request, body: dict = Body(...)):
             db.set_setting(S_CANVASES, 'on' if canvases else 'off')
         if phone_url is not None:
             db.set_setting(S_PHONE_URL, str(phone_url).strip())
-        if vault is not None:
-            db.set_setting('cloud_vault', 'on' if vault else 'off')
     sync = request.app.state.sync
     if vault is not None:
         sync._set(vault_devices=None)
@@ -320,9 +349,16 @@ async def options(request: Request, body: dict = Body(...)):
         def enable():
             # Turning vault sync on must not race reconnect (server/recovery.py gate).
             with sync.recovery.gate():
-                request.app.state.writer.call(put)
-                if sync.signed_in():        # the vault rounds have their own thread (Sync my Obsidian vault)
-                    sync.start_vault()
+                extra = {}
+                if videos is not None:
+                    extra[S_VIDEOS] = videos
+                if canvases is not None:
+                    extra[S_CANVASES] = 'on' if canvases else 'off'
+                if phone_url is not None:
+                    extra[S_PHONE_URL] = str(phone_url).strip()
+                signed_in = sync.signed_in()
+                sync.turn_vault_on(start=signed_in, extra_settings=extra)
+                if signed_in:
                     sync.vault_now()
         try:
             await run_in_threadpool(enable)
@@ -333,10 +369,9 @@ async def options(request: Request, body: dict = Body(...)):
     await request.app.state.writer.run(put)
     sync.poke()
     if vault is not None and not vault:
-        if sync.vault_running:
-            try:
-                await run_in_threadpool(sync.turn_vault_off)
-            except drive_client.DriveError as e:
-                return refuse(request, e)
+        try:
+            await run_in_threadpool(sync.turn_vault_off)
+        except drive_client.DriveError as e:
+            return refuse(request, e)
         await run_in_threadpool(sync.reset_vault_history)
     return _view(request)

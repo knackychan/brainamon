@@ -90,9 +90,10 @@ dependencies {
     implementation "com.google.android.gms:play-services-code-scanner:$playServicesCodeScannerVersion"
     // vault sync (BrainamonPlugin.java vault*): the folder the user picked, through the Storage Access Framework
     implementation "androidx.documentfile:documentfile:1.0.1"
-    // the phone site reader (projects/phone-site-reader), Contributor build only: SiteActivity's WebView profiles,
-    // page channel and document-start script. Capacitor already ships this library; this lets src/debug compile against it
-    debugImplementation "androidx.webkit:webkit:$androidxWebkitVersion"
+    // SiteActivity's WebView profiles, page channel and document-start script.
+    implementation "androidx.webkit:webkit:$androidxWebkitVersion"
+    implementation 'androidx.work:work-runtime:2.11.1'
+    implementation 'androidx.javascriptengine:javascriptengine:1.1.1'
     implementation project(':capacitor-cordova-android-plugins')
 }
 

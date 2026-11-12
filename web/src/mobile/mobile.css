@@ -404,6 +404,7 @@ html.kb .m-sheet-layer.m-bare{padding-bottom:0}
 .m-it-open .m-ico{width:14px;height:14px}
 .m-it-sheet>.m-process{margin:0}
 .m-tabline{display:flex;gap:22px;padding:0 2px;border-bottom:1px solid var(--wg-line)}
+.m-it-sheet .m-tabline{gap:clamp(8px,3vw,22px);overflow-x:auto;white-space:nowrap}
 .m-tabline button{position:relative;min-height:44px;padding:10px 0 11px;border:0;background:none;color:var(--wg-dim);font:600 15px/1 var(--display);font-stretch:90%}
 .m-tabline button[aria-pressed="true"]{font-weight:800;color:var(--wg-ink)}
 .m-tabline button[aria-pressed="true"]::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:3px;border-radius:2px;background:var(--accent)}

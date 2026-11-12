@@ -44,8 +44,10 @@ Use the phone on its own or pair with your Windows library. Optional Google Driv
 sync stores encrypted content in your Google account; paired devices hold
 decryption keys, and Google can see file sizes and update metadata. Read saved
 content offline. AI, previews and sync need a network connection. Downloads,
-scraping and video analysis run on Windows; direct-PC mode needs the PC running
-and reachable. Previews and media availability depend on the source site.
+video downloads and analysis run on Windows; direct-PC mode needs the PC running
+and reachable. On Android, Import saved posts can read Facebook, Instagram and
+Threads saved lists in a site window after you sign in there. TikTok import is coming
+soon. Previews and media availability depend on the source site.
 
 All current features are available without a payment or receipt. Optional
 support helps the developer continue work. Read the source license and Privacy

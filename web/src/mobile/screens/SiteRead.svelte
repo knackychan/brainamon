@@ -45,11 +45,14 @@
   let runs = $state.raw<Record<string, RunInfo>>({})
   let unsave = $state<Partial<Record<SiteId, boolean>>>({})
   let reviews = $state.raw<Partial<Record<SiteId, Review>>>({})
+  let discard = $state<SiteId | ''>('')
+  let reviewLimit = $state<Partial<Record<SiteId, number>>>({})
+  const preview = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 120)
   let note = $state.raw<{ site: SiteId; full: boolean } | null>(null)
   const reader = (site: SiteId) => site !== 'tiktok' && !!RULES[site] && !!st?.sites[site]?.reader
   let consent = false
   const noteSeen = () => { try { return consent || !!localStorage.getItem(NOTE) } catch { return consent } }
-  const reason = (res: SiteRunResult | null) => res ? REASONS[res.reason] ?? REASONS.stop : 'from a read that was cut off'
+  const reason = (res: SiteRunResult | null) => (res ? REASONS[res.reason] ?? REASONS.stop : 'from a read that was cut off') + (res?.unsaveFailed ? ` · ${t('imports.unsave.failed')}` : '')
   const badRun = (res: SiteRunResult | null) => res?.reason === 'empty' || res?.reason === 'failure' || res?.reason === 'unsave-failed'
   const count = (n: number | undefined) => Number.isSafeInteger(n) && n! > 0 ? Math.min(n!, 1_000_000) : 0
 
@@ -89,6 +92,8 @@
   async function reviewRun(site: SiteId, res: SiteRunResult | null) {
     const review = { ...await readPending(site, (offset, max) => sitePending(site, offset, max)), res }
     reviews = { ...reviews, [site]: review }
+    reviewLimit[site] = 10
+    discard = ''
     messages[site] = ''
     if (!review.posts.length) await finishRun(site, review, 0, 0)
   }
@@ -108,6 +113,20 @@
     finally { try { st = await siteState(); busy = '' } finally { finishLanguageWork() } }
   }
 
+  async function discardRun(site: SiteId) {
+    if (busy || importing || !reviews[site]) return
+    if (discard !== site) { discard = site; return }
+    const finishLanguageWork = beginLanguageWork()
+    busy = site; errors[site] = ''
+    try {
+      await siteClear(site)
+      reviews = { ...reviews, [site]: undefined }
+      discard = ''
+      messages[site] = t('imports.review.discarded')
+    } catch (e) { errors[site] = fail(e) }
+    finally { try { st = await siteState(); busy = '' } finally { finishLanguageWork() } }
+  }
+
   async function scan(site: SiteId, full = false) {
     if (site === 'tiktok' || busy || importing || note || !st?.supported || st.sites[site]?.forgetting) return
     errors[site] = ''; messages[site] = ''; confirm = ''
@@ -117,7 +136,7 @@
     if (!pending && !noteSeen()) { note = { site, full }; return }
     const finishLanguageWork = beginLanguageWork()
     busy = site
-    messages[site] = 'Reading saved posts in the site browser… Use Stop there to keep a partial read.'
+    messages[site] = t('imports.scan.running')
     try {
       if (pending) await reviewRun(site, reviews[site]?.res ?? null)
       else {
@@ -204,7 +223,7 @@
                     {#if x?.signedIn && !x.forgetting}<p>Signed in.</p>{/if}
                     {#if reader(s.id)}
                       <p>Reads your saved {s.id === 'instagram' ? 'posts and reels from All posts' : s.id === 'threads' ? 'posts' : 'reels and videos'}. The first scan reads the full list; after a complete scan, later scans stop after 20 posts already in your library. Review the results before importing.</p>
-                      <p>Use Stop in the browser to keep a partial read. Reading waits while offline, in the background, or while you finish a login check.</p>
+                      <p>{t('imports.scan.cancelHelp')}</p>
                       {#if !canImport}<p>Scan needs the phone's own library. Pair with a PC, or start without one in Settings.</p>{/if}
                     {:else}<p>{t('imports.scan.unavailable')}</p>{/if}
                     {#if !st?.supported}<p>{t('imports.scan.browserUnavailable')}</p>{/if}
@@ -242,21 +261,36 @@
               <span id={`${id}-${s.id}-file`} class="m-sr">{!s.file ? t('imports.file.unavailable') : canImport ? t('imports.file.cap') : t('imports.file.needsLibraryShort')}</span>
               {#if messages[s.id]}<MHint as="p" role="status">{messages[s.id]}</MHint>{/if}
               {#if note?.site === s.id}
-                <MHint as="p" role="status">Uses your login on this phone. Sites may check accounts that read fast. Brainamon reads slowly; you can stop anytime. Unsave is optional and asks for confirmation before scanning. Imported links follow your library's existing sync settings.</MHint>
+                <MHint as="p" role="status">{t('imports.scan.notice')}</MHint>
                 <div class="m-row"><MButton variant="pri" size="sm" onclick={accept}>Continue</MButton><MTextButton onclick={() => (note = null)}>Cancel</MTextButton></div>
               {/if}
               {#if reviews[s.id]}
                 {@const review = reviews[s.id]!}
                 <MHint as="p" role="status">{review.posts.length} post{review.posts.length === 1 ? '' : 's'} ready to import · {reason(review.res)}{review.dropped ? ` · ${review.dropped} refused` : ''}</MHint>
-                <MDisclosure summary="Review saved posts">
-                  <MHint>Other saved items: {count(review.res?.other)}. Already in your library: {count(review.res?.known)}. Only validated {s.name} links enter your library.</MHint>
-                  {#each review.posts.slice(0, 5) as post}<MHint as="p">{post.creator ? `${post.creator}: ` : ''}{post.caption || post.url}</MHint>{/each}
-                  {#if review.posts.length > 5}<MHint>Showing the first 5 of {review.posts.length} posts.</MHint>{/if}
-                </MDisclosure>
                 <div class="m-row">
                   <MButton variant="pri" size="sm" disabled={!!busy || importing || !canImport} onclick={() => importRun(s.id)}>Import {review.posts.length} post{review.posts.length === 1 ? '' : 's'}</MButton>
-                  <MTextButton disabled={!!busy || importing} onclick={() => { reviews = { ...reviews, [s.id]: undefined }; messages[s.id] = 'Saved results kept on this phone. Tap Scan to review them later.' }}>Later</MTextButton>
+                  <MTextButton disabled={!!busy || importing} onclick={() => { reviews = { ...reviews, [s.id]: undefined }; discard = ''; messages[s.id] = 'Saved results kept on this phone. Tap Scan to review them later.' }}>Later</MTextButton>
+                  <MTextButton tone="danger" disabled={!!busy || importing} onclick={() => discardRun(s.id)}>{t(discard === s.id ? 'imports.review.confirmDiscard' : 'imports.review.discard')}</MTextButton>
                 </div>
+                {#if discard === s.id}
+                  <MHint as="p" role="status">{t('imports.review.discardHelp')}</MHint>
+                  <MTextButton disabled={!!busy || importing} onclick={() => (discard = '')}>{t('imports.review.keep')}</MTextButton>
+                {/if}
+                <MDisclosure summary="Review saved posts">
+                  <MHint>Other saved items: {count(review.res?.other)}. Already in your library: {count(review.res?.known)}. Only validated {s.name} links enter your library.</MHint>
+                  <ol class="m-import-review" aria-label={t('imports.review.posts')}>
+                    {#each review.posts.slice(0, reviewLimit[s.id] ?? 10) as post (post.url)}
+                      <li>
+                        {#if post.creator}<MHint as="p">{post.creator}</MHint>{/if}
+                        <a href={post.url} target="_blank" rel="noopener noreferrer">{post.caption ? preview(post.caption) + (post.caption.replace(/\s+/g, ' ').trim().length > 120 ? '…' : '') : post.url}</a>
+                        {#if post.caption.length > 120}
+                          <MDisclosure summary={t('imports.review.caption')}><MHint as="p">{post.caption}</MHint></MDisclosure>
+                        {/if}
+                      </li>
+                    {/each}
+                  </ol>
+                  {#if review.posts.length > (reviewLimit[s.id] ?? 10)}<MTextButton onclick={() => (reviewLimit[s.id] = (reviewLimit[s.id] ?? 10) + 10)}>{t('imports.review.more')}</MTextButton>{/if}
+                </MDisclosure>
               {:else if !messages[s.id] && runs[s.id]?.line}
                 <MHint as="p" tone={runs[s.id].bad ? 'error' : 'hint'} role={runs[s.id].bad ? 'alert' : 'status'}>{runs[s.id].line}</MHint>
               {/if}

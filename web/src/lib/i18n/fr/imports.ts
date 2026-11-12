@@ -2,6 +2,18 @@ import type { messages as English } from '../en/imports.ts'
 import type { Localized } from '../en/index.ts'
 
 export const messages = {
+  "imports.scan.notice": "Utilise votre connexion sur ce téléphone. Les sites peuvent vérifier les comptes dont la lecture est rapide. Brainamon lit lentement ; vous pouvez arrêter à tout moment. Le retrait des favoris est facultatif et demande confirmation avant l’analyse. Les liens importés suivent les réglages de synchronisation de votre bibliothèque.",
+  "imports.scan.running": "Lecture des publications enregistrées… Annuler l’analyse permet de revenir ici pour vérifier ou supprimer les résultats partiels.",
+  "imports.scan.cancelHelp": "Annuler l’analyse dans le navigateur permet de revenir avec les résultats partiels. Vous pouvez les importer, les conserver ou les supprimer. La lecture attend hors ligne, en arrière-plan ou pendant la connexion.",
+  "imports.unsave.failed": "Le retrait des favoris n’a pas pu être confirmé. Les publications suivantes sont restées enregistrées et l’analyse a continué.",
+  "imports.review.posts": "Publications collectées",
+  "imports.review.caption": "Texte complet",
+  "imports.review.more": "Afficher 10 publications de plus",
+  "imports.review.discard": "Supprimer les résultats",
+  "imports.review.confirmDiscard": "Confirmer la suppression",
+  "imports.review.keep": "Conserver les résultats",
+  "imports.review.discardHelp": "Supprimer ces résultats sans les importer ? Cela ne restaure pas les publications déjà retirées des favoris sur le site. Les éléments de la bibliothèque restent inchangés.",
+  "imports.review.discarded": "Résultats collectés supprimés. Vous pouvez lancer une nouvelle analyse.",
   "imports.unsave.label": "Retirer les publications collectées des favoris",
   "imports.unsave.help": "Désactivé par défaut. Retire les nouvelles publications des favoris après enregistrement des résultats sur ce téléphone. Vérifiez puis importez les résultats. Les publications déjà dans votre bibliothèque restent en favoris.",
   "imports.title": "Importer les favoris",

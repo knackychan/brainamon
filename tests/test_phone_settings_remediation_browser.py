@@ -39,7 +39,7 @@ class PhoneSettingsRemediation(unittest.TestCase):
                 p.evaluate("""async()=>{
                   const {mirrorSource:m}=await import('/src/mobile/state.svelte.ts');
                   const {savePhoneKit}=await import('/src/mobile/mirror/phone-recovery.ts');
-                  window.__holdWrite=true;window.__pick=null;window.__save=savePhoneKit(m.pair);
+                  window.__holdWrite=true;window.__pick=null;window.__save=savePhoneKit(m.pair).catch(e=>e.message);
                 }""")
                 p.wait_for_function('!!window.__pick')
                 p.evaluate("()=>{window.__pick({uri:'synthetic',name:'Synthetic'})}")
@@ -47,9 +47,10 @@ class PhoneSettingsRemediation(unittest.TestCase):
                 p.evaluate("""async()=>{const g=await import('/src/mobile/mirror/gate.ts');window.__stop=g.stopCloudWork().then(()=>{window.__stopped=true});}""")
                 self.assertFalse(p.evaluate('!!window.__stopped'))
                 p.evaluate('()=>{window.__finishWrite()}')
-                self.assertEqual(p.evaluate('window.__save'), 'saved')
+                self.assertIn('Previous cloud work stopped', p.evaluate('window.__save'))
                 p.wait_for_function('window.__stopped')
                 self.assertEqual(p.evaluate('window.__writes'), 1)
+                self.assertFalse(p.evaluate("async()=>{const {mirrorSource:m}=await import('/src/mobile/state.svelte.ts');return !!m.pair.recovery.saved}"))
                 self.assertEqual(errors, [])
 
     def test_shared_offline_assets_model_failures_and_keyboard(self):

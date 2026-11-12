@@ -130,6 +130,7 @@ function saveRun(r) {
 }
 
 function scroll() {
+  if (typeof SITE.scroll === 'function') { SITE.scroll(document); return }
   var el = document.scrollingElement || document.documentElement
   var before = el.scrollTop
   window.scrollBy(0, Math.round(window.innerHeight * 0.85))
@@ -159,9 +160,9 @@ async function main(port) {
   if (!init) return
   var opt = { known: {}, full: !!init.full, complete: !!init.complete }
   for (var k = 0; k < init.known.length; k++) if (typeof init.known[k] === 'string') opt.known[init.known[k]] = 1
-  var removing = init.unsave === true && typeof SITE.unsave === 'function'
+  var removing = init.unsave === true && !init.unsaveFailed && typeof SITE.unsave === 'function'
   var run = loadRun(String(init.run)), doc = newDoc()
-  var settled = false, idle = 0, pinged = 0
+  var settled = false, idle = 0, pinged = 0, unsaveFailed = init.unsaveFailed === true
 
   async function canRemove() {
     var before = signedReplies
@@ -171,7 +172,7 @@ async function main(port) {
   }
 
   function status(phase) {
-    var s = JSON.stringify({ t: 'status', phase: phase, known: run.known, other: run.other })
+    var s = JSON.stringify({ t: 'status', phase: phase, known: run.known, other: run.other, unsaveFailed: unsaveFailed })
     if (s !== last) { last = s; post(JSON.parse(s)) }
   }
   function end(reason) {
@@ -232,10 +233,25 @@ async function main(port) {
     }
     saveRun(run)
     if (removing) {
+      var savedUrl = location.href
       for (var u = 0; u < r.send.length; u++) {
         if (!active || document.visibilityState === 'hidden' || navigator.onLine === false ||
           where(location.pathname, signed, hasAuthForm(document), !!SITE.onSaved(location, document)) !== 'saved') return end('stop')
-        if (!await SITE.unsave(document, r.send[u].url, canRemove)) return end('unsave-failed')
+        if (!await SITE.unsave(document, r.send[u].url, canRemove)) {
+          if (!active || document.visibilityState === 'hidden' || navigator.onLine === false) return end('stop')
+          // An uncertain removal must not be retried; keep collecting without changing Saved.
+          removing = false
+          unsaveFailed = true
+          status('read')
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+          // Instagram may leave its post dialog open; return to Saved with Unsave still disabled.
+          if (signed && !hasAuthForm(document) && !authPath(location.pathname) &&
+            (!SITE.onSaved(location, document) || Array.from(document.querySelectorAll('[role="dialog"]')).some(visible))) {
+            location.assign(savedUrl)
+            return
+          }
+          break
+        }
         await sleep(1500)
       }
     }

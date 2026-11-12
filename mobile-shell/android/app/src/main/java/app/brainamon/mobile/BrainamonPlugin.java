@@ -806,6 +806,7 @@ public class BrainamonPlugin extends Plugin {
         String reason = d == null ? null : d.getStringExtra("reason");
         JSObject o = new JSObject();
         o.put("reason", reason == null ? "stop" : reason);
+        o.put("unsaveFailed", d != null && d.getBooleanExtra("unsaveFailed", false));
         for (String k : new String[] {"added", "known", "other", "dropped"}) o.put(k, d == null ? 0 : d.getIntExtra(k, 0));
         call.resolve(o);
     }

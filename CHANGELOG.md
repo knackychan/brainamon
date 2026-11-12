@@ -2,6 +2,20 @@
 
 Every release bumps `core/version.py` and adds a section here in the same commit. Newest first.
 
+## 1.1.5 - 2026-11-12
+
+- Includes the Settings, backup, background sync and import improvements prepared for 1.1.4.
+- Phone: clearer saved-post import controls and feedback when a site cannot confirm removal.
+- Phone: improved Facebook saved-list reading and more reliable targeted removal.
+- Phone: sync, link previews and pictures fetch newer library content first.
+
+## Android 137.1.05 - 2026-11-12
+
+- Background Drive and Obsidian sync with saved checkpoints and resumable transfers.
+- Clearer saved-post imports, safer targeted removal and improved Facebook reading.
+- Newer library content, previews and pictures load first.
+- Updated Settings, backup and recovery controls.
+
 ## 1.1.4 - 2026-11-12
 
 - Desktop: redesigned Settings, backup status and recovery progress.

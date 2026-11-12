@@ -325,7 +325,8 @@ export class MirrorSource implements MobileSource {
   }
 
   private names(prefix: string, suffix = ''): string[] {
-    return Object.keys(this.manifest?.files ?? {}).filter(k => k.startsWith(prefix) && k.endsWith(suffix)).sort()
+    const names = Object.keys(this.manifest?.files ?? {}).filter(k => k.startsWith(prefix) && k.endsWith(suffix)).sort()
+    return prefix === 'library/part-' || prefix === 'search/text-' ? names.reverse() : names
   }
 
   // ── the light copy ─────────────────────────────────────────────────────────
@@ -573,6 +574,7 @@ export class MirrorSource implements MobileSource {
     await this.ready()
     const have = new Set(this.changes.list.filter(e => e.op === 'details').map(e => e.uid))
     const want = this.rowsNow.filter(r => r.id < 0 && r.uid && !have.has(r.uid) && (ids ? ids.includes(r.id) : !this.triedLinks.has(r.uid)))
+      .sort((a, b) => b.created - a.created || b.id - a.id)
     const done: number[] = []
     // the cards show which link is being read and which wait (work.svelte.ts)
     queueWork('links', 'FETCH', want.map(r => r.id))
@@ -650,7 +652,7 @@ export class MirrorSource implements MobileSource {
       const plan = picturePlan(r.url, hints[cleanLink(r.url) || r.url], now)
       if (plan.hint || plan.rule || plan.page) plans.set(r.id, plan)
     }
-    const want = this.rowsNow.filter(r => plans.has(r.id))
+    const want = this.rowsNow.filter(r => plans.has(r.id)).sort((a, b) => b.created - a.created || b.id - a.id)
     const got: number[] = []
     let failed = 0, used = 0
     step({ done: 0, total: want.length })

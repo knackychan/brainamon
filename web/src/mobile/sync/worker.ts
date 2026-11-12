@@ -149,6 +149,7 @@ async function round(config: Config) {
     const manifest = JSON.parse(await key.openText('manifest.json', await drive.get(found[0].id)))
     if (manifest.format !== 1 || (manifest.reader ?? 1) > 1 || !manifest.files || typeof manifest.files !== 'object') throw new Error('update')
     const want = Object.entries(manifest.files).filter(([p]) => /^(library\/|notes\/|chats\/|search\/text-)/.test(p) || ['canvases/index.json', 'canvas-results.json'].includes(p))
+      .sort(([a], [b]) => Number(b.startsWith('library/')) - Number(a.startsWith('library/')) || (a < b ? 1 : a > b ? -1 : 0))
     let count = 0
     for (const [logical, file] of want) {
       const f = file as { id?: string; n: string; v: string }

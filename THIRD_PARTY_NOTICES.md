@@ -246,6 +246,69 @@ https://developers.google.com/android/guides/opensource. The ML Kit terms descri
 on-device input processing and possible SDK updates/performance-utilization metrics;
 review the privacy policy and final SDK/data-safety declarations separately.
 
+## Android background-sync runtime additions (2026-11-12)
+
+The following additional or updated components were resolved from the release runtime classpath for Android 137.1.05. License declarations were checked against upstream Maven POMs, including parent POMs. Earlier runtime inventory remains above for historical builds. The Apache 2.0 text and existing supplier notices below continue to apply.
+
+| Resolved component | Upstream license declaration |
+|---|---|
+| androidx.annotation:annotation:1.9.1 | The Apache Software License, Version 2.0 |
+| androidx.annotation:annotation-jvm:1.9.1 | The Apache Software License, Version 2.0 |
+| androidx.concurrent:concurrent-futures-ktx:1.1.0 | The Apache Software License, Version 2.0 |
+| androidx.javascriptengine:javascriptengine:1.1.1 | The Apache Software License, Version 2.0 |
+| androidx.lifecycle:lifecycle-livedata:2.6.2 | The Apache Software License, Version 2.0 |
+| androidx.lifecycle:lifecycle-service:2.6.2 | The Apache Software License, Version 2.0 |
+| androidx.room:room-common:2.7.0 | The Apache Software License, Version 2.0 |
+| androidx.room:room-common-jvm:2.7.0 | The Apache Software License, Version 2.0 |
+| androidx.room:room-runtime:2.7.0 | The Apache Software License, Version 2.0 |
+| androidx.room:room-runtime-android:2.7.0 | The Apache Software License, Version 2.0 |
+| androidx.sqlite:sqlite:2.5.0 | The Apache Software License, Version 2.0 |
+| androidx.sqlite:sqlite-android:2.5.0 | The Apache Software License, Version 2.0 |
+| androidx.sqlite:sqlite-framework:2.5.0 | The Apache Software License, Version 2.0 |
+| androidx.sqlite:sqlite-framework-android:2.5.0 | The Apache Software License, Version 2.0 |
+| androidx.tracing:tracing-ktx:1.2.0 | The Apache Software License, Version 2.0 |
+| androidx.work:work-runtime:2.11.1 | The Apache Software License, Version 2.0 |
+| com.google.code.findbugs:jsr305:3.0.2 | The Apache Software License, Version 2.0 |
+| com.google.errorprone:error_prone_annotations:2.18.0 | Apache 2.0 |
+| com.google.guava:failureaccess:1.0.1 | The Apache Software License, Version 2.0 |
+| com.google.guava:guava:32.0.1-android | Apache License, Version 2.0 |
+| com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava | The Apache Software License, Version 2.0 |
+| com.google.j2objc:j2objc-annotations:2.8 | Apache License, Version 2.0 |
+| org.checkerframework:checker-qual:3.33.0 | The MIT License |
+| org.jetbrains.kotlin:kotlin-stdlib:2.1.20 | The Apache License, Version 2.0 |
+| org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0 | The Apache Software License, Version 2.0 |
+| org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.9.0 | The Apache Software License, Version 2.0 |
+| org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0 | The Apache Software License, Version 2.0 |
+| org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.9.0 | The Apache Software License, Version 2.0 |
+| org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0 | The Apache Software License, Version 2.0 |
+
+Checker Framework qualifier annotations retain their bundled license text:
+
+`	ext
+Checker Framework qualifiers
+Copyright 2004-present by the Checker Framework developers
+
+MIT License:
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+`
+
 ## Separate optional programs
 
 The installer does not bundle yt-dlp, FFmpeg/ffprobe, Deno, Playwright or Chromium.

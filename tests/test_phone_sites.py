@@ -289,7 +289,7 @@ class SiteScriptsTest(unittest.TestCase):
         """)
         self.assertEqual(out, [['signin', 'check', 'read'], 3, {'t': 'end', 'reason': 'empty'}])
 
-    def test_unsave_requires_matching_durable_receipt_and_stops_on_failure(self):
+    def test_unsave_requires_matching_durable_receipt_and_disables_on_facebook_failure(self):
         out = run("""
             const results=[]
             for (const mode of ['off','ok','missing','partial','wrong-batch','paused','native-paused','native-silent','refused']) {
@@ -297,6 +297,7 @@ class SiteScriptsTest(unittest.TestCase):
               let listener, tick=0, reply=null
               c.Date={now:()=>tick}; c.sessionStorage={getItem:()=>null,setItem(){}}
               c.document={visibilityState:'visible',querySelectorAll:()=>[]};c.navigator={onLine:true}
+              c.KeyboardEvent=function(){};c.document.dispatchEvent=()=>{}
               c.location={pathname:'/saved/'};c.window={};c.scroll=()=>{}
               c.sleep=async ms=>{tick+=ms;if(reply){const m=reply;reply=null;listener({data:JSON.stringify(m)})}}
               c.SITE.read=()=>[100000,100001,100002].map(n=>({url:'https://www.facebook.com/reel/'+n+'/',kind:'Reel'}))
@@ -312,16 +313,17 @@ class SiteScriptsTest(unittest.TestCase):
                   if(mode==='paused')c.document.visibilityState='hidden'
                 }
               }})
-              results.push([mode,removed.map(u=>c.SITE.key(u)),sent.at(-1).reason])
+              results.push([mode,removed.map(u=>c.SITE.key(u)),sent.at(-1).reason,
+                sent.some(m=>m.t==='status'&&m.unsaveFailed)])
             }
             console.log(JSON.stringify(results))
         """)
         self.assertEqual(out, [
-            ['off', [], 'end'], ['ok', ['fb:100001', 'fb:100002'], 'end'],
-            ['missing', [], 'failure'], ['partial', [], 'failure'],
-            ['wrong-batch', [], 'failure'], ['paused', [], 'stop'],
-            ['native-paused', [], 'unsave-failed'], ['native-silent', [], 'unsave-failed'],
-            ['refused', ['fb:100001'], 'unsave-failed'],
+            ['off', [], 'end', False], ['ok', ['fb:100001', 'fb:100002'], 'end', False],
+            ['missing', [], 'failure', False], ['partial', [], 'failure', False],
+            ['wrong-batch', [], 'failure', False], ['paused', [], 'stop', False],
+            ['native-paused', [], 'stop', False], ['native-silent', [], 'end', True],
+            ['refused', ['fb:100001'], 'end', True],
         ])
 
     def test_native_background_signal_pauses_a_visible_webview(self):
@@ -341,6 +343,34 @@ class SiteScriptsTest(unittest.TestCase):
             console.log(JSON.stringify([phases,reads]))
         """)
         self.assertEqual(out, [['wait', 'read'], 3])
+
+    def test_unsave_failure_keeps_collecting_later_batches_on_both_sites(self):
+        out = run("""
+            const results=[]
+            for(const site of ['facebook','instagram']) {
+            const c=load(site+'.js','_runner.js'),sent=[]
+            let tick=0,listener,reads=0,attempts=0
+            c.Date={now:()=>tick};c.sessionStorage={getItem:()=>null,setItem(){}}
+            c.document={visibilityState:'visible',querySelectorAll:()=>[],dispatchEvent(){}}
+            c.KeyboardEvent=function(){};c.navigator={onLine:true};
+            c.location={pathname:site==='facebook'?'/saved/':'/sam.example/saved/all-posts/'}
+            c.window={};c.scroll=()=>{};c.sleep=async ms=>{tick+=ms}
+            const card=n=>({url:'https://www.'+site+'.com/reel/'+n+'/',kind:'Reel'})
+            c.SITE.read=()=>++reads===1?[card(100000)]:[card(100001),card(100002)]
+            c.SITE.unsave=async()=>{attempts++;return false}
+            await c.main({addEventListener:(_,fn)=>listener=fn,postMessage:data=>{
+              const m=JSON.parse(data);sent.push(m)
+              const reply=m.t==='hello'?{t:'init',run:'r',known:[],signed:true,unsave:true}:
+                m.t==='ping'?{t:'signed',on:true,active:true}:
+                m.t==='batch'?{t:'stored',batch:m.batch,urls:m.items.map(x=>x.url)}:null
+              if(reply)listener({data:JSON.stringify(reply)})
+            }})
+            results.push([attempts,sent.filter(m=>m.t==='batch').map(m=>m.items.length),
+              sent.some(m=>m.t==='status'&&m.unsaveFailed),sent.at(-1).reason])
+            }
+            console.log(JSON.stringify(results))
+        """)
+        self.assertEqual(out, [[1, [1, 2], True, 'end']] * 2)
 
     def test_instagram_runner_navigation_and_known_stop(self):
         out = run("""

@@ -58,10 +58,18 @@ var SITE = {
   },
 
   rows: new Map(),
+  scrollArea: null,
+
+  scroll: function (doc) {
+    var area = SITE.scrollArea
+    if (!area || !area.isConnected) area = doc.scrollingElement || doc.documentElement
+    area.scrollBy({ top: Math.max(300, area.clientHeight * 0.85), behavior: 'instant' })
+  },
 
   unsave: async function (doc, url, canRemove) {
     var row = SITE.rows.get(url)
     if (!row || !row.isConnected || !visible(row)) return false
+    row.scrollIntoView({ block: 'center', behavior: 'instant' })
     var button = Array.from(row.querySelectorAll('[role="button"], button')).find(function (b) {
       return visible(b) && (b.getAttribute('aria-label') || '').indexOf('More options') >= 0
     })
@@ -98,12 +106,16 @@ var SITE = {
     }
     // the nearest block holding the button once; a block holding it more than once is the whole list
     function rowOf(a) {
+      var row = null
       for (var el = a.parentElement, i = 0; el && i < 20; el = el.parentElement, i++) {
         var n = words(el)
-        if (n === 1) return el
-        if (n > 1) return null
+        if (n === 1) {
+          if (!row) row = el
+          if (el.querySelector('[aria-label*="More options"]')) return el
+        }
+        if (n > 1) break
       }
-      return null
+      return row
     }
     var rows = new Map(), links = doc.querySelectorAll('a[href]')
     for (var i = 0; i < links.length; i++) {
@@ -112,6 +124,14 @@ var SITE = {
       if (!row) continue
       if (!rows.has(row)) rows.set(row, [])
       rows.get(row).push(links[i])
+    }
+    // Remember the panel before Unsave removes its rows, including batches of unsupported items.
+    var first = rows.keys().next().value
+    for (var el = first && first.parentElement; el; el = el.parentElement) {
+      if (el.scrollHeight > el.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(el).overflowY)) {
+        SITE.scrollArea = el
+        break
+      }
     }
     var out = []
     rows.forEach(function (as, row) {

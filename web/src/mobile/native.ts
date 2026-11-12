@@ -399,7 +399,7 @@ export interface SiteReaderState {
   supported: boolean
   sites: Record<SiteId, { signedIn: boolean; pending: number; forgetting: boolean; reader: boolean }>
 }
-export interface SiteRunResult { reason: string; added: number; known: number; other: number; dropped: number }
+export interface SiteRunResult { reason: string; added: number; known: number; other: number; dropped: number; unsaveFailed?: boolean }
 export interface SitePage { items: unknown[]; total: number }
 
 export async function siteState(): Promise<SiteReaderState | null> {

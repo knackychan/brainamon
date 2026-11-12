@@ -71,7 +71,7 @@ public class SiteActivity extends AppCompatActivity {
 
     private static final int MAX_MESSAGE = 256 * 1024, MAX_BATCH = 25, MAX_COUNT = 1000000;
     private static final List<String> PHASES = Arrays.asList("signin", "check", "open", "read", "wait");
-    private static final List<String> ENDS = Arrays.asList("end", "known", "empty", "cap", "failure", "unsave-failed");
+    private static final List<String> ENDS = Arrays.asList("end", "known", "empty", "cap", "failure", "unsave-failed", "stop");
     private static final Pattern CHROME = Pattern.compile("Chrome/(\\d+)\\.");
     private static final Pattern MAJOR = Pattern.compile("^(\\d+)\\.");
 
@@ -83,7 +83,7 @@ public class SiteActivity extends AppCompatActivity {
     private JSONArray knownHashes = new JSONArray();
     private final Set<String> stored = new HashSet<>();
     private final String runId = Long.toHexString(System.currentTimeMillis()) + Long.toHexString(System.nanoTime());
-    private boolean reader, signed, finished, active, unsave;
+    private boolean reader, signed, finished, active, unsave, unsaveFailed;
     private String phase = "signin";
     private int added, known, other, dropped;
 
@@ -154,7 +154,7 @@ public class SiteActivity extends AppCompatActivity {
         bar.setMaxLines(2);
         bar.setPadding(dp(12), dp(8), dp(8), dp(8));
         Button stop = new Button(this);
-        stop.setText(reader ? "Stop" : "Close");
+        stop.setText(reader ? "Cancel scan" : "Close");
         stop.setOnClickListener(v -> finishWith("stop"));
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
@@ -321,6 +321,7 @@ public class SiteActivity extends AppCompatActivity {
         else if ("read".equals(phase)) text = n + ": " + added + " new, " + known + " already there";
         else if ("wait".equals(phase)) text = n + ": paused (offline or in the background)";
         else text = "Sign in to " + n + ". Reading starts by itself.";
+        if (unsaveFailed) text += ". Unsave unavailable; keeping remaining posts saved.";
         bar.setText(text);
     }
 
@@ -337,7 +338,7 @@ public class SiteActivity extends AppCompatActivity {
             switch (m.optString("t")) {
                 case "hello":
                     reply.postMessage(new JSONObject().put("t", "init").put("run", runId).put("known", knownHashes)
-                        .put("unsave", unsave)
+                        .put("unsave", unsave && !unsaveFailed).put("unsaveFailed", unsaveFailed)
                         .put("full", getIntent().getBooleanExtra(EXTRA_FULL, false))
                         .put("complete", getIntent().getBooleanExtra(EXTRA_COMPLETE, false))
                         .put("signed", checkSigned()).put("active", active).toString());
@@ -380,6 +381,7 @@ public class SiteActivity extends AppCompatActivity {
             return;
         }
         phase = p;
+        unsaveFailed = unsaveFailed || m.optBoolean("unsaveFailed", false);
         known = Math.max(0, Math.min(m.optInt("known", known), MAX_COUNT));
         other = Math.max(0, Math.min(m.optInt("other", other), MAX_COUNT));
         showBar();
@@ -415,7 +417,7 @@ public class SiteActivity extends AppCompatActivity {
         if (finished) return;
         finished = true;
         setResult(RESULT_OK, new Intent().putExtra("reason", reason).putExtra("added", added).putExtra("known", known)
-            .putExtra("other", other).putExtra("dropped", dropped));
+            .putExtra("other", other).putExtra("dropped", dropped).putExtra("unsaveFailed", unsaveFailed));
         finish();
     }
 

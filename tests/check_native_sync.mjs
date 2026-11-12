@@ -15,7 +15,7 @@ const signer = await webcrypto.subtle.generateKey({ name: 'ECDSA', namedCurve: '
 const verifier = Buffer.from(await webcrypto.subtle.exportKey('spki', signer.publicKey)).toString('base64url')
 async function fixture() {
   const files = new Map(), cache = new Map(), queue = [], counts = { creates: 0, delivered: 0, reads: 0 }
-  const f = { files, cache, queue, counts, fail: '', lost: false, paused: false, expires: 0 }
+  const f = { files, cache, queue, counts, fetched: [], fail: '', lost: false, paused: false, expires: 0 }
   f.add = async (logical, value) => {
     const name = await key.name(logical), data = await key.seal(logical, text(JSON.stringify(value)))
     files.set(name, { id: name, name, data }); return name
@@ -59,7 +59,7 @@ async function run(f, solo = false) {
       case 'save': f.cache.set(a[0], structuredClone(a[1])); return null
       case 'find': return [...f.files.values()].filter(x => x.name === a[0]).map(({ id, name }) => ({ id, name }))
       case 'list': return [...f.files.values()].map(({ id, name }) => ({ id, name }))
-      case 'get': f.counts.reads++; return { data: b64(f.files.get(a[0]).data) }
+      case 'get': f.counts.reads++; f.fetched.push(a[0]); return { data: b64(f.files.get(a[0]).data) }
       case 'outbox': return f.queue.find(x => !x.remote) ?? null
       case 'create': {
         f.counts.creates++
@@ -82,6 +82,17 @@ async function run(f, solo = false) {
     }
   }
 }
+
+const ordered = await fixture()
+const parts = ['library/part-000.json', 'library/part-002.json', 'library/part-001.json']
+for (const logical of parts) {
+  const id = await ordered.add(logical, [])
+  ordered.manifest.files[logical] = { id, n: id, v: '1' }
+}
+await ordered.add('manifest.json', ordered.manifest)
+assert.equal((await run(ordered)).ok, true)
+assert.deepEqual(ordered.fetched.filter(id => parts.some(p => ordered.manifest.files[p].id === id)),
+  await Promise.all(['library/part-002.json', 'library/part-001.json', 'library/part-000.json'].map(p => key.name(p))))
 
 // A lost POST response must neither acknowledge early nor create a second encrypted envelope.
 const lost = await fixture(); await lost.enqueue(); lost.lost = true

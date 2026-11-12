@@ -162,268 +162,233 @@
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 196,
+    "line": 223,
     "kind": "text",
     "value": "Signed in.",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 198,
+    "line": 225,
     "kind": "text",
     "value": "Reads your saved",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 198,
+    "line": 225,
     "kind": "expression",
     "value": "instagram",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 198,
+    "line": 225,
     "kind": "expression",
     "value": "posts and reels from All posts",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 198,
+    "line": 225,
     "kind": "expression",
     "value": "threads",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 198,
+    "line": 225,
     "kind": "expression",
     "value": "posts",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 198,
+    "line": 225,
     "kind": "expression",
     "value": "reels and videos",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 198,
+    "line": 225,
     "kind": "text",
     "value": ". The first scan reads the full list; after a complete scan, later scans stop after 20 posts already in your library. Review the results before importing.",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 199,
-    "kind": "text",
-    "value": "Use Stop in the browser to keep a partial read. Reading waits while offline, in the background, or while you finish a login check.",
-    "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
-  },
-  {
-    "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 200,
+    "line": 227,
     "kind": "text",
     "value": "Scan needs the phone's own library. Pair with a PC, or start without one in Settings.",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 205,
+    "line": 232,
     "kind": "expression",
     "value": "Tap again to forget login",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 205,
+    "line": 232,
     "kind": "expression",
     "value": "Forget login",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 207,
+    "line": 234,
     "kind": "text",
     "value": "Cancel",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 228,
+    "line": 260,
     "kind": "expression",
     "value": "Scan saved posts, then review and import.",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 232,
-    "kind": "text",
-    "value": "Uses your login on this phone. Sites may check accounts that read fast. Brainamon only reads, slowly; you can stop anytime. Imported links follow your library's existing sync settings.",
-    "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
-  },
-  {
-    "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 233,
+    "line": 265,
     "kind": "text",
     "value": "Continue",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 233,
+    "line": 265,
     "kind": "text",
     "value": "Cancel",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 237,
+    "line": 269,
     "kind": "text",
     "value": "post",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 237,
+    "line": 269,
     "kind": "expression",
     "value": "s",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 237,
+    "line": 269,
     "kind": "text",
     "value": "ready to import ·",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 237,
+    "line": 269,
     "kind": "expression",
     "value": "refused",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 238,
+    "line": 279,
     "kind": "attribute:summary",
     "value": "Review saved posts",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 239,
+    "line": 280,
     "kind": "text",
     "value": "Other saved items:",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 239,
+    "line": 280,
     "kind": "text",
     "value": ". Already in your library:",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 239,
+    "line": 280,
     "kind": "text",
     "value": ". Only validated",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 239,
+    "line": 280,
     "kind": "text",
     "value": "links enter your library.",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 241,
-    "kind": "text",
-    "value": "Showing the first 5 of",
-    "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
-  },
-  {
-    "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 241,
-    "kind": "text",
-    "value": "posts.",
-    "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
-  },
-  {
-    "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 244,
+    "line": 271,
     "kind": "text",
     "value": "Import",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 244,
+    "line": 271,
     "kind": "text",
     "value": "post",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 244,
+    "line": 271,
     "kind": "expression",
     "value": "s",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 245,
+    "line": 272,
     "kind": "text",
     "value": "Later",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 251,
+    "line": 298,
     "kind": "text",
     "value": "Read all again",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 26,
+    "line": 28,
     "kind": "display-assignment",
     "value": "Update Android System WebView to read sites.",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 31,
+    "line": 34,
     "kind": "display-assignment",
     "value": "stopped at posts already in the library",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 36,
+    "line": 39,
     "kind": "display-assignment",
     "value": "A site window is already open.",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 48,
+    "line": 55,
     "kind": "display-assignment",
     "value": "from a read that was cut off",
-    "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
-  },
-  {
-    "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 116,
-    "kind": "display-assignment",
-    "value": "Reading saved posts in the site browser… Use Stop there to keep a partial read.",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {

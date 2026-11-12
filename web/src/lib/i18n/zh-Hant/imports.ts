@@ -2,6 +2,18 @@ import type { messages as English } from '../en/imports.ts'
 import type { Localized } from '../en/index.ts'
 
 export const messages = {
+  "imports.scan.notice": "使用您在此手機上的登入狀態。網站可能檢查讀取過快的帳號。Brainamon 會慢速讀取，您可以隨時停止。取消儲存是選用功能，掃描前會要求確認。匯入的連結會遵循資料庫現有的同步設定。",
+  "imports.scan.running": "正在網站瀏覽器讀取已儲存的貼文…取消掃描後可回到此處檢視或捨棄部分結果。",
+  "imports.scan.cancelHelp": "在瀏覽器點選取消掃描即可返回，並選擇匯入、保留或捨棄部分結果。離線、在背景執行或登入驗證時，讀取會暫停。",
+  "imports.unsave.failed": "無法確認取消儲存是否成功。其餘貼文仍保留在網站的儲存清單中，掃描已繼續。",
+  "imports.review.posts": "已收集的貼文",
+  "imports.review.caption": "完整內文",
+  "imports.review.more": "再顯示 10 則貼文",
+  "imports.review.discard": "捨棄",
+  "imports.review.confirmDiscard": "確認捨棄",
+  "imports.review.keep": "保留結果",
+  "imports.review.discardHelp": "要捨棄這些結果而不匯入嗎？捨棄結果無法復原已在網站取消儲存的貼文。資料庫中現有的項目不受影響。",
+  "imports.review.discarded": "已捨棄收集的結果。您可以重新掃描。",
   "imports.unsave.label": "取消收藏已擷取的貼文",
   "imports.unsave.help": "預設關閉。新擷取貼文的結果儲存到此手機後，才會取消收藏。請接著檢查並匯入結果。資料庫中已有的貼文會保留收藏。",
   "imports.title": "匯入已收藏的貼文",

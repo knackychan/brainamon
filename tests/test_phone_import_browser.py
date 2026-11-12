@@ -69,7 +69,7 @@ export async function siteOpen(site, known, full, complete) {
   if(t.mode==='unsupported') return {reason:'unsupported'};
   if(t.mode==='wait') await new Promise(resolve=>{t.finish=resolve});
   t.state.sites[site].pending=t.items.length;
-  return {reason:t.reason,added:t.items.length,known:0,other:2,dropped:0};
+  return {reason:t.reason,added:t.items.length,known:0,other:2,dropped:0,unsaveFailed:t.unsaveFailed===true};
 }
 export async function sitePending(site,offset,max) {
   const t=window.__sites;
@@ -84,7 +84,7 @@ export async function siteClear(site) {
 '''
 
 
-def reader_test(page, *, pending=False, site='facebook'):
+def reader_test(page, *, pending=False, site='facebook', posts=None):
     state = {'supported': True, 'sites': {n.lower(): {'signedIn': False, 'forgetting': False,
              'pending': 0, 'reader': n.lower() == site} for n in NAMES}}
     items = [dict(url='https://www.facebook.com/reel/1234567890/', kind='Reel', caption='Synthetic boat <img src=x onerror="window.__injected=true">',
@@ -103,6 +103,8 @@ def reader_test(page, *, pending=False, site='facebook'):
                       pic='https://scontent.cdninstagram.com/threads.jpg'),
                  dict(url='https://www.threads.com/@renamed.user/post/DAbc_12xyz', kind='Post'),
                  dict(url='https://evil.example/@sam.example/post/DAbc_12xyz', kind='Post')]
+    if posts is not None:
+        items = posts
     if pending:
         state['sites'][site]['pending'] = len(items)
     page.add_init_script('window.__sites=' + json.dumps(dict(state=state, calls=[], clears=[],
@@ -114,6 +116,130 @@ def reader_test(page, *, pending=False, site='facebook'):
 
 
 class PhoneImportBrowser(unittest.TestCase):
+    def test_cancelled_unsave_scan_can_be_discarded_on_both_sites(self):
+        with mobile_browser() as (browser, base):
+            for site in ('facebook', 'instagram'):
+                with self.subTest(site=site), synthetic_phone(browser, base, 390, 844, 'light') as (page, errors):
+                    reader_test(page, site=site)
+                    page.goto(base + '/mobile.html#/import')
+                    block = show(page, site.title())
+                    page.evaluate("Object.assign(window.__sites,{mode:'wait',reason:'stop',unsaveFailed:true})")
+                    block.get_by_role('button', name='Unsave collected posts', exact=True).click()
+                    block.get_by_role('button', name='Scan saved posts', exact=True).click()
+                    block.get_by_role('button', name='Continue', exact=True).click()
+                    page.wait_for_function('!!window.__sites.finish')
+                    page.evaluate('window.__sites.finish()')
+                    expect(block.get_by_role('button', name='Import 1 post', exact=True)).to_be_visible()
+                    expect(block.get_by_role('status')).to_contain_text('stopped')
+                    expect(block.get_by_role('status')).to_contain_text('Unsave could not be confirmed')
+                    block.get_by_role('button', name='Discard', exact=True).click()
+                    block.get_by_role('button', name='Confirm discard', exact=True).click()
+                    expect(block.get_by_role('status')).to_contain_text('Collected results discarded')
+                    self.assertEqual(page.evaluate('window.__sites.clears'), [site])
+                    self.assertEqual(page.evaluate("async()=>{const {phone}=await import('/src/mobile/state.svelte.ts');return phone.rows.length}"), 0)
+                    self.assertEqual(errors, [])
+
+    def test_review_distinct_posts_paging_and_discard_without_importing(self):
+        with mobile_browser() as (browser, base):
+            for site, width, theme in (('facebook', 320, 'dark'), ('facebook', 390, 'light'),
+                                       ('instagram', 320, 'dark'), ('instagram', 390, 'light')):
+                with self.subTest(site=site, width=width), synthetic_phone(browser, base, width, 844, theme) as (page, errors):
+                    reader_test(page, site=site, pending=True, posts=[dict(url=f'https://www.{site}.com/reel/{100000+i}/',
+                        kind='Reel', caption=f'Post {i} ' + 'Long caption ' * 500, creator=f'Creator {i}') for i in range(25)])
+                    page.goto(base + '/mobile.html#/import')
+                    block = show(page, site.title())
+                    expect(block.get_by_role('button', name='Import 25 posts', exact=True)).to_be_visible()
+                    block.get_by_text('Review saved posts', exact=True).click()
+                    posts = block.locator('.m-import-review>li')
+                    expect(posts).to_have_count(10)
+                    self.assertLess(len(posts.first.locator('a').inner_text()), 165)
+                    self.assertTrue(posts.first.locator('a').get_attribute('href').endswith('/100000/'))
+                    expect(posts.first.get_by_text('Creator 0', exact=True)).to_be_visible()
+                    full = posts.first.locator('details')
+                    expect(full).not_to_have_attribute('open', '')
+                    OUT.mkdir(parents=True, exist_ok=True)
+                    posts.first.scroll_into_view_if_needed()
+                    settle_import(page)
+                    page.screenshot(path=str(OUT / f'{site}-review-discard-{theme}-{width}.png'))
+                    block.get_by_role('button', name='Show 10 more posts').click()
+                    expect(posts).to_have_count(20)
+                    block.get_by_role('button', name='Show 10 more posts').click()
+                    expect(posts).to_have_count(25)
+                    full.locator('summary').click()
+                    expect(full.locator('.m-hint')).to_contain_text('Long caption ' * 20)
+                    block.get_by_role('button', name='Discard', exact=True).click()
+                    expect(block.get_by_text('Discard these collected results', exact=False)).to_be_visible()
+                    self.assertEqual(page.evaluate('window.__sites.clears'), [])
+                    block.get_by_role('button', name='Keep results', exact=True).click()
+                    expect(block.get_by_role('button', name='Discard', exact=True)).to_be_visible()
+                    block.get_by_role('button', name='Discard', exact=True).click()
+                    page.evaluate("window.__sites.mode='clear-error'")
+                    block.get_by_role('button', name='Confirm discard', exact=True).click()
+                    expect(block.get_by_role('alert')).to_contain_text('Could not clear')
+                    expect(block.get_by_role('button', name='Import 25 posts', exact=True)).to_be_visible()
+                    page.evaluate("window.__sites.mode=''")
+                    block.get_by_role('button', name='Confirm discard', exact=True).click()
+                    expect(block.get_by_role('status')).to_contain_text('Collected results discarded')
+                    self.assertEqual(page.evaluate('window.__sites.clears'), [site])
+                    self.assertEqual(page.evaluate("async()=>{const {kv}=await import('/src/mobile/store.ts');return await kv.get('site-runs')??null}"), None)
+                    self.assertEqual(page.evaluate("async()=>{const {phone}=await import('/src/mobile/state.svelte.ts');return phone.rows.length}"), 0)
+                    expect(block.get_by_role('button', name='Scan saved posts', exact=True)).to_be_enabled()
+                    self.assertEqual(block.get_by_text('Review saved posts', exact=True).count(), 0)
+                    self.assertEqual(errors, [])
+
+    def test_facebook_runner_scrolls_nested_list_past_ten_and_finds_unsave_button(self):
+        with mobile_browser() as (browser, base), synthetic_phone(browser, base, 390, 844, 'light') as (page, errors):
+            page.route('https://www.facebook.com/saved/', lambda route: route.fulfill(body='<div id="saved"></div>', content_type='text/html'))
+            page.goto('https://www.facebook.com/saved/')
+            page.evaluate('''() => {
+              document.body.style.overflow='hidden';
+              const list=document.querySelector('#saved');
+              list.style.cssText='position:fixed;left:20px;top:50px;width:300px;height:300px;overflow-y:auto';
+              let count=0;
+              function load() {
+                list.replaceChildren();
+                for(let i=0;i<10&&count<25;i++) {
+                  const id=100000+count++,row=document.createElement('article');
+                  row.style.height='100px';
+                  row.innerHTML=`<div><a href="https://www.facebook.com/reel/${id}/">Saved caption ${id}</a><span>Add to collection</span></div><button aria-label="More options" role="button">More</button>`;
+                  list.appendChild(row);
+                }
+              }
+              load();
+              list.addEventListener('scroll',()=>{
+                if(count<25 && list.scrollTop+list.clientHeight>=list.scrollHeight-4){load();list.scrollTop=0}
+              });
+              const timer=window.setTimeout;
+              window.setTimeout=(fn,ms)=>timer(fn,Math.min(ms,30));
+            }''')
+            scripts = '\n'.join((ROOT / 'scrapers/sites' / name).read_text(encoding='utf-8') for name in ('facebook.js', '_runner.js'))
+            result = page.evaluate('async () => {' + scripts + ''';
+              const sent=[];let listener;
+              await main({addEventListener:(_,fn)=>listener=fn,postMessage:data=>{
+                const m=JSON.parse(data);sent.push(m);
+                if(m.t==='hello')listener({data:JSON.stringify({t:'init',run:'fixture',known:[],signed:true})});
+                if(m.t==='ping')listener({data:JSON.stringify({t:'signed',on:true,active:true})});
+              }});
+              window.fixtureSite=SITE;
+              return {urls:sent.filter(m=>m.t==='batch').flatMap(m=>m.items.map(x=>x.url)),end:sent.at(-1)};
+            }''')
+            self.assertEqual(len(set(result['urls'])), 25)
+            self.assertEqual(result['end'], {'t': 'end', 'reason': 'end'})
+            self.assertEqual(page.evaluate('window.scrollY'), 0)
+            # The collection button is inside a smaller block than the card's More button.
+            removed = page.evaluate('''async () => {
+              const row=document.querySelector('article');
+              row.querySelector('button').onclick=()=>{
+                const menu=document.createElement('div');menu.setAttribute('role','menu');
+                menu.innerHTML='<button role="menuitem">Unsave</button>';
+                menu.querySelector('button').onclick=()=>{row.remove();menu.remove()};document.body.appendChild(menu);
+              };
+              const url=fixtureSite.read(document)[0].url;
+              return fixtureSite.unsave(document,url,async()=>true);
+            }''')
+            self.assertTrue(removed)
+            self.assertEqual(errors, [])
+
     def test_threads_extracts_synthetic_dom(self):
         with mobile_browser() as (browser, base), synthetic_phone(browser, base, 390, 844, 'light') as (page, errors):
             page.route('https://www.threads.com/', lambda route: route.fulfill(

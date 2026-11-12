@@ -5,7 +5,7 @@ import vm from 'node:vm'
 import ts from '../web/node_modules/typescript/lib/typescript.js'
 
 const source = readFileSync('web/src/mobile/source/mirror.ts', 'utf8')
-const methods = ['private names', 'async linkDetails', 'async fillPictures'].map(name => {
+const methods = ['private names', 'async linkDetails', 'async fillPictures', 'private async fetchPictures'].map(name => {
   const start = source.indexOf(`  ${name}(`)
   assert.ok(start >= 0, name)
   return source.slice(start, source.indexOf('\n  }', start) + 4)

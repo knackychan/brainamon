@@ -234,7 +234,7 @@ const laneSource = readFileSync('web/src/mobile/lanes.ts', 'utf8')
 vm.runInNewContext(ts.transpileModule(laneSource.slice(laneSource.indexOf('export type LaneKey')), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText, { exports: laneExports, t: key => key, driveStatus: () => ({ ok: true }), driveWork: () => null,
-  mirrorSource: {}, phone: {}, syncPaused: () => false, backup: {}, nativeSync: laneState, nativeSyncText: () => laneState.state,
+  mirrorSource: {}, phone: {}, syncPaused: () => false, backup: {}, nativeSync: laneState, nativeSyncText: () => laneState.state, nativePhasePct: () => null,
   isApp: true, solo: false, source: { syncVault: true }, vault: { opts: { on: true }, step: 'Starting', prog: { pct: 63 } },
   vaultLamp: () => 'syncing', fmtAgo: () => '', pics: { state: 'idle' },
 })

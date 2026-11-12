@@ -4810,448 +4810,448 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 767,
+    "line": 769,
     "kind": "call:Error",
     "value": "image missing",
     "reason": "Internal thumbnail retrieval failure; card/image failure is handled by the existing placeholder, not displayed as prose."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 776,
+    "line": 778,
     "kind": "call:Error",
     "value": "This card is not in the phone's copy.",
     "reason": "App-owned display copy uses common.error.cardMissing through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 794,
+    "line": 796,
     "kind": "display-assignment",
     "value": "videos/",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 794,
+    "line": 796,
     "kind": "display-assignment",
     "value": ".bin",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 805,
+    "line": 807,
     "kind": "call:Error",
     "value": "`No ${which} yet`",
     "reason": "Missing report/transcript signal caught by Item and offline cache callers and replaced with empty/previous content. No UI error consumer; retain the internal model diagnostic."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 868,
+    "line": 870,
     "kind": "call:Error",
     "value": "This card is not in the phone's copy.",
     "reason": "App-owned display copy uses common.error.cardMissing through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 886,
+    "line": 888,
     "kind": "call:Error",
     "value": "This card is not in the phone's copy.",
     "reason": "App-owned display copy uses common.error.cardMissing through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 898,
+    "line": 900,
     "kind": "call:Error",
     "value": "This card is not in the phone's copy.",
     "reason": "App-owned display copy uses common.error.cardMissing through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1075,
+    "line": 1077,
     "kind": "display-assignment",
     "value": "Ask -",
     "reason": "Persisted or source-derived title/category/chat text or filename default. It belongs to the library/content contract and must remain verbatim, including existing records and AI history."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1075,
+    "line": 1077,
     "kind": "display-assignment",
     "value": "T",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1075,
+    "line": 1077,
     "kind": "display-assignment",
     "value": "answer",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1091,
+    "line": 1093,
     "kind": "display-assignment",
     "value": "General",
     "reason": "Persisted or source-derived title/category/chat text or filename default. It belongs to the library/content contract and must remain verbatim, including existing records and AI history."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1091,
+    "line": 1093,
     "kind": "display-assignment",
     "value": "personal",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1106,
+    "line": 1108,
     "kind": "display-assignment",
     "value": "General",
     "reason": "Persisted or source-derived title/category/chat text or filename default. It belongs to the library/content contract and must remain verbatim, including existing records and AI history."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1125,
+    "line": 1127,
     "kind": "call:Error",
     "value": "No such note in the mirror.",
     "reason": "App-owned display copy uses common.error.noteMissing through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1133,
+    "line": 1135,
     "kind": "call:Error",
     "value": "No such note in the mirror.",
     "reason": "App-owned display copy uses common.error.noteMissing through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1160,
+    "line": 1162,
     "kind": "display-assignment",
     "value": "Untitled",
     "reason": "Persisted or source-derived title/category/chat text or filename default. It belongs to the library/content contract and must remain verbatim, including existing records and AI history."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1223,
+    "line": 1225,
     "kind": "call:Error",
     "value": "This card is not in the phone's copy.",
     "reason": "App-owned display copy uses common.error.cardMissing through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1238,
+    "line": 1240,
     "kind": "display-assignment",
     "value": "describe",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1277,
+    "line": 1279,
     "kind": "call:Error",
     "value": "This card is not in the phone's copy.",
     "reason": "App-owned display copy uses common.error.cardMissing through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1278,
+    "line": 1280,
     "kind": "call:Error",
     "value": "There are no collections to choose from yet.",
     "reason": "App-owned display copy uses capture.suggest.noCollections through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1290,
+    "line": 1292,
     "kind": "call:Error",
     "value": "There are no collections to choose from yet.",
     "reason": "App-owned display copy uses capture.suggest.noCollections through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1299,
+    "line": 1301,
     "kind": "display-assignment",
     "value": "idle",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1324,
+    "line": 1326,
     "kind": "display-assignment",
     "value": "vault-state",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1386,
+    "line": 1388,
     "kind": "call:Error",
     "value": "A canvas item reference is missing.",
     "reason": "App-owned display copy uses common.error.canvasReferenceMissing through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1397,
+    "line": 1399,
     "kind": "call:Error",
     "value": "The earlier canvas creation is missing.",
     "reason": "App-owned display copy uses common.error.canvasEarlierMissing through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1478,
+    "line": 1480,
     "kind": "call:Error",
     "value": "A canonical canvas item is missing from the mirror.",
     "reason": "App-owned display copy uses common.error.canvasCanonicalMissing through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1480,
+    "line": 1482,
     "kind": "call:Error",
     "value": "A canonical thumbnail is unavailable.",
     "reason": "App-owned display copy uses common.error.canvasThumbnailMissing through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1532,
+    "line": 1534,
     "kind": "display-assignment",
     "value": "Canvas waiting for earlier backup",
     "reason": "App-owned display copy uses canvas.waitingBackup through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1542,
+    "line": 1544,
     "kind": "call:Error",
     "value": "This canvas is unavailable. Refresh and try again.",
     "reason": "App-owned display copy uses common.error.canvasUnavailable through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1591,
+    "line": 1593,
     "kind": "call:Error",
     "value": "The PC has not put this video in Google Drive.",
     "reason": "App-owned display copy uses common.error.videoNotUploaded through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1593,
+    "line": 1595,
     "kind": "call:Error",
     "value": "The video is missing from Google Drive.",
     "reason": "App-owned display copy uses common.error.videoMissing through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1596,
+    "line": 1598,
     "kind": "display-assignment",
     "value": "video/mp4",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1623,
+    "line": 1625,
     "kind": "display-assignment",
     "value": "Chat",
     "reason": "Persisted or source-derived title/category/chat text or filename default. It belongs to the library/content contract and must remain verbatim, including existing records and AI history."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1627,
+    "line": 1629,
     "kind": "display-assignment",
     "value": "Chat",
     "reason": "Persisted or source-derived title/category/chat text or filename default. It belongs to the library/content contract and must remain verbatim, including existing records and AI history."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1636,
+    "line": 1638,
     "kind": "display-assignment",
     "value": "Chat",
     "reason": "Persisted or source-derived title/category/chat text or filename default. It belongs to the library/content contract and must remain verbatim, including existing records and AI history."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1639,
+    "line": 1641,
     "kind": "call:Error",
     "value": "This chat was deleted.",
     "reason": "App-owned display copy uses common.error.chatDeleted through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1641,
+    "line": 1643,
     "kind": "display-assignment",
     "value": "Chat",
     "reason": "Persisted or source-derived title/category/chat text or filename default. It belongs to the library/content contract and must remain verbatim, including existing records and AI history."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1766,
+    "line": 1768,
     "kind": "call:Error",
     "value": "A canvas item changed. Ask Wiskit for a fresh proposal.",
     "reason": "App-owned display copy uses common.error.canvasItemChanged through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1768,
+    "line": 1770,
     "kind": "call:Error",
     "value": "Thumbnail unavailable offline. Connect and retry, or ask for text only.",
     "reason": "App-owned display copy uses common.error.thumbnailOffline through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1803,
+    "line": 1805,
     "kind": "call:Error",
     "value": "This is not a phone proposal.",
     "reason": "App-owned display copy uses common.error.phoneProposal through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1808,
+    "line": 1810,
     "kind": "call:Error",
     "value": "This is not a phone proposal.",
     "reason": "App-owned display copy uses common.error.phoneProposal through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1812,
+    "line": 1814,
     "kind": "call:Error",
     "value": "This proposal is no longer pending.",
     "reason": "App-owned display copy uses common.error.proposalPending through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1818,
+    "line": 1820,
     "kind": "call:Error",
     "value": "The canvas changed after review. Decline this proposal and prepare it again.",
     "reason": "App-owned display copy uses common.error.canvasReviewChanged through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1831,
+    "line": 1833,
     "kind": "display-assignment",
     "value": "queued",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1834,
+    "line": 1836,
     "kind": "call:Error",
     "value": "Canvas operation ID was reused with different content.",
     "reason": "App-owned display copy uses common.error.canvasOperationReused through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1839,
+    "line": 1841,
     "kind": "call:Error",
     "value": "Canvas operation ID was reused with different content.",
     "reason": "App-owned display copy uses common.error.canvasOperationReused through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1842,
+    "line": 1844,
     "kind": "call:Error",
     "value": "The new canvas ID is occupied.",
     "reason": "App-owned display copy uses common.error.canvasIdOccupied through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1850,
+    "line": 1852,
     "kind": "call:Error",
     "value": "A picked image is already on this canvas.",
     "reason": "App-owned display copy uses common.error.imageAlreadyPicked through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1891,
+    "line": 1893,
     "kind": "display-assignment",
     "value": "queued",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1906,
+    "line": 1908,
     "kind": "call:Error",
     "value": "This proposal is no longer pending.",
     "reason": "App-owned display copy uses common.error.proposalPending through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1909,
+    "line": 1911,
     "kind": "call:Error",
     "value": "A category batch must contain 1 to 100 items.",
     "reason": "App-owned display copy uses common.error.categoryBatchSize through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1912,
+    "line": 1914,
     "kind": "call:Error",
     "value": "An item or category changed. Ask Wiskit for a fresh proposal.",
     "reason": "App-owned display copy uses common.error.itemCategoryChanged through t(); retain this original English model/error value for default contracts and raw diagnostics. Error display metadata is consumed by captureError/nativeError or Composer words; canvasTitle is display-only."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1943,
+    "line": 1945,
     "kind": "display-assignment",
     "value": "No.",
     "reason": "Stable No.<id> item identity explicitly retained by design and English card parity; not prose."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1958,
+    "line": 1960,
     "kind": "display-assignment",
     "value": "wiskit.progress.typeFirst",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1958,
+    "line": 1960,
     "kind": "display-assignment",
     "value": "Type a question first.",
     "reason": "Original optional-words/event/default model text. This exact source line has a cataloged display path; ctxLabel/toolText/say translates presentation while retaining raw model/history values."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1965,
+    "line": 1967,
     "kind": "display-assignment",
     "value": "Reading the library…",
     "reason": "Original optional-words/event/default model text. This exact source line has a cataloged display path; ctxLabel/toolText/say translates presentation while retaining raw model/history values."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 2003,
+    "line": 2005,
     "kind": "display-assignment",
     "value": "New chat",
     "reason": "Persisted or source-derived title/category/chat text or filename default. It belongs to the library/content contract and must remain verbatim, including existing records and AI history."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 2087,
+    "line": 2089,
     "kind": "display-assignment",
     "value": "Topic/resource indexes unavailable; item and note keyword search is available.",
     "reason": "Original optional-words/event/default model text. This exact source line has a cataloged display path; ctxLabel/toolText/say translates presentation while retaining raw model/history values."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 2110,
+    "line": 2112,
     "kind": "display-assignment",
     "value": "Deep mode ·",
     "reason": "Original optional-words/event/default model text. This exact source line has a cataloged display path; ctxLabel/toolText/say translates presentation while retaining raw model/history values."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 2110,
+    "line": 2112,
     "kind": "display-assignment",
     "value": "is researching your library...",
     "reason": "Original optional-words/event/default model text. This exact source line has a cataloged display path; ctxLabel/toolText/say translates presentation while retaining raw model/history values."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 2267,
+    "line": 2269,
     "kind": "call:Error",
     "value": "no picture",
     "reason": "Internal image-loading fallback for model input; caught locally and replaced with the original link text."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 2269,
+    "line": 2271,
     "kind": "call:Error",
     "value": "no safe picture",
     "reason": "Internal unsafe-image rejection for model input; caught locally and replaced with the original link text."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 2280,
+    "line": 2282,
     "kind": "display-assignment",
     "value": "image/jpeg",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
@@ -6602,7 +6602,7 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1118,
+    "line": 1120,
     "kind": "display-assignment",
     "value": "library/meta.json",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
@@ -6693,14 +6693,14 @@
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1302,
+    "line": 1304,
     "kind": "display-assignment",
     "value": "stopped",
     "reason": "Exact internal lane/site/RPC identifier or catalog key; visible status text comes from the phone catalogs."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
-    "line": 1310,
+    "line": 1312,
     "kind": "display-assignment",
     "value": "waiting",
     "reason": "Exact internal lane/site/RPC identifier or catalog key; visible status text comes from the phone catalogs."

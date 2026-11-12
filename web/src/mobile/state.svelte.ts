@@ -26,7 +26,7 @@ import { pairedFacts, soloFacts } from './mirror/phone-facts'
 import { recoveryFact } from './mirror/recovery-fact'
 import { beginLanguageWork } from './language-switch.ts'
 import { t, type Key } from '../lib/i18n/index.ts'
-import { nativeSync, nativeSyncText } from './sync/native.svelte'
+import { nativeSync, nativeSyncText, nativePhasePct } from './sync/native.svelte'
 import { fmtAgo as agoText, fmtNum, fmtSize } from '../lib/i18n/format.ts'
 
 // A paired phone reads the Google Drive mirror (Phase 4); otherwise the desktop over USB
@@ -101,6 +101,7 @@ const hasText = (r: Row, q: string) => [r.title, r.creator, r.tags, r.desc, r.ca
 
 class Phone {
   rows: Row[] = $state.raw([])
+  selection: Set<number> | null = $state.raw(null)
   cats: Category[] = $state.raw([])
   tints: Record<string, string> = $state.raw({})
   loaded = $state(false)                    // something is on screen (from the copy or the source)
@@ -563,7 +564,8 @@ export function syncFill(run: SyncRun): number {
 // (its steps, with the changes sent first) or a refresh on its own (app start, Connect, back online)
 export function driveWork(): { text: string; pct: number | null } | null {
   if (backup.busy) return { text: backup.task?.paused ? t('shell.sync.pausingTask') : backup.step, pct: null }
-  if (nativeSync.supported && nativeSync.state === 'syncing') return nativeSync.phase === 'vault' ? null : { text: nativeSyncText(), pct: Math.min(99, Math.floor((nativeSync.progress ?? 0) * 100)) }
+  if (nativeSync.supported && nativeSync.state === 'syncing') return nativeSync.phase === 'vault' ? null : { text: t('shell.sync.reading', { where: t('shell.sync.whereDrive') }), pct: nativePhasePct() }
+  if (nativeSync.supported && nativeSync.state && nativeSync.state !== 'idle') return null
   const run = phone.sync && !phone.sync.end ? phone.sync : null
   if (!run && !phone.refreshing) return null
   const s = run?.steps.find(x => x.state === 'run')
@@ -633,7 +635,7 @@ export async function patchRows(ids: number[]) {
 export async function fillLinks(ids?: number[]) {
   const done = beginLanguageWork()
   try {
-    const got = (await mirrorSource?.linkDetails(ids).catch(() => [] as number[])) ?? []
+    const got = (await mirrorSource?.linkDetails(ids, id => patchRows([id])).catch(() => [] as number[])) ?? []
     if (got.length) await patchRows(got)
   } finally { done() }
 }
@@ -656,7 +658,7 @@ export async function runPictures() {
       const done = beginLanguageWork()
       let r: Awaited<ReturnType<MirrorSource['fillPictures']>>
       try {
-        r = await mirrorSource.fillPictures(p => { pics.done = p.done; pics.total = p.total }, () => !picRunning)
+        r = await mirrorSource.fillPictures(p => { pics.done = p.done; pics.total = p.total }, () => !picRunning, { onRow: id => patchRows([id]) })
         if (r.got.length) await patchRows(r.got)
       } finally { done() }
       if (!r.blocked && !picAgain) break

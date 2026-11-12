@@ -31,7 +31,7 @@ export interface VaultOpts { on: boolean; uri: string; name: string }
 export type VaultOutcome = '' | 'ok' | 'waiting' | 'error' | 'brake' | 'stopped'
 export const vault = $state({ opts: { on: false, uri: '', name: '' } as VaultOpts, busy: false, picking: false, stopping: false, queued: false, line: '', brake: '', step: '',
                               outcome: '' as VaultOutcome, lastAt: 0,
-                              files: null as FileCounts | null, pc: null as PcStatus | null, pcRead: false,
+                              files: null as FileCounts | null, pct: null as number | null, pc: null as PcStatus | null, pcRead: false,
                               legacy: 0 })      // leftover Content Manager/ copies the last round kept (spec 1b decision 3)
 
 export const PC_FIRST = 'The PC has not reported a vault round yet. It runs one every 30 seconds once "Sync my Obsidian vault" is on, so this can take a few minutes.'
@@ -160,7 +160,7 @@ export async function runVault(force = false, auto = false) {
   const stop = new AbortController()
   const t0 = Date.now()
   let tick = t0, stoppedAt = 0, step = '', displayStep = '', over = false          // over: the panel no longer waits for this round
-  vault.busy = true; vault.stopping = false; vault.brake = ''; vault.line = ''; vault.step = t('backup.vault.starting'); vault.files = null
+  vault.busy = true; vault.stopping = false; vault.brake = ''; vault.line = ''; vault.step = t('backup.vault.starting'); vault.files = null; vault.pct = null
   languageWorkChanged()
   halt = () => {
     if (vault.stopping) return
@@ -179,12 +179,13 @@ export async function runVault(force = false, auto = false) {
   }, 2000)
   readPc()
   running = true
-  const round = source.syncVault(force, (name, done, total, _overall, display, files) => {
+  const round = source.syncVault(force, (name, done, total, overall, display, files) => {
     tick = Date.now()
     if (over || vault.stopping) return
     step = name
     displayStep = display ?? name
     if (files) vault.files = files
+    vault.pct = overall === undefined ? null : Math.min(99, Math.max(0, Math.floor(overall * 100)))
     vault.step = `${display ?? name}${total > 0 ? ` ${done}/${total}` : ''}`
   }, stop.signal, phoneWords).then(r => ({ r }), (e: Error) => ({ e }))
   round.finally(() => { running = false; languageWorkChanged() })

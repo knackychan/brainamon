@@ -1,4 +1,10 @@
 export const messages = {
+  "library.select": "Select items",
+  "library.fetchBlocked": "The site asked to slow down. Try fetching again later.",
+  "library.fetchMissing": "No preview found. Try fetching again later.",
+  "library.selectAll": "Select all",
+  "library.selected": "{n} selected",
+  "library.cell.select": "Select {title}",
   "library.collections": "Collections",
   "library.favs": "★ Favs",
   "library.all": "All",

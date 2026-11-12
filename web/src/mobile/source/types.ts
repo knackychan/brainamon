@@ -156,6 +156,7 @@ export interface MobileSource {
   // the phone's own key. Both queue an `edit` change for the PC. describe returns the new text or null when skipped;
   // categorize returns the updated row.
   describe?(id: number, undo?: (t: ToolsUndo) => void): Promise<string | null>
+  fetchInfo?(id: number, onRow?: (id: number) => Promise<void>): Promise<Row | null>
   categorize?(id: number, categories: string[]): Promise<Row>
   // the mirror only (projects/phone-processing-flow): the Tools panel's Undo of one single-item result (one more `edit`
   // change, refused when the card changed since), and the sentence it shows when the phone has no AI key

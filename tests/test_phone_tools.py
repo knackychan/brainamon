@@ -16,6 +16,14 @@ def run(body: str):
 
 @unittest.skipUnless(_node_ok(), 'needs Node 22.6+ (type stripping)')
 class PhoneToolsTest(unittest.TestCase):
+    def test_phone_can_resume_missing_previews_without_ai_calls(self):
+        out = run("""
+            const rows = [{id:1,thumb:true,ai:false,cat:'Art',tags:''}, {id:2,thumb:false,ai:true,cat:'Art',tags:''}]
+            console.log(JSON.stringify([t.phoneTargets(rows,'thumb',false), t.phoneTargets(rows,'thumb',true),
+              t.needsConfirm('thumb',25,false), t.aiCalls('thumb',25)]))
+        """)
+        self.assertEqual(out, [[2], [1, 2], False, 0])
+
     def test_phone_targets_and_when_to_ask(self):
         out = run("""
             const rows = [{ id: 1, ai: false, cat: 'INTERESTING', tags: '' }, { id: 2, ai: true, cat: '', tags: '' },

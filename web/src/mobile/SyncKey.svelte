@@ -13,9 +13,11 @@
   let { label, amber = false, pull = 0 }: { label: string; amber?: boolean; pull?: number } = $props()
   const run = $derived(phone.sync)
   // the vault rounds and the picture queue run on their own; the Drive read is `run` / phone.refreshing
-  const lanes = $derived(syncLanes().filter(l => l.tag === 'running' && l.key !== 'drive' && l.key !== 'network'))
+  const lanes = $derived(syncLanes().filter(l => l.tag === 'running' && l.key !== 'network'))
   const running = $derived((!!run && !run.end) || phone.refreshing || lanes.length > 0)
   const fill = $derived.by(() => {
+    const lane = lanes.find(l => l.key === 'drive' || l.key === 'vault')
+    if (lane) return lane.pct === null ? null : lane.pct / 100
     if (run && !run.end) return syncFill(run)
     if (phone.refreshing) return phone.read?.frac ?? null
     const pcts = lanes.map(l => l.pct).filter((p): p is number => p !== null)

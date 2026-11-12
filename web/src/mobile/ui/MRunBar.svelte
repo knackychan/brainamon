@@ -5,16 +5,16 @@
   import type { Snippet } from 'svelte'
   import { meter } from '../tools'
 
-  type Props = { lead: string; strong?: string; right: string; total: number; done: number; skip?: number; err?: number; run?: boolean; label: string; children?: Snippet }
-  let { lead, strong = '', right, total, done, skip = 0, err = 0, run = false, label, children }: Props = $props()
+  type Props = { lead: string; strong?: string; right: string; total: number; done: number; skip?: number; err?: number; run?: boolean; indeterminate?: boolean; label: string; children?: Snippet }
+  let { lead, strong = '', right, total, done, skip = 0, err = 0, run = false, indeterminate = false, label, children }: Props = $props()
   const m = $derived(meter(total, done + skip + err))
   const w = (k: number) => `${(100 * Math.min(k, m.max) / m.max).toFixed(2)}%`
 </script>
 
 <div class="m-runbar">
   <div class="m-runbar-top"><span>{#if strong}<b>{strong}</b>{' '}{/if}{lead}</span><span>{right}</span></div>
-  <div class="m-meter" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={m.max} aria-valuenow={m.now}>
-    <i style:width={w(done)}></i><i class="m-meter-skip" style:width={w(skip)}></i><i class="m-meter-err" style:width={w(err)}></i>{#if run}<i class="m-meter-run" style:width={w(1)}></i>{/if}
+  <div class="m-meter" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={m.max} aria-valuenow={indeterminate ? undefined : m.now} aria-valuetext={lead}>
+    <i style:width={w(done)}></i><i class="m-meter-skip" style:width={w(skip)}></i><i class="m-meter-err" style:width={w(err)}></i>{#if run}<i class="m-meter-run" style:width={indeterminate ? '20%' : w(1)}></i>{/if}
   </div>
   <div class="m-runbar-keys">{@render children?.()}</div>
 </div>

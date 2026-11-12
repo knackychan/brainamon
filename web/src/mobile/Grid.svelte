@@ -89,15 +89,24 @@
     return () => { offHold(); ro.disconnect(); scroller?.removeEventListener('scroll', onScroll) }
   })
 
-  // a tap opens the Item screen, a hold does not: the engine's own numbers (design/card-designs/engine.js:
-  // a tap is an up within 380 ms, a finger that travels past 6 px is a drag), so the click the
-  // browser sends after a held or moved finger is dropped. No link menu on a long press either.
+  // Hold selects; a finger that travels past the engine's 6 px slop scrolls instead. Suppress the
+  // browser's follow-up click so neither gesture opens a card or toggles its selection twice.
   const HOLD_MS = 380, SLOP = 6
   function holdGuard(grid: HTMLElement): () => void {
     let t0 = 0, x0 = 0, y0 = 0, touching = false, held = false
-    const start = (e: TouchEvent) => { const t = e.touches[0]; if (!t) return; touching = true; held = false; t0 = performance.now(); x0 = t.clientX; y0 = t.clientY }
-    const move = (e: TouchEvent) => { const t = e.touches[0]; if (t && Math.hypot(t.clientX - x0, t.clientY - y0) > SLOP) held = true }
-    const end = () => { touching = false; if (performance.now() - t0 >= HOLD_MS) held = true }
+    let holdTimer: ReturnType<typeof setTimeout>
+    const start = (e: TouchEvent) => {
+      clearTimeout(holdTimer)
+      const t = e.touches[0], card = (e.target as Element | null)?.closest<HTMLAnchorElement>('.m-cell-a')
+      if (!t) return
+      touching = true; held = false; t0 = performance.now(); x0 = t.clientX; y0 = t.clientY
+      if (card) holdTimer = setTimeout(() => {
+        held = true
+        phone.selection = new Set([...(phone.selection ?? []), Number(card.dataset.id)])
+      }, HOLD_MS)
+    }
+    const move = (e: TouchEvent) => { const t = e.touches[0]; if (t && Math.hypot(t.clientX - x0, t.clientY - y0) > SLOP) { held = true; clearTimeout(holdTimer) } }
+    const end = () => { clearTimeout(holdTimer); touching = false; if (performance.now() - t0 >= HOLD_MS) held = true }
     const click = (e: MouseEvent) => {
       if (!held || !(e.target as Element | null)?.closest?.('.m-cell-a')) return
       e.preventDefault(); e.stopPropagation(); held = false
@@ -107,6 +116,7 @@
     const span = (e: TouchEvent) => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY)
     const touchStart = (e: TouchEvent) => {
       if (e.touches.length < 2) { if (!pinching) start(e); return }
+      clearTimeout(holdTimer)
       held = pinching = true; touching = false
       distance = span(e); pinchCols = list ? 2 : cols
       e.preventDefault()
@@ -131,6 +141,7 @@
     grid.addEventListener('click', click, true)
     grid.addEventListener('contextmenu', menu)
     return () => {
+      clearTimeout(holdTimer)
       grid.removeEventListener('touchstart', touchStart)
       grid.removeEventListener('touchmove', touchMove)
       grid.removeEventListener('touchend', touchEnd)
@@ -138,6 +149,13 @@
       grid.removeEventListener('click', click, true)
       grid.removeEventListener('contextmenu', menu)
     }
+  }
+  function select(e: MouseEvent, id: number) {
+    if (!phone.selection) return
+    e.preventDefault()
+    const next = new Set(phone.selection)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    phone.selection = next
   }
   // the card's category colour, the creator in the stub (src/lib/cards/theme.ts, then the phone's words: cards.ts themeCard);
   // a decoded image shows at once
@@ -163,9 +181,10 @@
       {@const w = work.get(r.id)}
       <!-- processing marks (work.svelte.ts): waiting, worked on, then done or failed for a moment; a Tools run's
            skipped and failed cards keep theirs until the panel closes (projects/phone-processing-flow) -->
-      <div class="m-cell" class:m-w-wait={w?.st === 'wait'} class:m-w-run={w?.st === 'run'} class:m-w-done={w?.st === 'done'} class:m-w-err={w?.st === 'err'} class:m-w-skip={w?.st === 'skip'} style:height="{rowH - gap}px">
+      <div class="m-cell" class:m-selected={phone.selection?.has(r.id)} class:m-w-wait={w?.st === 'wait'} class:m-w-run={w?.st === 'run'} class:m-w-done={w?.st === 'done'} class:m-w-err={w?.st === 'err'} class:m-w-skip={w?.st === 'skip'} style:height="{rowH - gap}px">
+        {#if phone.selection}<span class="m-select-mark" aria-hidden="true">{#if phone.selection.has(r.id)}<svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></svg>{/if}</span>{/if}
         {#if w}<span class="m-w-tag" aria-hidden="true">{workLabel(w)}</span>{#if w.st === 'run'}<span class="m-w-scan" aria-hidden="true"></span>{/if}{/if}
-        <a class="m-cell-a" href={`#/item/${r.id}`} aria-label={cellLabel(r, w)}>
+        <a class="m-cell-a" data-id={r.id} href={`#/item/${r.id}`} role={phone.selection ? 'checkbox' : undefined} aria-checked={phone.selection ? phone.selection.has(r.id) : undefined} aria-label={phone.selection ? t('library.cell.select', { title: r.title || r.url }) : cellLabel(r, w)} onclick={e => select(e, r.id)} onkeydown={e => { if (phone.selection && e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }}>
         {#if list}
           <div class="m-gallery-row">
             {#if r.thumb}<img src={source.thumbUrl(r)} alt="" loading="lazy" decoding="async" />{:else}<span class="m-gallery-cover" aria-hidden="true">{srcMark(r.url)}</span>{/if}
@@ -185,3 +204,11 @@
   </div>
   <div style:height="{botH}px"></div>
 </div>
+
+<style>
+  .m-cell-a { -webkit-touch-callout: none; user-select: none }
+  .m-selected { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 8px }
+  .m-select-mark { position: absolute; top: 6px; right: 6px; z-index: 4; display: grid; place-items: center; width: 24px; height: 24px; border: 2px solid var(--ink); border-radius: 50%; background: var(--paper); pointer-events: none }
+  .m-selected .m-select-mark { background: var(--accent) }
+  .m-select-mark svg { width: 18px; height: 18px; fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round }
+</style>

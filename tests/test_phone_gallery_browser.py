@@ -96,6 +96,135 @@ def seed_items(page, mode='mirror'):
 
 
 class PhoneGalleryBrowser(unittest.TestCase):
+    def test_mobile_dock_touch_selection_and_bulk_actions(self):
+        OUT.mkdir(parents=True, exist_ok=True)
+        with mobile_browser() as (browser, base):
+            for width, height, theme in ((320, 568, 'light'), (390, 844, 'dark')):
+                with self.subTest(width=width), synthetic_phone(browser, base, width, height, theme) as (page, errors):
+                    page.goto(base + '/mobile.html#/lib')
+                    seed_items(page)
+                    expect(page.locator('.m-top').get_by_role('button', name='Notes', exact=True)).to_be_visible()
+                    expect(page.locator('.m-dock').get_by_role('button', name='Tools', exact=True)).to_be_visible()
+                    key = page.locator('.m-lib-tools')
+                    panel = page.get_by_role('dialog', name='Tools', exact=True)
+                    # A second real touch closes Tools without activating the page below it.
+                    box = key.bounding_box()
+                    point = (box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+                    page.touchscreen.tap(*point)
+                    expect(panel).to_be_visible()
+                    page.touchscreen.tap(*point)
+                    expect(panel).to_have_count(0)
+                    expect(page).to_have_url(base + '/mobile.html#/lib')
+                    self.assertEqual(page.evaluate("async()=>(await import('/src/mobile/state.svelte.ts')).phone.cat"), 'Art')
+
+                    # The fixed dock opens upward even after the toolbar has scrolled away.
+                    page.locator('.m-main').evaluate('e=>e.scrollTop=1500')
+                    key.click()
+                    bounds = panel.bounding_box()
+                    self.assertLess(bounds['y'] + bounds['height'], key.bounding_box()['y'])
+                    expect(panel.get_by_role('button', name='Fetch link info', exact=True)).to_be_visible()
+                    # Touch the narrow gap over the dock, where a library card is underneath.
+                    page.touchscreen.tap(width / 2, bounds['y'] + bounds['height'] + 4)
+                    expect(panel).to_have_count(0)
+                    expect(page).to_have_url(base + '/mobile.html#/lib')
+
+                    page.locator('.m-main').evaluate('e=>e.scrollTop=0')
+                    first = page.locator('.m-cell-a[href="#/item/1"]')
+                    first.scroll_into_view_if_needed()
+                    box = first.bounding_box()
+                    client = page.context.new_cdp_session(page)
+                    client.send('Input.dispatchTouchEvent', {'type':'touchStart','touchPoints':[{'x':box['x']+box['width']/2,'y':box['y']+30,'id':1}]})
+                    page.wait_for_timeout(450)
+                    client.send('Input.dispatchTouchEvent', {'type':'touchEnd','touchPoints':[]})
+                    expect(first).to_have_attribute('role', 'checkbox')
+                    expect(first).to_have_attribute('aria-checked', 'true')
+                    second = page.locator('.m-cell-a[href="#/item/2"]')
+                    second.tap()
+                    expect(second).to_have_attribute('aria-checked', 'true')
+                    expect(page).to_have_url(base + '/mobile.html#/lib')
+                    page.evaluate('''async()=>{
+                      const {source}=await import('/src/mobile/state.svelte.ts'); const f=window.__items;
+                      f.calls=[];source.describe=async id=>{
+                        f.calls.push(id);if(f.calls.length===2)await new Promise(resolve=>f.finish=resolve);
+                        f.rows.set(id,{...f.rows.get(id),ai:true,desc:'New summary '+id});return 'New summary '+id;
+                      };
+                      source.synthesize=async(topic,ids)=>{f.synth=ids;return {file:'',queued:false}};
+                    }''')
+                    key.click()
+                    expect(panel.locator('.m-tl-scope')).to_have_text('2 selected · 2')
+                    panel.get_by_role('button', name='Describe', exact=True).click()
+                    page.wait_for_function('window.__items.calls.length===2')
+                    self.assertTrue(page.evaluate("async()=>(await import('/src/mobile/state.svelte.ts')).phone.byId.get(1).ai"))
+                    self.assertEqual(page.evaluate('window.__items.calls'), [1, 2])
+                    page.evaluate('window.__items.finish()')
+                    panel.get_by_role('button', name='Done', exact=True).click()
+                    expect(panel.get_by_role('button', name='Describe', exact=True)).to_be_visible()
+                    panel.get_by_text('More', exact=True).click()
+                    panel.get_by_role('textbox', name='Note topic', exact=True).fill('Selected ideas')
+                    panel.get_by_role('button', name='Synthesize a note', exact=True).click()
+                    page.wait_for_function('!!window.__items.synth')
+                    self.assertEqual(page.evaluate('window.__items.synth'), [1, 2])
+                    page.keyboard.press('Escape')
+                    page.locator('.m-main').evaluate('e=>e.scrollTop=0')
+                    page.screenshot(path=str(OUT / f'selected-{width}-{theme}.png'))
+                    page.get_by_role('button', name='Cancel', exact=True).click()
+                    expect(first).not_to_have_attribute('role', 'checkbox')
+                    self.assertEqual(errors, [])
+
+    def test_fetch_previews_without_an_ai_key_and_retry_only_failed_items(self):
+        with mobile_browser() as (browser, base), synthetic_phone(browser, base, 390, 844, 'light') as (page, errors):
+            page.goto(base + '/mobile.html#/lib')
+            seed_items(page)
+            page.evaluate('''async()=>{
+              const {phone,source}=await import('/src/mobile/state.svelte.ts');const f=window.__items;
+              f.calls=[];source.ai=()=>null;
+              for(const id of [1,2])f.rows.set(id,{...f.rows.get(id),thumb:false});
+              phone.rows=[f.rows.get(1),f.rows.get(2)];
+              source.fetchInfo=async id=>{
+                f.calls.push(id);
+                if(id===2&&!f.retry)throw new Error('Synthetic interrupted fetch');
+                const row={...f.rows.get(id),thumb:true,tv:10};f.rows.set(id,row);return row;
+              };
+            }''')
+            page.locator('.m-lib-tools').click()
+            panel = page.get_by_role('dialog', name='Tools', exact=True)
+            expect(panel.get_by_role('button', name='Describe', exact=True)).to_be_disabled()
+            fetch = panel.get_by_role('button', name='Fetch link info', exact=True)
+            expect(fetch).to_be_enabled()
+            fetch.click()
+            retry = panel.get_by_role('button', name='Retry 1 failed', exact=True)
+            expect(retry).to_be_visible()
+            self.assertEqual(page.evaluate('window.__items.calls'), [1, 2])
+            page.evaluate('window.__items.retry=true')
+            retry.click()
+            expect(panel.locator('.m-runbar')).to_contain_text('2 fetched')
+            self.assertEqual(page.evaluate('window.__items.calls'), [1, 2, 2])
+            page.keyboard.press('Escape')
+            expect(page.locator('.m-cell-a[href="#/item/2"] img.art')).to_be_visible()
+            self.assertEqual(errors, [])
+
+    def test_preview_queue_refreshes_before_the_batch_ends(self):
+        with mobile_browser() as (browser, base), synthetic_phone(browser, base, 390, 844, 'light') as (page, errors):
+            page.goto(base + '/mobile.html#/lib')
+            seed_items(page)
+            page.evaluate('''async()=>{
+              const s=await import('/src/mobile/state.svelte.ts');const f=window.__items;
+              f.rows.set(2,{...f.rows.get(2),thumb:false});s.phone.rows=[...f.rows.values()];
+              s.mirrorSource.fillPictures=async(step,stop,options)=>{
+                f.rows.set(2,{...f.rows.get(2),thumb:true,tv:99});
+                await options.onRow(2);
+                await new Promise(resolve=>f.finishPictures=resolve);
+                return {got:[2],blocked:false};
+              };
+              window.__picturesRun=s.runPictures();
+            }''')
+            page.wait_for_function('!!window.__items.finishPictures')
+            expect(page.locator('.m-cell-a[href="#/item/2"] img.art')).to_be_visible()
+            self.assertEqual(page.evaluate("async()=>(await import('/src/mobile/state.svelte.ts')).pics.state"), 'run')
+            page.evaluate('window.__items.finishPictures()')
+            page.evaluate('window.__picturesRun')
+            self.assertEqual(errors, [])
+
     def test_tools_popover(self):
         with mobile_browser() as (browser, base):
             for theme in ('light', 'dark'):
@@ -114,7 +243,10 @@ class PhoneGalleryBrowser(unittest.TestCase):
                         bounds, anchor = panel.bounding_box(), key.bounding_box()
                         self.assertGreaterEqual(bounds['x'], 0)
                         self.assertLessEqual(bounds['x'] + bounds['width'], 360)
-                        self.assertGreaterEqual(bounds['y'], anchor['y'] + anchor['height'] - 2)
+                        if screen == 'library':
+                            self.assertLessEqual(bounds['y'] + bounds['height'], anchor['y'])
+                        else:
+                            self.assertGreaterEqual(bounds['y'], anchor['y'] + anchor['height'] - 2)
                         self.assertLessEqual(bounds['y'] + bounds['height'], 780)
                         for control in (panel.get_by_role('button', name='Describe', exact=True),
                                         panel.get_by_role('button', name='Auto-categorize', exact=True),

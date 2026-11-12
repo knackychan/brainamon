@@ -2,6 +2,12 @@ import type { messages as English } from '../en/library.ts'
 import type { Localized } from '../en/index.ts'
 
 export const messages = {
+  "library.select": "Sélectionner des éléments",
+  "library.fetchBlocked": "Le site demande de ralentir. Réessayez la récupération plus tard.",
+  "library.fetchMissing": "Aucun aperçu trouvé. Réessayez la récupération plus tard.",
+  "library.selectAll": "Tout sélectionner",
+  "library.selected": "{n} sélectionnés",
+  "library.cell.select": "Sélectionner {title}",
   "library.collections": "Collections",
   "library.favs": "★ Favoris",
   "library.all": "Tout",

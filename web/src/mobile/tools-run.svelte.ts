@@ -1,4 +1,4 @@
-// The Tools panel's runs (projects/phone-processing-flow, decision 3): the phone's own-key Describe and
+// The Tools panel's runs (projects/phone-processing-flow, decision 3): preview fetching, the phone's own-key Describe and
 // Auto-categorize loop, and the start, stop and follow-ups of a PC job, outside the panel so that closing it leaves the
 // run going (ToolsRing.svelte draws its ring on the Tools key). The state is work.svelte.ts `runs`; the PC's side is
 // filled by its job events (pc-jobs.svelte.ts). A failure never ends a run: the item is marked and the next one starts.
@@ -12,7 +12,7 @@ import { t } from '../lib/i18n/index.ts'
 import { captureError } from './capture-words.ts'
 import { api } from '../lib/api'
 import { claimPcJob, pcHooks, reconcile, type Snap } from './pc-jobs.svelte'
-import { phone, refresh, replaceRow, source } from './state.svelte'
+import { patchRows, phone, refresh, replaceRow, source } from './state.svelte'
 import { beginLanguageWork, registerLanguageCheck } from './language-switch.ts'
 import { GONE, NOTHING_TO_DESCRIBE, PHONE_LIMIT, UndoRefused, type Act, type StepKind } from './tools'
 import { clearKept, endLane, endWork, keepWork, newRun, queueWork, runs, startWork, WORK_TAG, type Run, type RunItem, type RunScope } from './work.svelte'
@@ -26,7 +26,7 @@ const itemsOf = (ids: number[]): RunItem[] => ids.map(id => ({ id, uid: uidOf(id
 export const lane = (): 'phone' | 'pc' => (source.kind === 'desktop' ? 'pc' : 'phone')
 export const current = (): Run | null => runs[lane()]
 export const running = (): boolean => !!current() && !current()!.ended
-// the Library keeps its Tools key while a run exists, even when the filter shows no card
+// A run stays reachable even when the selection or filter is empty.
 export const hasRun = (): boolean => !!current()
 
 // the screen showing the item or the list refreshes itself when a run ends or is undone; the screen registers on
@@ -58,7 +58,7 @@ function live(it: RunItem) {
 
 // ── the phone's own loop ──────────────────────────────────────────────────────────────────────────────────────────
 export interface PhoneStart { rest?: number[]; rerun?: boolean; scope: RunScope }
-export function runPhone(kind: 'describe' | 'categorize', ids: number[], o: PhoneStart): Promise<void> | undefined {
+export function runPhone(kind: 'thumb' | 'describe' | 'categorize', ids: number[], o: PhoneStart): Promise<void> | undefined {
   if (!ids.length || running()) return undefined
   clearKept('phone')
   runs.phone = newRun('phone', kind, itemsOf(ids), { rest: itemsOf(o.rest ?? []), rerun: !!o.rerun, scope: o.scope })
@@ -68,7 +68,7 @@ export function runPhone(kind: 'describe' | 'categorize', ids: number[], o: Phon
 // works through these entries of the ledger in order. An attempt on a subset (Retry, Continue) leaves the other
 // entries as they were; an entry waits as it was until its turn.
 async function drive(run: Run, ids: number[]) {
-  const kind = run.kind as 'describe' | 'categorize'
+  const kind = run.kind as 'thumb' | 'describe' | 'categorize'
   const tag = WORK_TAG[kind]
   const single = run.scope.item && run.items.length === 1
   run.ended = false; run.stopping = false; run.why = ''
@@ -90,7 +90,11 @@ async function drive(run: Run, ids: number[]) {
       it.st = 'run'; it.why = ''
       startWork('phone', tag, it.id)
       try {
-        if (kind === 'describe') {
+        if (kind === 'thumb') {
+          const updated = await source.fetchInfo!(it.id, id => patchRows([id]))
+          if (!updated) { it.st = 'skip'; it.why = t('library.fetchMissing'); keepWork(it.id, 'skip', 'phone'); run.attempt.done++; continue }
+          replaceRow(updated)
+        } else if (kind === 'describe') {
           const text = await source.describe!(it.id, t => { if (single) run.undo = t })
           if (text === null) { it.st = 'skip'; it.why = t('processing.error.noText'); keepWork(it.id, 'skip', 'phone'); run.attempt.done++; continue }
           run.text = text

@@ -138,9 +138,14 @@ button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px so
 .m-syncp-err i{color:var(--m-warn)}
 .m-syncp-end{margin:0 0 8px}
 .m-syncp-end.err{color:var(--m-danger)}
-.m-syncp-lane{padding:6px 0 2px;border-top:1px solid var(--wg-line)}
-.m-syncp-bar{display:block;height:4px;margin:4px 0 2px;border-radius:2px;background:var(--wg-line);overflow:hidden}
-.m-syncp-bar b{display:block;height:100%;background:var(--accent);transition:width .25s ease-out}
+.m-syncp-lane{display:flex;flex-direction:column;gap:4px;padding:8px 0;border-top:1px solid var(--wg-line);overflow-wrap:anywhere}
+.m-syncp-lane-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px}
+.m-syncp-lane-head>span{color:var(--case-dim)}
+.m-syncp-lane>p{margin:0}
+.m-syncp-lane .m-runbar{position:static;padding:0;border:0;border-radius:0;box-shadow:none;gap:6px;background:none}
+.m-syncp-lane .m-runbar-top{padding:0}
+.m-syncp-lane .m-meter{margin:0}
+.m-syncp-lane .m-runbar-keys:empty{display:none}
 .m-syncp-btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 /* the owner-fixable line (OwnerLine.svelte): under the top bar, a page's app bar or a sheet's head */
 .m-strip{flex:none;display:flex;flex-direction:column;padding:0 12px;background:var(--case-hi);border-bottom:1px solid var(--wg-edge);font:600 11px/1.3 var(--mono);letter-spacing:.04em;color:var(--case-ink)}

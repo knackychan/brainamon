@@ -43,6 +43,7 @@
   <MKey as="a" href="#/more" aria-label={t('shell.settings')} title={t('shell.settings')}><img src="/brand/icon.svg" alt="" width="22" height="22" /></MKey>
   <MKey as="a" href="#/lib" tone={r.tab === 'lib' ? 'dark' : 'plain'} wide={r.tab === 'lib'} aria-label={t('shell.route.library')} title={t('shell.route.library')} aria-current={r.tab === 'lib' ? 'page' : undefined}><ShellIcon name="lib" on={r.tab === 'lib'} />{#if r.tab === 'lib'}<span>{t('shell.route.library')}</span>{/if}</MKey>
   <MKey as="a" href="#/canvas" tone={r.tab === 'cv' ? 'dark' : 'plain'} wide={r.tab === 'cv'} aria-label={t('shell.route.canvas')} title={t('shell.route.canvas')} aria-current={r.tab === 'cv' ? 'page' : undefined}><ShellIcon name="cv" on={r.tab === 'cv'} />{#if r.tab === 'cv'}<span>{t('shell.route.canvas')}</span>{/if}</MKey>
+  <MKey class="m-vt-notes" aria-label={t('shell.route.notes')} title={t('shell.route.notes')} onclick={() => go('#/notes')}><ShellIcon name="notes" /></MKey>
   <SyncKey {label} {amber} {pull} />
   <span class="m-top-slot" aria-hidden="true"></span>
   <div class="m-find" class:open={searching}>

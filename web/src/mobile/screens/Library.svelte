@@ -2,11 +2,9 @@
   // 01 Library: collection chips and the card grid; in search (#/search, the top bar's field in TopBar.svelte:
   // keyword, Smart by meaning) the chips and Get started step aside, and a search can become a synthesized
   // note (Notes > Synthesize). Under the chips one toolbar (plans/06-library-toolbar.md): the title, three round
-  // keys (Sort, the view switch, Tools) and one summary line (count, order, backup status).
+  // keys (Sort, the view switch, Select) and one summary line (count, order, backup status).
   import Grid from '../Grid.svelte'
-  import Processing from '../Processing.svelte'
-  import ToolsRing from '../ToolsRing.svelte'
-  import { hasRun } from '../tools-run.svelte'
+  import { onDestroy } from 'svelte'
   import GetStarted from '../GetStarted.svelte'
   import Sprite from '../Sprite.svelte'
   import { phoneEmpty } from '../../lib/onboarding'
@@ -23,8 +21,8 @@
   let { scroller }: { scroller: HTMLElement | undefined } = $props()
   const chips = $derived([{ key: 'all', label: t('library.all'), n: phone.rows.length }, ...phone.cats.filter(c => c.count).map(c => ({ key: c.name, label: c.name, n: c.count }))])
   const heading = $derived(phone.q.trim() ? t('library.heading.results') : phone.fav ? t('library.heading.favourites') : phone.cat === 'all' ? t('library.heading.all') : phone.cat)
-  let processRows = $state<import('../source/types').Row[] | null>(null)
-  let toolsKey: HTMLButtonElement | HTMLAnchorElement | HTMLLabelElement | undefined = $state()
+  $effect(() => { phone.cat; phone.fav; phone.q; phone.selection = null })
+  onDestroy(() => { phone.selection = null })
   // the view key shows the layout it switches to; Grid is three columns (a pinch still picks 2, 3 or 4)
   const rowsView = $derived(phone.gallery === 'rows')
   // the summary line: how many cards, in which order, and whether the library lives only on this phone
@@ -34,7 +32,6 @@
   const order = $derived(phone.rank && phone.q.trim() ? t('library.order.meaning') : t(ORDER[phone.sort]))
   // Google Drive is an add-on: words on the summary line, never a block in the way of the cards
   const phoneOnly = $derived(solo && counted && !phone.signIn && (phone.synced, phone.tokenAt, !driveLinked()))
-  function tools() { processRows = processRows ? null : [...phone.visible] }
   // the library with no card at all (spec P3): one line and one key
   const empty = $derived(phoneEmpty(onb.answer, !!mirrorSource && !solo))
   function emptyGo() {
@@ -54,16 +51,21 @@
   {/each}
 </div>
 {/if}
-<div class="m-mathd">
-  <h3>{heading}</h3>
+<div class="m-mathd" class:m-selecting={phone.selection !== null}>
+  <h3>{phone.selection ? t('library.selected', { n: phone.selection.size }) : heading}</h3>
   <span class="m-sp"></span>
+  {#if phone.selection}
+    <MButton size="sm" onclick={() => phone.selection = new Set(phone.visible.map(r => r.id))}>{t('library.selectAll')}</MButton>
+    <MButton size="sm" onclick={() => phone.selection = null}>{t('common.cancel')}</MButton>
+  {:else}
   {#if phone.q.trim() && phone.visible.length}<MButton as="a" size="sm" href={`#/synth/${encodeURIComponent(phone.q.trim())}`}>{t('library.synthesize')}</MButton>{/if}
   <div class="m-lib-keys">
     {#if phoneOnly}<MInfo class="m-key m-lib-phone" title={t('library.phoneOnly.title')}>{#snippet icon()}<ShellIcon name="phone" /><span class="m-phone-badge"><ShellIcon name="check" /></span>{/snippet}<p>{t('library.phoneOnly.body')}</p></MInfo>{/if}
     <MKey as="label" class="m-lib-sort" title={t('library.sort.title')}><ShellIcon name="sort" /><select bind:value={phone.sort} aria-label={t('library.sort.title')}>{#each sorts() as [k, label] (k)}<option value={k as Sort}>{label}</option>{/each}</select></MKey>
     <MKey class="m-lib-view" aria-label={rowsView ? t('library.view.grid') : t('library.view.rows')} title={rowsView ? t('library.view.grid') : t('library.view.rows')} onclick={() => phone.gallery = rowsView ? '3' : 'rows'}><ShellIcon name={rowsView ? 'lib' : 'rows'} /></MKey>
-    {#if phone.visible.length || processRows || hasRun()}<MKey bind:ref={toolsKey} class="m-lib-tools" aria-label={t('common.tools')} title={t('common.tools')} aria-haspopup="dialog" aria-describedby="m-tools-status" aria-expanded={!!processRows} tone={processRows ? 'dark' : 'plain'} onclick={tools}><ShellIcon name="tools" /><ToolsRing open={!!processRows} /></MKey><ToolsRing open={!!processRows} status />{/if}
+    {#if phone.visible.length}<MKey class="m-lib-select" aria-label={t('library.select')} title={t('library.select')} onclick={() => phone.selection = new Set()}><ShellIcon name="check" /></MKey>{/if}
   </div>
+  {/if}
 </div>
 {#if counted || phone.signIn}
 <!-- the status words and their (i) never break apart: with large phone text they move down together -->
@@ -72,7 +74,6 @@
 </div>
 {/if}
 {#if phone.smart && phone.smartNote && phone.q.trim()}<div class="m-lib-sum" role="status">{phone.smartNote}</div>{/if}
-{#if processRows}<Processing rows={processRows} anchor={toolsKey} {heading} close={() => processRows = null} />{/if}
 {#if phone.loaded && !phone.route.search}<GetStarted />{/if}
 {#if phone.error && !phone.rows.length && !phone.signIn}
   <div class="m-err">{libraryError}<br /><MButton size="sm" style="margin-top:8px" onclick={() => refresh()}>{t('common.tryAgain')}</MButton></div>
@@ -97,6 +98,7 @@
 {/if}
 
 <style>
+  .m-selecting { position: sticky; top: 0; z-index: 5; background: var(--felt); flex-wrap: wrap }
   .m-ob-empty { display: grid; justify-items: center; gap: 8px; padding: 36px 24px 24px; text-align: center }
   .m-ob-empty :global(.m-sprite) { width: 144px; height: 84px }
   .m-ob-empty h3 { margin: 6px 0 0; font: 800 20px/1.2 var(--display); font-stretch: 85% }

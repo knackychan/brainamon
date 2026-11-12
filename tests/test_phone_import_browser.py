@@ -334,6 +334,48 @@ class PhoneImportBrowser(unittest.TestCase):
             self.assertFalse(page.evaluate("async()=> (await import('/src/mobile/store.ts')).kv.get('site-runs').then(x=>x.threads.complete)"))
             self.assertEqual(errors, [])
 
+    def test_manual_details_refresh_despite_cache_failure_before_pictures_finish(self):
+        with mobile_browser() as (browser, base), synthetic_phone(browser, base, 390, 844, 'light') as (page, errors):
+            page.add_init_script("localStorage.setItem('bp-sync-paused','on')")
+            page.route('**/src/mobile/native.ts', lambda route: route.fulfill(content_type='application/javascript', body=NATIVE + '''
+export const isApp=true;
+export async function linkGet(){return {status:200,text:'<title>Fetched title</title><meta property="og:image" content="https://example.com/image.jpg">'}};
+export async function linkImage(){
+  const c=document.createElement('canvas');c.width=2;c.height=2;
+  return Uint8Array.from(atob(c.toDataURL('image/png').split(',')[1]),x=>x.charCodeAt(0));
+}
+'''))
+            page.goto(base + '/mobile.html#/lib')
+            page.wait_for_function("async()=>{const s=await import('/src/mobile/state.svelte.ts');return s.phone.tried && !s.phone.refreshing && s.pics.state==='idle'}")
+            page.evaluate('''async()=>{
+              const {mirrorSource:s,patchRows,phone}=await import('/src/mobile/state.svelte.ts');
+              const {runPhone}=await import('/src/mobile/tools-run.svelte.ts');
+              const saved=await s.saveLink('https://example.com/post');
+              await patchRows([saved.id]);
+              (await import('/src/mobile/network.svelte.ts')).network.manualPause=false;
+              const put=Cache.prototype.put;
+              Cache.prototype.put=async()=>{throw new Error('Synthetic cache quota failure')};
+              s.fillPictures=()=>new Promise(resolve=>window.__finishPictures=()=>resolve({got:[],blocked:false}));
+              window.__fetchId=saved.id;
+              window.__fetchRun=runPhone('thumb',[saved.id],{scope:{item:false,heading:'Test',count:1}})
+                .finally(()=>Cache.prototype.put=put);
+            }''')
+            page.wait_for_function('() => !!window.__finishPictures')
+            result = page.evaluate('''async()=>{
+              const {phone}=await import('/src/mobile/state.svelte.ts');
+              const {runs}=await import('/src/mobile/work.svelte.ts');
+              const {changes}=await import('/src/mobile/store.ts');
+              return {row:phone.byId.get(window.__fetchId),ended:runs.phone.ended,
+                saved:(await changes.all()).some(e=>e.op==='details' && e.thumb)};
+            }''')
+            self.assertEqual(result['row']['title'], 'Fetched title')
+            self.assertTrue(result['row']['thumb'])
+            self.assertTrue(result['saved'])
+            self.assertFalse(result['ended'])
+            page.evaluate('window.__finishPictures()')
+            page.evaluate('window.__fetchRun')
+            self.assertEqual(errors, [])
+
     def test_threads_local_hint_and_page_fallback(self):
         with mobile_browser() as (browser, base), synthetic_phone(browser, base, 390, 844, 'light') as (page, errors):
             # Keep startup picture work from consuming this test's direct-source fixtures.
@@ -354,19 +396,28 @@ export async function linkGet(url){return {status:200,text:'<meta property="og:i
             result = page.evaluate('''async()=>{
               const {mirrorSource:s}=await import('/src/mobile/state.svelte.ts');
               const {kv,changes}=await import('/src/mobile/store.ts');
+              const fillPictures=s.fillPictures.bind(s);
+              s.fillPictures=async()=>({got:[],blocked:false}); // Keep automatic refreshes out of this direct-source check.
               (await import('/src/mobile/network.svelte.ts')).network.manualPause=false;
               const make=code=>({url:'https://www.threads.com/@sam.example/post/'+code,at:0,caption:'',creator:'',tags:''});
               await s.importLinks([make('HintCode1')]);
               await s.addPicHints([['https://www.threads.net/@renamed.user/post/HintCode1','https://scontent.cdninstagram.com/good.jpg']]);
               const indexed=await kv.get('site-pics');
-              const first=await s.fillPictures(()=>{},()=>false);
+              const painted=[];
+              const first=await fillPictures(()=>{},()=>false,{onRow:async id=>{
+                const row=(await s.rowsByIds([id]))[0];
+                painted.push({id,thumb:row.thumb,cached:!!(await (await caches.open('bp-thumbs-v1')).match(s.thumbUrl(row)))});
+              }});
               await s.importLinks([make('Fallback1')]);
               await s.addPicHints([[make('Fallback1').url,'https://scontent.cdninstagram.com/expired.jpg']]);
-              const fallback=await s.fillPictures(()=>{},()=>false);
-              return {indexed,first,fallback,calls:window.__pictures,stored:await changes.all()};
+              const fallback=await fillPictures(()=>{},()=>false);
+              return {indexed,first,fallback,painted,calls:window.__pictures,stored:await changes.all()};
             }''')
             self.assertIn('https://www.threads.com/@sam.example/post/HintCode1', result['indexed'])
-            self.assertEqual(len(result['first']['got']), 1)
+            self.assertEqual(len(result['first']['got']), 1, result)
+            self.assertEqual(result['painted'][0]['id'], result['first']['got'][0])
+            self.assertTrue(result['painted'][0]['thumb'])
+            self.assertTrue(result['painted'][0]['cached'])
             self.assertEqual(len(result['fallback']['got']), 1)
             self.assertEqual(result['calls'], ['https://scontent.cdninstagram.com/good.jpg',
                 'https://scontent.cdninstagram.com/expired.jpg', 'https://xx.fbcdn.net/fallback.jpg'])
@@ -617,12 +668,23 @@ export async function linkGet(url) {
               await s.addPicHints([[make(1234567892).url,'https://scontent.xx.fbcdn.net/expired.jpg']]);
               window.__refusePage=true;
               const refused=await s.fillPictures(()=>{},()=>false);
-              return {first,fallback,refused,calls:window.__pictures};
+              const callsBeforeRetry=[...window.__pictures];
+              // A manual restart retries this item, including its earlier failed page request.
+              const id=(await s.rows()).rows.find(r=>r.url===make(1234567892).url).id;
+              await s.importLinks([make(1234567893)]);
+              window.__refusePage=false;
+              const retried=await s.fetchInfo(id);
+              const waiting=(await s.rowsByIds([(await s.rows()).rows.find(r=>r.url===make(1234567893).url).id]))[0];
+              return {first,fallback,refused,retried,waiting,calls:callsBeforeRetry,retryCalls:window.__pictures.slice(callsBeforeRetry.length)};
             }''')
             self.assertEqual(len(result['first']['got']), 1, result)
             self.assertEqual(len(result['fallback']['got']), 1)
             self.assertFalse(result['fallback']['blocked'])
             self.assertTrue(result['refused']['blocked'])
+            self.assertIsNotNone(result['retried'], result)
+            self.assertTrue(result['retried']['thumb'])
+            self.assertFalse(result['waiting']['thumb'])
+            self.assertEqual(result['retryCalls'], ['https://www.facebook.com/reel/1234567892/', 'https://scontent.xx.fbcdn.net/fallback.jpg'])
             self.assertEqual(result['calls'], ['https://scontent.xx.fbcdn.net/good.jpg',
                 'https://scontent.xx.fbcdn.net/expired.jpg', 'https://www.facebook.com/reel/1234567891/',
                 'https://scontent.xx.fbcdn.net/fallback.jpg', 'https://scontent.xx.fbcdn.net/expired.jpg',

@@ -258,7 +258,7 @@ def phone_runs(page, width, height):
     expect(panel.get_by_role('button', name='Next 25', exact=True)).to_be_visible()      # 51..75 are still to come
     panel.get_by_role('button', name='Done', exact=True).click()
     expect(panel.get_by_role('button', name='Describe', exact=True)).to_be_visible()
-    expect(panel.get_by_role('button', name='Describe', exact=True)).to_be_focused()     # after Done focus goes back to the first step
+    expect(panel.get_by_role('button', name='Fetch link info', exact=True)).to_be_focused()  # after Done focus goes back to the first step
     expect(panel.locator('.m-step-rec')).to_contain_text('without a summary')
     esc(page)
     expect(page.locator('.m-cell.m-w-skip')).to_have_count(0)

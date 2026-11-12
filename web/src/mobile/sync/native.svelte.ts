@@ -24,6 +24,12 @@ const states: Record<string, Key> = {
   attention: 'settings.sync.native.attention', key: 'settings.sync.native.attention', unsupported: 'settings.sync.native.unsupported',
 }
 export const nativeSyncText = (state = nativeSync.state) => t(states[state] ?? 'settings.sync.native.attention')
+export function nativePhasePct(): number | null {
+  if (nativeSync.progress === undefined) return null
+  // SyncRunner reserves 0–40% for Drive and 40–99% for the vault; each lane shows its own progress.
+  const fraction = nativeSync.phase === 'vault' ? (nativeSync.progress - 0.4) / 0.59 : nativeSync.progress / 0.4
+  return Math.min(99, Math.max(0, Math.round(fraction * 100)))
+}
 export const nativeSyncError = (code: string) => Object.assign(new Error(nativeSyncText(code)), { code, displayKey: states[code] })
 let support: Promise<boolean> | undefined
 let implemented = false, disabled: Promise<unknown> | undefined

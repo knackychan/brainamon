@@ -2,6 +2,17 @@
 
 Every release bumps `core/version.py` and adds a section here in the same commit. Newest first.
 
+## 1.1.6 - 2026-11-12
+
+- Refreshes the desktop installer and bundled phone interface with the latest fixes.
+- Phone: smoother gallery navigation and pull-to-refresh, with clearer sync and processing progress.
+- Phone: updated processing controls and narrow-screen layouts.
+
+## Android 137.1.06 - 2026-11-12
+
+- Reduced Android code size with release optimization, obfuscation and resource shrinking.
+- Improved gallery, pull-to-refresh, processing controls and sync progress.
+
 ## 1.1.5 - 2026-11-12
 
 - Includes the Settings, backup, background sync and import improvements prepared for 1.1.4.

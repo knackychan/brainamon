@@ -1,4 +1,8 @@
 # Add project specific ProGuard rules here.
+# BrainamonPlugin loads SiteReader by name; the release payload guard also checks its name.
+-keep,allowoptimization class app.brainamon.mobile.SiteReader {
+    public <init>();
+}
 # You can control the set of applied configuration files using the
 # proguardFiles setting in build.gradle.
 #

@@ -64,10 +64,10 @@ export class UndoRefused extends Error {}
 
 // What a step still has to do for a row on the phone (the mirror): Describe for a card without an AI description,
 // Auto-categorize for an unsorted card (INTERESTING or none) without tags. Run again takes every row.
-export function phoneNeeds(r: { ai: boolean; cat: string; tags: string }, kind: StepKind): boolean {
-  return kind === 'describe' ? !r.ai : kind === 'categorize' ? (r.cat === 'INTERESTING' || !r.cat) && !r.tags : false
+export function phoneNeeds(r: { ai: boolean; cat: string; tags: string; thumb?: boolean }, kind: StepKind): boolean {
+  return kind === 'thumb' ? !r.thumb : kind === 'describe' ? !r.ai : kind === 'categorize' ? (r.cat === 'INTERESTING' || !r.cat) && !r.tags : false
 }
-export function phoneTargets(rows: { id: number; ai: boolean; cat: string; tags: string }[], kind: StepKind, rerun: boolean): number[] {
+export function phoneTargets(rows: { id: number; ai: boolean; cat: string; tags: string; thumb?: boolean }[], kind: StepKind, rerun: boolean): number[] {
   return rows.filter(r => rerun || phoneNeeds(r, kind)).map(r => r.id)
 }
 

@@ -2,6 +2,12 @@ import type { messages as English } from '../en/library.ts'
 import type { Localized } from '../en/index.ts'
 
 export const messages = {
+  "library.select": "選取項目",
+  "library.fetchBlocked": "網站要求放慢速度，請稍後再試。",
+  "library.fetchMissing": "找不到預覽，請稍後再試。",
+  "library.selectAll": "全選",
+  "library.selected": "已選取 {n} 個",
+  "library.cell.select": "選取 {title}",
   "library.collections": "收藏分類",
   "library.favs": "★ 最愛",
   "library.all": "全部",

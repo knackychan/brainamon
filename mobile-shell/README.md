@@ -64,6 +64,12 @@ Play signing/OAuth registration. No official signing trust is changed.
 
 ## Own-key release builds and official releases
 
+Release builds use R8 code optimization, obfuscation and resource shrinking. Capacitor
+supplies the plugin bridge keep rules; `app/proguard-rules.pro` preserves the site
+reader loaded by name. Test sign-in, QR scanning, site reading and background sync
+in the optimized release before publishing. Keep `android/app/build/outputs/mapping/release/`
+with each release's artifacts so obfuscated crash traces can be decoded.
+
 For a local release build, create your own key outside the checkout using
 `keytool -genkeypair` (it prompts for passwords). Set all six explicit variables
 below in your build terminal, then run Gradle; do not use the official script to

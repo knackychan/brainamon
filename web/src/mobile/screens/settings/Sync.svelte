@@ -65,8 +65,8 @@
         </MRow>
         {#if l.files}
           <MHint>{t('backup.vault.verified', l.files)}</MHint>
-          {#if l.active && l.files.total > 0}<MRunBar lead={l.name} right={`${l.files.done}/${l.files.total}`} total={l.files.total} done={l.files.done} run={l.tag === 'running'} label={t('backup.vault.verified', l.files)} />{/if}
-        {:else if l.active && l.pct !== null}<MRunBar lead={l.name} right={`${l.pct}%`} total={100} done={l.pct} run={l.tag === 'running'} label={t('settings.sync.progress', { name: l.name })} />{/if}
+        {/if}
+        {#if l.active && (l.pct !== null || l.tag === 'running')}<MRunBar lead={l.text} right={l.pct === null ? '…' : `${l.pct}%`} total={100} done={l.pct ?? 0} indeterminate={l.pct === null} run={l.tag === 'running'} label={t('settings.sync.progress', { name: l.name })} />{/if}
       </div>
     {/each}
   </MCard>

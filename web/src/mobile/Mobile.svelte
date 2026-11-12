@@ -125,6 +125,12 @@
     // a scroll, a sideways swipe or a second finger: not a pull
     if (e.touches.length > 1 || main!.scrollTop > 0 || (!pull && (dy < -PULL_SLOP || Math.abs(dx) > Math.max(PULL_SLOP, dy)))) { pulling = false; pull = 0; return }
     pull = Math.max(0, dy - PULL_SLOP) / 2 / PULL_ARM
+    if (pull > 0 && e.cancelable) e.preventDefault()
+  }
+  function pullTouch(node: HTMLElement) {
+    // Svelte's touchmove attribute is passive; claim the pull before the WebView starts scrolling.
+    node.addEventListener('touchmove', pullMove, { passive: false })
+    return { destroy: () => node.removeEventListener('touchmove', pullMove) }
   }
   function pullEnd() {
     if (pulling && pull >= 1) syncNow()
@@ -142,6 +148,7 @@
       const help = [...document.querySelectorAll<HTMLDialogElement>('dialog.m-info-dialog[open], dialog.m-picker-sheet[open], dialog.m-dialog[open], dialog.m-cap-pop[open]')].at(-1)
       if (help) { if (help.dispatchEvent(new Event('cancel', { cancelable: true }))) help.close(); return }
       if (shell.panel) { shell.panel = false; return }
+      if (phone.selection) { phone.selection = null; return }
       if (!parentHash(phone.route, shell.base)) exitApp()
       else up(canGoBack)
     })
@@ -204,7 +211,7 @@
   {/if}
   {#if !sheet}<OwnerLine />{/if}
 
-  <main class="m-main" class:m-cp-main={compose} class:m-felt={under === 'lib'} class:m-docked={section || !!r.item} class:m-pulling={pull > 0} style:transform={pull > 0 ? `translateY(${Math.min(1, pull) * 26}px)` : undefined} bind:this={main} ontouchstart={pullStart} ontouchmove={pullMove} ontouchend={pullEnd} ontouchcancel={() => { pulling = false; pull = 0 }}>
+  <main class="m-main" class:m-cp-main={compose} class:m-felt={under === 'lib'} class:m-docked={section || !!r.item} class:m-pulling={pull > 0} style:transform={pull > 0 ? `translateY(${Math.min(1, pull) * 26}px)` : undefined} bind:this={main} use:pullTouch ontouchstart={pullStart} ontouchend={pullEnd} ontouchcancel={() => { pulling = false; pull = 0 }}>
     {#if phone.tooOld && phone.rows.length}<MBox role="alert"><MHint as="p" tone="error">{UPDATE_APP}</MHint></MBox>{/if}
     {#if r.item}
       {#key r.item}<Item id={r.item} scroller={main} />{/key}
@@ -236,7 +243,7 @@
     {/if}
   </main>
 
-  {#if section}<Dock away={!!r.search} />{/if}
+  {#if section}<Dock away={!!r.search && phone.selection === null} />{/if}
   {#if r.item}<ItemStrip />{/if}
   {#if sheet}
     <Sheet kind={sheet} {title} sub={sheetSub(r)} capturing={sheet === 'cap' && !r.imp} bare={!!r.mynote} keys={sheet === 'jv' || sheet === 'cap' || (sheet === 'notes' && !r.mynote)} name={sheet === 'jv' ? jvName : ''}

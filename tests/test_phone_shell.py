@@ -218,12 +218,13 @@ class ShellSourceTest(unittest.TestCase):
         self.assertIn('html.np-ed .m-dock{display:none}', source('note.css'))
 
     def test_the_library_toolbar_is_one_row_of_round_keys(self):
-        # plans/06: title, Sort / View / Tools round keys, one summary line; Process is now Tools
+        # Sort / View / Select stay with the library; Tools stays reachable in the dock.
         lib, proc, css = source('screens/Library.svelte'), source('Processing.svelte'), source('mobile.css')
         for key in ('<MKey as="label" class="m-lib-sort"', "aria-label={t('library.sort.title')}", "t('library.view.grid') : t('library.view.rows')",
-                    "aria-label={t('common.tools')}", 'class="m-lib-sum"',
+                    "aria-label={t('library.select')}", 'class="m-lib-sum"',
                     "{#if phoneOnly}<MInfo class=\"m-key m-lib-phone\" title={t('library.phoneOnly.title')}>"):
             self.assertIn(key, lib)
+        self.assertIn("aria-label={t('common.tools')}", source('Dock.svelte'))
         # the words moved to the English catalog unchanged
         self.assertEqual([english(key) for key in ('library.sort.title', 'library.view.grid', 'library.view.rows', 'common.tools', 'library.phoneOnly.title')],
                          ['Sort', 'Show as grid', 'Show as rows', 'Tools', 'On this phone only'])
@@ -475,7 +476,7 @@ class ShellSourceTest(unittest.TestCase):
     def test_the_dock_keys_and_their_sheets_share_a_transition_name(self):
         dock, sheet, css = source('Dock.svelte'), source('Sheet.svelte'), source('mobile.css')
         for kind in ('notes', 'jv', 'cap'):
-            self.assertIn(f'm-vt-{kind}', dock)
+            self.assertIn(f'm-vt-{kind}', source('TopBar.svelte') if kind == 'notes' else dock)
             self.assertIn(f'.m-vt-{kind}{{view-transition-name:m-vt-{kind}}}', css)
         self.assertIn('`m-vt-${kind}`', sheet)
         self.assertIn('<WiskitSprite pose="happy" crop', dock)

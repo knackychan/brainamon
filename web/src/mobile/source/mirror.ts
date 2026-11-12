@@ -569,7 +569,7 @@ export class MirrorSource implements MobileSource {
   // links saved on the phone (negative ids) with no details yet: the ids given, or every one not tried
   // since the app started. Reads each link's page, keeps what it says as a `details` change (sent like
   // any change) and its picture in the thumbnail cache. Returns the ids that changed.
-  async linkDetails(ids?: number[]): Promise<number[]> {
+  async linkDetails(ids?: number[], onRow?: (id: number) => Promise<void>): Promise<number[]> {
     if (!isApp || syncPaused()) return []
     await this.ready()
     const have = new Set(this.changes.list.filter(e => e.op === 'details').map(e => e.uid))
@@ -591,11 +591,14 @@ export class MirrorSource implements MobileSource {
         this.setRows()
         const row = this.byId.get(r.id)
         if (thumb && row) {
-          const c = await caches.open(THUMB_CACHE)
-          await c.put(this.thumbUrl(row), new Response(Uint8Array.from(atob(thumb), ch => ch.charCodeAt(0)), { headers: { 'Content-Type': 'image/jpeg' } }))
+          try {
+            const c = await caches.open(THUMB_CACHE)
+            await c.put(this.thumbUrl(row), new Response(Uint8Array.from(atob(thumb), ch => ch.charCodeAt(0)), { headers: { 'Content-Type': 'image/jpeg' } }))
+          } catch { /* the picture is durable in the journal; cache failure must not stop the queue */ }
         }
         endWork(r.id, true)
         done.push(r.id)
+        await onRow?.(r.id)
       }
     } finally { endLane('links') }
     if (done.length) this.flushSoon()
@@ -603,6 +606,7 @@ export class MirrorSource implements MobileSource {
   }
 
   private triedPics = new Set<string>()
+  private pictures: Promise<{ got: number[]; blocked: boolean }> | null = null
   private hintsLoad: Promise<Record<string, PicHint>> | null = null
 
   // the picture links the site reader saw, by phone link: one object, shared by addPicHints and the queue
@@ -641,15 +645,27 @@ export class MirrorSource implements MobileSource {
   // from a site's link waits less. `step` reports progress; `stop()` ends the run early. Returns the ids
   // that got a picture and whether the site asked to slow down (403 / 429 / 3 failures in a row of the
   // rule or page reads).
-  async fillPictures(step: (p: { done: number; total: number }) => void, stop: () => boolean): Promise<{ got: number[]; blocked: boolean }> {
+  async fillPictures(step: (p: { done: number; total: number }) => void, stop: () => boolean,
+    options: { ids?: number[]; retry?: boolean; onRow?: (id: number) => Promise<void> } = {}): Promise<{ got: number[]; blocked: boolean }> {
+    while (this.pictures) await this.pictures.catch(() => {})
+    const run = this.fetchPictures(step, stop, options)
+    this.pictures = run
+    try { return await run } finally { this.pictures = null }
+  }
+
+  private async fetchPictures(step: (p: { done: number; total: number }) => void, stop: () => boolean,
+    options: { ids?: number[]; retry?: boolean; onRow?: (id: number) => Promise<void> }): Promise<{ got: number[]; blocked: boolean }> {
     if (!isApp || syncPaused()) return { got: [], blocked: false }
     await this.ready()
     const hints = await this.picHints(), now = Date.now()
     const withPic = new Set(this.changes.list.filter(e => e.op === 'details' && e.thumb).map(e => e.uid))
     const plans = new Map<number, ReturnType<typeof picturePlan>>()
     for (const r of this.rowsNow) {
+      if (options.ids && !options.ids.includes(r.id)) continue
+      if (options.retry && r.uid) this.triedPics.delete(r.uid)
       if (r.id >= 0 || !r.uid || withPic.has(r.uid) || this.triedPics.has(r.uid)) continue
       const plan = picturePlan(r.url, hints[cleanLink(r.url) || r.url], now)
+      if (options.retry) plan.page = true  // A failed or expired hint may already have been consumed.
       if (plan.hint || plan.rule || plan.page) plans.set(r.id, plan)
     }
     const want = this.rowsNow.filter(r => plans.has(r.id)).sort((a, b) => b.created - a.created || b.id - a.id)
@@ -699,6 +715,7 @@ export class MirrorSource implements MobileSource {
           }
           got.push(r.id)
           endWork(r.id, true)
+          await options.onRow?.(r.id)
         } else dropWork(r.id)
         step({ done: got.length, total: want.length })
         await new Promise(res => setTimeout(res, asked ? PIC_GAP_MS + Math.random() * PIC_JITTER_MS : HINT_GAP_MS + Math.random() * HINT_JITTER_MS))
@@ -710,6 +727,15 @@ export class MirrorSource implements MobileSource {
     }
     if (got.length) this.flushSoon()
     return { got, blocked: false }
+  }
+
+  async fetchInfo(id: number, onRow?: (id: number) => Promise<void>): Promise<Row | null> {
+    if (!isApp || syncPaused()) return null
+    const links = await this.linkDetails([id], onRow)
+    const result = await this.fillPictures(() => {}, () => false, { ids: [id], retry: true, onRow })
+    if (result.blocked) throw new Error(t('library.fetchBlocked'))
+    const row = this.byId.get(id)
+    return links.includes(id) || result.got.includes(id) ? row ?? null : null
   }
 
   // one thumbnail as a Blob (Save for offline), from the cache or its pack

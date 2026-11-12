@@ -41,14 +41,16 @@
   function position() {
     if (!anchor || !dialog) return
     const r = anchor.getBoundingClientRect()
-    const top = Math.min(r.bottom + 8, window.innerHeight - 180)
+    const above = !!anchor.closest('.m-dock')
+    const top = above ? 12 : Math.min(r.bottom + 8, window.innerHeight - 180)
     dialog.style.setProperty('--process-top', `${Math.max(12, top)}px`)
+    dialog.style.setProperty('--process-bottom', above ? `${window.innerHeight - r.top + 8}px` : 'auto')
     const box = dialog.getBoundingClientRect()
     dialog.style.setProperty('--process-notch', `${Math.max(18, Math.min(box.width - 18, r.left + r.width / 2 - box.left))}px`)
     if (dialog.contains(document.activeElement) && document.activeElement instanceof HTMLInputElement && document.activeElement.type === 'text') document.activeElement.scrollIntoView({ block: 'nearest' })
   }
   // a tap outside closes the panel; a run goes on (decision 3)
-  function outside(e: PointerEvent) {
+  function outside(e: MouseEvent) {
     if (e.target !== dialog) return
     const r = dialog.getBoundingClientRect()
     if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) { e.preventDefault(); dialog.close() }
@@ -56,7 +58,7 @@
 
   const pc = source.kind === 'desktop'
   const src: ToolsSrc = pc ? 'pc' : solo ? 'solo' : 'phone'
-  const steps: StepKind[] = pc ? [...MAIN_STEPS, ...PC_STEPS] : MAIN_STEPS
+  const steps: StepKind[] = pc ? [...MAIN_STEPS, ...PC_STEPS] : ['thumb', ...MAIN_STEPS]
   const limit = pc ? Infinity : PHONE_LIMIT
   const ai = untrack(() => (pc ? null : source.ai?.() ?? null))
   const byId = $derived(new Map(phone.rows.map(r => [r.id, r])))
@@ -77,7 +79,7 @@
   const eff = (k: StepKind) => rerun && k !== 'index'           // Index looks for changed text itself; Run again would embed everything
   const targetsOf = (k: StepKind) => (pc ? processingTargets(live, k, eff(k)) : phoneTargets(live, k, eff(k)))
   const counts = $derived(Object.fromEntries(steps.map(k => [k, targetsOf(k).length])) as Record<StepKind, number>)
-  const rec = $derived(pc ? recommendedProcessing(live) : MAIN_STEPS.find(k => counts[k] > 0) ?? null)
+  const rec = $derived(pc ? recommendedProcessing(live) : MAIN_STEPS.find(k => counts[k] > 0) ?? (counts.thumb ? 'thumb' : null))
   const provider = pc ? '' : PROVIDER[ai?.provider ?? ''] ?? ai?.provider ?? ''
   // the phone's own key serves both its steps; the PC's keys are checked per step by that step's own preview
   const noKey = $derived(pc ? '' : ai ? '' : source.noKeyText?.(toolText) ?? t('processing.noKey'))
@@ -197,7 +199,7 @@
       if (!pc) {
         // the phone's loop runs on after this returns: the confirm line is done with at once
         ask = null; pre = null
-        void Promise.resolve(p.plan ? startFollow(p.plan) : runPhone(p.kind as 'describe' | 'categorize', p.ids, { rest: p.rest, rerun: p.rerun, scope })).catch(e => { err = captureError(e) })
+        void Promise.resolve(p.plan ? startFollow(p.plan) : runPhone(p.kind as 'thumb' | 'describe' | 'categorize', p.ids, { rest: p.rest, rerun: p.rerun, scope })).catch(e => { err = captureError(e) })
       } else if (p.plan) await startFollow(p.plan)
       else if (p.kind === 'analyze' && joining) await runPc('analyze', p.ids, { rerun: p.rerun, scope, joined: true })
       else if (p.kind === 'analyze') {
@@ -306,7 +308,7 @@
   </MStepRow>
 {/snippet}
 
-<dialog class="m-cap-pop m-process-pop" bind:this={dialog} aria-label={t('common.tools')} onpointerdown={outside} oncancel={leave} onclose={() => { leave(); close() }}>
+<dialog class="m-cap-pop m-process-pop" class:m-process-dock={!!anchor?.closest('.m-dock')} bind:this={dialog} aria-label={t('common.tools')} onclick={outside} oncancel={leave} onclose={() => { leave(); close() }}>
  <div class="m-cap-pop-body m-process m-tl">
   <div class="m-tl-head"><h2>{t('common.tools')}</h2><MInfo title={t('processing.helpTitle')}>
     <p>{t('processing.help')}</p>
@@ -371,6 +373,7 @@
       <div class="m-tl-ask m-tl-warn" role="alert"><span><b>{t('processing.noKeyTitle')}</b> {noKey}</span>{#if !pc}<div class="m-tl-ask-keys"><MTextButton onclick={addKey}>{solo ? t('processing.openSettings') : t('processing.openBackup')}</MTextButton></div>{/if}</div>
     {/if}
     <div class="m-tl-steps">
+      {#if !pc}{@render step('thumb')}{/if}
       {#each MAIN_STEPS as k (k)}{@render step(k)}{/each}
       {#if pc}<MDisclosure summary={t('processing.other', { n: PC_STEPS.length })} open={!!rec && PC_STEPS.includes(rec)}><div class="m-tl-steps">{#each PC_STEPS as k (k)}{@render step(k)}{/each}</div></MDisclosure>{/if}
     </div>
@@ -400,6 +403,9 @@
 
 <style>
   .m-process-pop { top: var(--process-top); right: max(12px, env(safe-area-inset-right, 0px)); width: min(420px, calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))) }
+  .m-process-dock { top: auto; bottom: var(--process-bottom) }
+  .m-process-dock::before { top: auto; bottom: -7px; transform: rotate(225deg) }
+  .m-process-dock .m-process { max-height: calc(100dvh - var(--process-bottom) - 12px - env(safe-area-inset-top, 0px)) }
   .m-process-pop::before { left: var(--process-notch); right: auto; margin-left: -6px }
   .m-process { max-height: calc(100dvh - var(--process-top) - 12px - env(safe-area-inset-bottom, 0px)) }
   .m-tl-groups { display: flex; flex-direction: column; gap: 4px }

@@ -15,6 +15,8 @@
   import { shell } from './shell.svelte'
   import MButton from './ui/MButton.svelte'
   import MHint from './ui/MHint.svelte'
+  import MRunBar from './ui/MRunBar.svelte'
+  import './tools.css'
 
   let { label }: { label: string } = $props()
   const MARK = { wait: '·', run: '…', ok: '✓', err: '!' }
@@ -28,7 +30,7 @@
     : (running ? t('shell.sync.headPcRun', { done, total }) : t('shell.sync.headPc')))
   const st = $derived(phoneStatus())
   const owner = $derived(st?.strip ? st : null)
-  const lanes = $derived(syncLanes().filter(l => l.key !== 'drive'))
+  const lanes = $derived(syncLanes())
   const busy = $derived(phone.refreshing || (!!run && !run.end))
   const paused = $derived(!!mirrorSource && syncPaused())
   const items = $derived(fmtNum(phone.rows.length, 'en'))
@@ -70,7 +72,13 @@
     <p class="m-syncp-why">{t('shell.sync.labelItems', { n: phone.rows.length, label, items })}<small>{uploaded ? t('shell.sync.readUploaded', { ago: fmtAgo(phone.synced), uploaded: fmtAgo(uploaded) }) : t('shell.sync.read', { ago: fmtAgo(phone.synced) })}</small></p>
   {/if}
   {#each lanes as l (l.key)}
-    <div class="m-syncp-lane"><b>{l.name}</b> · {l.tag === 'running' || l.key === 'network' ? '' : `${lampLabel(l.tag)} · `}{l.text}{#if l.files}<MHint>{t('backup.vault.verified', l.files)}</MHint>{/if}{#if l.active && l.pct !== null}<span class="m-syncp-bar"><b style:width={`${l.pct}%`}></b></span>{/if}</div>
+    <div class="m-syncp-lane">
+      <div class="m-syncp-lane-head"><b>{l.name}</b><span>{lampLabel(l.tag)}</span></div>
+      {#if l.active && l.tag === 'running'}
+        <MRunBar lead={l.text} right={l.pct === null ? '…' : `${l.pct}%`} total={100} done={l.pct ?? 0} indeterminate={l.pct === null} run label={t('settings.sync.progress', { name: l.name })} />
+      {:else}<p>{l.text}</p>{/if}
+      {#if l.files}<MHint as="p">{t('backup.vault.verified', l.files)}</MHint>{/if}
+    </div>
   {/each}
   <div class="m-syncp-btns">
     {#if owner}

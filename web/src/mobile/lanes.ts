@@ -14,7 +14,7 @@ import { token } from './mirror/pairing'
 import { lampLabel } from './settings-words'
 import { syncLine } from './settings-lines'
 import { vaultLamp } from './settings-facts.svelte'
-import { nativeSync, nativeSyncText } from './sync/native.svelte'
+import { nativeSync, nativeSyncText, nativePhasePct } from './sync/native.svelte'
 
 export type LaneKey = 'network' | 'drive' | 'vault' | 'pc' | 'pics'
 export interface Lane { key: LaneKey; name: string; tag: string; active: boolean; text: string; pct: number | null; files?: { done: number; total: number } }
@@ -38,8 +38,12 @@ export function syncLanes(): Lane[] {
     const v = vault, lamp = vaultLamp()
     if (lamp === 'paused') out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'paused', active: false, text: t('backup.lane.resumes'), pct: null })
     else if (v.opts.on && nativeSync.supported && ['queued', 'retry', 'wifi', 'offline'].includes(nativeSync.state)) out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'waiting', active: false, text: nativeSyncText(), pct: null })
-    else if (nativeSync.supported && nativeSync.state === 'syncing' && nativeSync.phase === 'vault') out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'running', active: true, text: nativeSync.vaultStep?.key ? t(nativeSync.vaultStep.key) : nativeSyncText(), pct: null })
-    else if (lamp === 'syncing' || lamp === 'stopping') out.push({ key: 'vault', name: t('backup.lane.vault'), tag: v.stopping ? 'stopping' : 'running', active: true, text: v.step || t('backup.lane.syncing'), pct: null })
+    else if (nativeSync.supported && nativeSync.state === 'syncing' && nativeSync.phase === 'vault') {
+      const step = nativeSync.vaultStep
+      const text = step?.key ? t(step.key) : nativeSyncText()
+      out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'running', active: true, text: `${text}${step && step.total > 0 ? ` · ${step.done}/${step.total}` : ''}`, pct: nativePhasePct() })
+    }
+    else if (lamp === 'syncing' || lamp === 'stopping') out.push({ key: 'vault', name: t('backup.lane.vault'), tag: v.stopping ? 'stopping' : 'running', active: true, text: v.step || t('backup.lane.syncing'), pct: v.pct })
     else if (lamp === 'queued') out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'queued', active: true, text: t('backup.lane.queued', { where: dname }), pct: null })
     else if (lamp === 'off' || lamp === 'no folder') out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'off', active: false, text: v.opts.uri ? t('backup.lane.folder', { name: v.opts.name || t('backup.lane.chosen') }) : t('backup.lane.chooseFolder'), pct: null })
     else if (lamp === 'needs Drive') out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'needs Drive', active: false, text: drive.why, pct: null })

@@ -365,7 +365,8 @@ class SourceWiring(unittest.TestCase):
             const src = fs.readFileSync('web/src/mobile/source/mirror.ts', 'utf8').replace(/\r\n/g, '\n')   // a CRLF checkout too
             const pick = re => src.match(re)[0]
             const body = [pick(/  get solo\(\) .*\n/), pick(/  private full = .*\n/), pick(/  recorded: .*\n/),
-              pick(/  private recordSoon\(\) \{[\s\S]*?\n  }\n/), pick(/  async rows\([\s\S]*?\n  }\n/),
+              pick(/  private recordSoon\(\) \{[\s\S]*?\n  }\n/), pick(/  rows\([\s\S]*?\n  }\n/),
+              pick(/  private async readRows\([\s\S]*?\n  }\n/),
               pick(/  watch\([\s\S]*?\n  }\n/)].join('\n')
             let look = null, fail = '', refused = '', parts = ''
             const calls = []
@@ -374,14 +375,14 @@ class SourceWiring(unittest.TestCase):
             Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true })
             const sync = async (drive, key, pair, device, name) => { calls.push([pair.f, device, name]); if (fail) throw new Error(fail); return 'written' }
             const Source = new Function('token', 'SOLO_MANIFEST', 'pool', 'syncPhoneRecord', 'deviceId', 'deviceName', 'syncPaused',
-              'cloudRevision', 'cloudCheckpoint', 'cloudStopped', 'reconnecting', stripTypeScriptTypes('class Source {\n' + body + '\n}') + ';return Source')(
+              'cloudRevision', 'cloudCheckpoint', 'cloudStopped', 'reconnecting', 'say', stripTypeScriptTypes('class Source {\n' + body + '\n}') + ';return Source')(
               () => 'synthetic', { published: 0, files: {} }, (list, n, f) => Promise.all(list.map(f)), sync, () => 'p0123456789',
-              async () => 'Pixel 8', () => false, () => 0, () => {}, () => false, () => false)
+              async () => 'Pixel 8', () => false, () => 0, () => {}, () => false, () => false, (_w, _k, _p, fallback) => fallback)
             const s = new Source()
             const part = 'library/part-0001.json'
             let manifest = { published: 5, files: { [part]: { v: '1' } } }
             Object.assign(s, { pair: { f: 'f'.repeat(12) }, drive: { checkpoint: () => {} }, key: Promise.resolve({}), manifest: null, base: [], rowsNow: [],
-              byId: new Map(), looked: 0, lastError: '', ready: async () => {}, setRows() {}, cats: () => [],
+              byId: new Map(), looked: 0, lastError: '', ready: async () => {}, once: (_k, f) => f(), setRows() {}, cats: () => [],
               reconcileCanvas: async () => {}, background() {}, flushSoon() {}, names: () => [part],
               cached: async k => { if (k === part && parts) throw new Error(parts); return k === part ? '[]' : '{}' },
               loadManifest: async () => { if (refused) throw new Error(refused); s.manifest = manifest; return manifest } })

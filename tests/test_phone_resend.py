@@ -480,7 +480,8 @@ class FreshManifestGate(unittest.TestCase):
             const src = fs.readFileSync('web/src/mobile/source/mirror.ts', 'utf8').replace(/\r\n/g, '\n')   // a CRLF checkout too
             const pick = re => src.match(re)[0]
             const body = [pick(/  get solo\(\) .*\n/), pick(/  get canvasSync\(\) .*\n/), pick(/  get resendPending\(\) .*\n/),
-              pick(/  async loadManifest\(\)[\s\S]*?\n  }\n/), pick(/  async flush\(\): Promise<number> \{[\s\S]*?\n  }\n/)].join('\n')
+              pick(/  loadManifest\(\).*\n/), pick(/  private async readManifest\(\)[\s\S]*?\n  }\n/),
+              pick(/  async flush\(\): Promise<number> \{[\s\S]*?\n  }\n/)].join('\n')
             const READER = Number(src.match(/export const READER = (\d+)/)[1])
             class PhoneTooOld extends Error {}
             class SyncPaused extends Error {}
@@ -496,6 +497,7 @@ class FreshManifestGate(unittest.TestCase):
             let found = false, incoming = null
             Object.assign(s, { pair: { f: 'n'.repeat(12), l: 'L' }, changes: new Changes(), manifest: { reader: 1, files: {}, cached: true },
               mine: new Set(), lastError: '', cached: async () => '{}', flushSoon: () => { soon++ },
+              once: (_k, f) => f(), nativeReady: async () => false,
               noLibrary: async () => new Error('No library from this PC yet.'),
               key: { name: async n => n, openJSON: async () => { reads++; return incoming },
                      sealChange: async doc => { uploads.push(structuredClone(doc)); return ['chg-' + uploads.length, new Uint8Array()] } },

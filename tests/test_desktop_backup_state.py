@@ -18,6 +18,18 @@ def states(script):
 
 
 class DesktopBackupStateTest(unittest.TestCase):
+    def test_vault_checks_show_counts_and_network_waits_show_the_phase(self):
+        got = states("""
+          console.log(JSON.stringify([
+            {vault_step:'Checking generated notes', vault_done:12, vault_total:40},
+            {vault_step:'Listing files in Google Drive', vault_done:0, vault_total:0},
+            {vault_step:'Finding vault files', vault_done:12, vault_total:0},
+          ].map(step => backupState({...fx.cloud, licensed:true, vault_state:'syncing', ...step}, fx.recovery, fx.now).rows.vault)))
+        """)
+        self.assertEqual([row['text'] for row in got], ['Checking generated notes · 12 of 40 files',
+                                                      'Listing files in Google Drive', 'Finding vault files · 12 files'])
+        self.assertTrue(all(row['kind'] == 'working' for row in got))
+
     def test_old_phone_reports_do_not_claim_a_lost_connection(self):
         got = states("""
           console.log(JSON.stringify([0, 59*60000, 61*60000, 7*86400000].map(age => backupState(

@@ -2,6 +2,45 @@
 
 Every release bumps `core/version.py` and adds a section here in the same commit. Newest first.
 
+## Android 137.1.11 - 2026-11-13
+
+- Recognizes Facebook's current More button when removing newly collected saved posts.
+
+## 1.1.12 - 2026-11-13
+
+- Recognizes Facebook's current More button during automatic saved-post removal.
+
+## 1.1.11 - 2026-11-13
+
+- Makes automatic Facebook removal more reliable when the saved list redraws.
+
+## 1.1.9 - 2026-11-13
+
+- Explains when another job blocks saved-post scanning and links to its progress.
+
+## Android 137.1.09 - 2026-11-13
+
+- Removes the unreliable mobile unsave option; scans collect posts without removing saves.
+
+## 1.1.8 - 2026-11-13
+
+- Refreshes the desktop installer with current import, link-preview, processing feedback and backup fixes.
+
+## Android 137.1.08 - 2026-11-13
+
+- Refreshes the signed Android app with current sync, progress and background-work fixes.
+
+## 1.1.7 - 2026-11-12
+
+- Desktop: clearer saved-post imports and automatic link previews after importing.
+- Phone: pull-to-refresh retries sync immediately, with clearer sync progress and controls.
+- Phone: background sync prioritizes pending uploads and resumes interrupted work.
+
+## Android 137.1.07 - 2026-11-12
+
+- Immediate pull-to-refresh sync retries and clearer progress and controls.
+- Background sync prioritizes pending uploads and resumes interrupted work.
+
 ## 1.1.6 - 2026-11-12
 
 - Refreshes the desktop installer and bundled phone interface with the latest fixes.

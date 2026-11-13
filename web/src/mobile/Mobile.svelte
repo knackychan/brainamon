@@ -47,6 +47,7 @@
   import CaptureKey from './CaptureKey.svelte'
   import { runVault, startVault, vault, watchPc } from './vault/auto.svelte'
   import { syncPaused } from './network.svelte'
+  import { nativeSync } from './sync/native.svelte'
   import Welcome from './Welcome.svelte'
   import Coach from './Coach.svelte'
   import { loadOnb, onb } from './onboard.svelte'
@@ -102,14 +103,13 @@
 
   // pull to refresh: a drag down that starts with a section page at its top fills the sync key's ring
   // (SyncKey.svelte) and letting go past the mark runs syncNow; the page follows the finger a little (up to
-  // 26 px) and springs back. Only on a section page, not in search, not while sync is paused or running; never
-  // from a text field, or inside a box that is itself scrolled down.
+  // 26 px) and springs back. Native sync retries immediately; blocked sync shows its status. Only on a section page,
+  // not in search, from a text field, or inside a box that is itself scrolled down.
   const PULL_ARM = 64, PULL_SLOP = 10
   let pull = $state(0), pulling = false, x0 = 0, y0 = 0
   $effect(() => { if (compose) { pulling = false; pull = 0; shell.base = 'cv' } })
   function canPull(target: EventTarget | null): boolean {
-    if (!main || !section || r.search || main.scrollTop > 0 || (phone.sync && !phone.sync.end) || phone.refreshing) return false
-    if (mirrorSource && syncPaused()) return false
+    if (!main || !section || r.search || main.scrollTop > 0) return false
     const el = target instanceof Element ? target : null
     if (el?.closest('input, textarea, select, [contenteditable]')) return false
     for (let n = el; n && n !== main; n = n.parentElement) if (n.scrollTop > 0) return false
@@ -133,7 +133,10 @@
     return { destroy: () => node.removeEventListener('touchmove', pullMove) }
   }
   function pullEnd() {
-    if (pulling && pull >= 1) syncNow()
+    if (pulling && pull >= 1) {
+      if (nativeSync.supported || phone.refreshing || (phone.sync && !phone.sync.end) || (mirrorSource && syncPaused())) shell.panel = true
+      void syncNow(true)
+    }
     pulling = false; pull = 0
   }
   onMount(() => { boot() })

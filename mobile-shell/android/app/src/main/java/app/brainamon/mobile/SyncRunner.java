@@ -41,6 +41,7 @@ class SyncRunner implements AutoCloseable {
     private final BooleanSupplier stopped;
     private final long deadline;
     static final class BudgetExpired extends IOException { BudgetExpired(){super("budget");} }
+    static final class UploadsPending extends IOException { UploadsPending(){super("uploads");} }
     static final class Cancelled extends IOException { Cancelled(){super("paused");} }
     volatile boolean cancelled;
     volatile boolean accepting=true;
@@ -54,8 +55,10 @@ class SyncRunner implements AutoCloseable {
     protected String token;
     private volatile double authorized;
     private long progressAt;
+    private String progressPhase="", progressStep="";
     private double progress;
     private boolean libraryReady;
+    private volatile boolean prioritizeUploads;
     private String lastCounts;
     private int binaryId;
     private String savedPair;
@@ -101,6 +104,7 @@ class SyncRunner implements AutoCloseable {
                 }
             }
             String net=SyncWork.network(context,current);if(!net.isEmpty())throw new IOException(net);
+            if(budget && prioritizeUploads && store.hasPending(scope))throw new UploadsPending();
             if(budget && android.os.SystemClock.elapsedRealtime()>=deadline)throw new BudgetExpired();
         }finally{timed("checkpoint",at);}
     }
@@ -144,7 +148,7 @@ class SyncRunner implements AutoCloseable {
         JSONObject config=new JSONObject().put("fp",key.fingerprint).put("verifier",pair.optString("l")).put("solo",pair.optBoolean("solo"))
             .put("device",policy.getString("device")).put("vault",policy.optBoolean("vault") && !policy.optString("uri").isEmpty())
             .put("force",force).put("legacy",legacy).put("watermark",pair.optInt("accessVersion")==2 || store.get(scope,"access-v2")!=null);
-        store.put("","status",new JSONObject().put("id",id).put("state","syncing").put("phase","drive").put("progress",0).put("libraryReady",false).toString());
+        store.put("","status",new JSONObject().put("id",id).put("state","syncing").put("phase","drive").put("progress",0).put("driveStep",new JSONObject().put("key",pair.optBoolean("solo")?"shell.sync.readingIndex":"shell.sync.checkingAccess")).put("libraryReady",false).toString());
         evaluate("BrainamonSync.start("+config+");''");
         for(;;){
             checkpoint();JSONObject message=new JSONObject(evaluate("BrainamonSync.next()"));
@@ -165,6 +169,7 @@ class SyncRunner implements AutoCloseable {
                     // Lifecycle signals must not become shared-algorithm errors (which may be caught there).
                     for(Throwable cause=e;cause!=null;cause=cause.getCause()){
                         if(cause instanceof BudgetExpired)throw (BudgetExpired)cause;
+                        if(cause instanceof UploadsPending)throw (UploadsPending)cause;
                         if(cause instanceof Cancelled)throw (Cancelled)cause;
                         if(cause instanceof InterruptedException)throw (InterruptedException)cause;
                     }
@@ -253,14 +258,20 @@ class SyncRunner implements AutoCloseable {
             case "fsRemove":access();fs().remove(a.getString(0),a.isNull(1)?null:a.getString(1));return null;
             case "progress":{
                 long now=System.currentTimeMillis();String lane=a.getString(0);double fraction=a.getDouble(1);
+                prioritizeUploads=!lane.equals("send");
                 progress=Math.max(progress,lane.equals("vault")?0.4+0.59*fraction:0.4*fraction);
                 JSONObject step=a.optJSONObject(2),counts=step==null?null:step.optJSONObject("files");
+                String stepKey=step==null?"":step.optString("key");
+                boolean transition=!lane.equals(progressPhase) || !stepKey.equals(progressStep);
                 boolean changed=counts!=null && !counts.toString().equals(lastCounts);
                 if(changed){
                     lastCounts=counts.toString();
                     store.put(scope,stateName("vault-counts",policy),new JSONObject(lastCounts).put("at",now).toString());
                 }
-                if(changed || now-progressAt>=1000){store.put("","status",new JSONObject().put("id",id).put("state","syncing").put("phase",lane).put("progress",progress).put("vaultStep",step).put("libraryReady",libraryReady).toString());progressAt=now;}return null;
+                if(transition || changed || fraction>=1 || now-progressAt>=1000){
+                    store.put("","status",new JSONObject().put("id",id).put("state","syncing").put("phase",lane).put("progress",progress).put(lane.equals("drive")?"driveStep":"vaultStep",step).put("libraryReady",libraryReady).toString());
+                    progressAt=now;progressPhase=lane;progressStep=stepKey;
+                }return null;
             }
             default:throw new IOException("Unknown sync operation");
         }

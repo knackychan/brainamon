@@ -31,10 +31,12 @@ function cellFlash(id: number, st: 'done' | 'err', ms: number) {
 }
 
 async function syncWorking() {
+  const jobId = live.jobs.current?.id
   try {
-    const p = await api.get<{ items: { id: number; state: string }[] }>('/api/jobs/progress')
-    if (!live.jobs.current) return
-    for (const it of p.items) if (it.state === 'working' && !lib.cellState.has(it.id)) lib.cellState.set(it.id, 'worked')
+    const p = await api.get<{ job: { id: number } | null; items: { id: number; state: string }[] }>('/api/jobs/progress')
+    if (jobId !== live.jobs.current?.id || p.job?.id !== jobId) return
+    for (const [id, state] of lib.cellState) if (state === 'worked') lib.cellState.delete(id)
+    for (const it of p.items) if (it.state === 'working') lib.cellState.set(it.id, 'worked')
   } catch { /* the next job_item marks the next card */ }
 }
 
@@ -97,7 +99,10 @@ export function installLibrary() {
   })
   // a (re)connect or a reload mid-job: the items already working sent their job_item before we
   // listened, so read them from the progress list once
-  on('hello', (d: { jobs: { current: unknown } }) => { if (d.jobs.current) syncWorking() })
+  on('hello', () => {
+    for (const [id, state] of lib.cellState) if (state === 'worked') lib.cellState.delete(id)
+    if (live.jobs.current) syncWorking()
+  })
   if (live.jobs.current) syncWorking()
 
   addPaletteProvider(q => {

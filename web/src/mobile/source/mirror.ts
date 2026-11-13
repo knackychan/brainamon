@@ -28,7 +28,7 @@
 import { CHANGE_PREFIX, MirrorKey, MirrorKeyError, nearest, readPack, readVectors, type Vectors } from '../mirror/crypto'
 import { Drive, NeedsSignIn } from '../mirror/drive'
 import { SyncPaused, syncPaused, network } from '../network.svelte'
-import { nativeCache, nativeReceipt, nativeRound, nativeSyncError, nativeSyncPolicy, nativeSyncSupported, seedNativeVault, stageNative } from '../sync/native.svelte'
+import { nativeCache, nativeReceipt, nativeRound, nativeUploads, nativeSyncError, nativeSyncPolicy, nativeSyncSupported, seedNativeVault, stageNative } from '../sync/native.svelte'
 import { transferId, syncOwner } from '../sync/transfer'
 import { Changes, type ChangeEntry } from '../mirror/changes'
 import { deviceId, dropToken, forgetKeys, GOOGLE_DRIVE, requeueWaiting, takeKeys, takeRequeue, token, tokenProject, type Pairing } from '../mirror/pairing'
@@ -185,7 +185,7 @@ export class MirrorSource implements MobileSource {
   private flushT = 0
   private nativeScope = ''
   private nativeInit: Promise<boolean> | null = null
-  private staging: Promise<void> | null = null
+  private staging: Promise<string[]> | null = null
   private stageAgain = false
   private nativeDirty = false
   private looked = 0                           // the last read of the manifest's rows (rows, watch)
@@ -966,15 +966,17 @@ export class MirrorSource implements MobileSource {
     })().catch(e => { this.nativeInit = null; throw e })
   }
 
-  private async stagePending(): Promise<void> {
-    if (!await this.nativeReady() || this.resendPending) return
+  private async stagePending(): Promise<string[]> {
+    if (!await this.nativeReady() || this.resendPending) return []
     this.stageAgain = true
     if (this.staging) return this.staging
     this.staging = (async () => {
+      const ids = new Set<string>()
       while (this.stageAgain) {
         this.stageAgain = false
         await this.changes.prepareUploads(async doc => {
           const id = await transferId(doc)
+          ids.add(id)
           const prior = await nativeReceipt(this.nativeScope, id)
           if (!prior.name) {
             const [name, data] = await (await this.key).sealChange(doc, this.solo)
@@ -984,16 +986,23 @@ export class MirrorSource implements MobileSource {
           } else { this.mine.add(prior.name); this.nativeDirty ||= !prior.remote }
         }, deviceId(), this.canvasSync, !this.solo)
       }
+      return [...ids]
     })().finally(() => { this.staging = null })
     return this.staging
   }
 
-  private async runNative() {
-    await this.stagePending()
+  private async runNative(uploadsOnly = false) {
+    const ids = await this.stagePending()
     const dirty = this.nativeDirty
     this.nativeDirty = false
-    // New pending uploads still wait for their receipts, including edits staged during a vault round.
-    try { await nativeRound(false, false, dirty, undefined, !dirty); network.licenseLocked = false; network.licenseKind = ''; network.licenseProblem = '' }
+    try {
+      // Delivery receipts release Send immediately; the independent native vault round may continue.
+      if (uploadsOnly) {
+        if (!ids.length) return
+        await nativeUploads(this.nativeScope, ids, nativeRound(false, false, dirty))
+      } else await nativeRound(false, false, dirty, undefined, true)
+      network.licenseLocked = false; network.licenseKind = ''; network.licenseProblem = ''
+    }
     catch (e) {
       this.nativeDirty ||= dirty
       const code = (e as { code?: string }).code
@@ -1018,7 +1027,7 @@ export class MirrorSource implements MobileSource {
       if (network.manualPause || !network.online || (network.wifiOnly && !['wifi', 'ethernet'].includes(network.type))) throw new SyncPaused()
       beginCloudChange()
       try {
-        await this.runNative()
+        await this.runNative(true)
         const n = await this.changes.flush(async doc => {
           const receipt = await nativeReceipt(this.nativeScope, await transferId(doc))
           if (!receipt.name || !receipt.remote) throw nativeSyncError('retry')

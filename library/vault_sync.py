@@ -130,7 +130,7 @@ def skipped_note(count: int) -> str:
     return f"{count:,} file{'s' if many else ''} over {MAX_FILE // 1048576} MiB {'are' if many else 'is'} not synced."
 
 
-def scan(root, key, cache: dict | None = None, should_stop=lambda: False, skipped: dict | None = None) -> tuple[dict, dict]:
+def scan(root, key, cache: dict | None = None, should_stop=lambda: False, skipped: dict | None = None, *, progress=None) -> tuple[dict, dict]:
     """({path: content id}, cache). `cache` is {path: [size, mtime_ns, id]} from the last scan: a file with the
     same size and mtime is not read again. A file modified in the last two seconds is not cached: an edit that
     keeps the size inside the same clock tick would otherwise keep its old id. A file over MAX_FILE is not listed;
@@ -141,6 +141,9 @@ def scan(root, key, cache: dict | None = None, should_stop=lambda: False, skippe
     check()
     root, cache = Path(root), cache or {}
     files, fresh = {}, {}
+    paths = []
+    if progress:
+        progress('Finding vault files', 0, 0)
     settled = time.time_ns() - 2_000_000_000
     for dirpath, dirnames, names in os.walk(root):
         check()
@@ -153,21 +156,31 @@ def scan(root, key, cache: dict | None = None, should_stop=lambda: False, skippe
             p = Path(dirpath) / n
             if excluded(rel) or not valid_rel(rel):
                 continue
-            try:
-                st = p.stat()
-                if not p.is_file():
-                    continue
-                if st.st_size > MAX_FILE:
-                    if skipped is not None:
-                        skipped[rel] = st.st_size
-                    continue
-                c = cache.get(rel)
-                fid = c[2] if c and c[0] == st.st_size and c[1] == st.st_mtime_ns else key.content_id(p.read_bytes())
-            except OSError:
+            paths.append((rel, p))
+        if progress:
+            progress('Finding vault files', len(paths), 0)
+    if progress:
+        progress('Checking vault files', 0, len(paths))
+    for done, (rel, p) in enumerate(paths, 1):
+        check()
+        try:
+            st = p.stat()
+            if not p.is_file():
                 continue
+            if st.st_size > MAX_FILE:
+                if skipped is not None:
+                    skipped[rel] = st.st_size
+                continue
+            c = cache.get(rel)
+            fid = c[2] if c and c[0] == st.st_size and c[1] == st.st_mtime_ns else key.content_id(p.read_bytes())
             files[rel] = fid
             if st.st_mtime_ns < settled:
                 fresh[rel] = [st.st_size, st.st_mtime_ns, fid]
+        except OSError:
+            continue
+        finally:
+            if progress:
+                progress('Checking vault files', done, len(paths))
     check()
     return files, fresh
 

@@ -26,7 +26,7 @@ import { pairedFacts, soloFacts } from './mirror/phone-facts'
 import { recoveryFact } from './mirror/recovery-fact'
 import { beginLanguageWork } from './language-switch.ts'
 import { t, type Key } from '../lib/i18n/index.ts'
-import { nativeSync, nativeSyncText, nativePhasePct } from './sync/native.svelte'
+import { nativeSync, nativeSyncText, nativePhasePct, nativeDriveText, retryNativeSync } from './sync/native.svelte'
 import { fmtAgo as agoText, fmtNum, fmtSize } from '../lib/i18n/format.ts'
 
 // A paired phone reads the Google Drive mirror (Phase 4); otherwise the desktop over USB
@@ -323,6 +323,7 @@ export function phoneFacts(words?: PhoneWords): PhoneFacts | null {
   const m = mirrorSource
   if (!m) return null
   void phone.tokenAt
+  const refreshing = phone.refreshing || nativeSync.supported && nativeSync.state === 'syncing'
   if (m.solo) {
     void phone.recoveryAt; void phone.now
     return soloFacts({
@@ -332,14 +333,14 @@ export function phoneFacts(words?: PhoneWords): PhoneFacts | null {
         text: backup.busy ? backup.task?.paused ? (words?.('backup.task.pausing') ?? 'Pausing backup task…') : backup.step : backup.task?.paused ? (words?.('backup.task.paused') ?? 'Backup task paused.') : (words?.('backup.task.waiting') ?? 'Backup task waiting to continue.'),
         detail: backup.error || (words?.('backup.task.localDetail') ?? 'Local content and queued edits stay here. Open the saved task to continue.'),
       } : undefined,
-      app: isApp, online: network.online, paused: syncPaused(), refreshing: phone.refreshing, started: phone.tried,
+      app: isApp, online: network.online, paused: syncPaused(), refreshing, started: phone.tried,
       token: !!token(m.pair), account: m.pair.g || '', round: phone.round && { ok: phone.round.ok, ago: fmtAgo(phone.round.at) },
       recovery: recoveryFact(m.pair), unsent: phone.pend.unsent,
     })
   }
   return pairedFacts({
     pause: network.pausePending || network.pauseFailed ? syncPauseReason(words) : network.manualPause ? (words?.('backup.state.manualPause') ?? 'Sync paused by you.') : undefined,
-    app: isApp, online: network.online, paused: syncPaused(), refreshing: phone.refreshing, tried: phone.tried,
+    app: isApp, online: network.online, paused: syncPaused(), refreshing, tried: phone.tried,
     token: !!token(m.pair), refused: phone.signIn, account: m.pair.g || '', pcAccount: m.pair.e || '',
     mismatch: phone.account?.check === 'mismatch' ? phone.account.got : '', access: network.licenseKind,
     accessAt: network.licenseAt, last: lastAccess(m.pair.f)?.at ?? 0, noLibrary: phone.noLibrary ? phone.noLibraryWhy : null,
@@ -564,7 +565,7 @@ export function syncFill(run: SyncRun): number {
 // (its steps, with the changes sent first) or a refresh on its own (app start, Connect, back online)
 export function driveWork(): { text: string; pct: number | null } | null {
   if (backup.busy) return { text: backup.task?.paused ? t('shell.sync.pausingTask') : backup.step, pct: null }
-  if (nativeSync.supported && nativeSync.state === 'syncing') return nativeSync.phase === 'vault' ? null : { text: t('shell.sync.reading', { where: t('shell.sync.whereDrive') }), pct: nativePhasePct() }
+  if (nativeSync.supported && nativeSync.state === 'syncing') return nativeSync.phase === 'vault' ? null : { text: nativeDriveText(), pct: nativePhasePct() }
   if (nativeSync.supported && nativeSync.state && nativeSync.state !== 'idle') return null
   const run = phone.sync && !phone.sync.end ? phone.sync : null
   if (!run && !phone.refreshing) return null
@@ -573,10 +574,11 @@ export function driveWork(): { text: string; pct: number | null } | null {
   return { text, pct: Math.round((run ? syncFill(run) : phone.read?.frac ?? 0) * 100) }
 }
 
-export async function syncNow() {
-  if (phone.refreshing || (phone.sync && !phone.sync.end)) return
+export async function syncNow(immediate = false) {
   if (reconnecting() || cloudStopped()) return
   if (mirrorSource && syncPaused()) return
+  if (immediate && nativeSync.supported && mirrorSource?.pair.g && !mirrorSource.pair.d) return retryNativeSync()
+  if (phone.refreshing || (phone.sync && !phone.sync.end)) return
   const finishLanguageWork = beginLanguageWork()
   try {
     clearTimeout(syncT)

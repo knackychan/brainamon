@@ -13,7 +13,7 @@ from unittest import mock
 
 from tests.auth_client import TestClient
 
-from core import app_paths, config
+from core import ai_defaults, app_paths, config
 from core import site_sessions
 from library import owner_vault
 from library import video_analyzer
@@ -98,6 +98,17 @@ class IoServerTest(unittest.TestCase):
         self.assertEqual(self.c.get('/api/scrapers/nope.js').status_code, 404)
         downloads = self.root / 'Downloads'
         downloads.mkdir()
+        fetched = []
+
+        def fetch(job, item):
+            fetched.append(item['id'])
+            return {'filename': 'thumb.jpg', 'source': 'web', 'caption': 'Fetched caption',
+                    'title': 'Fetched title', 'creator': '', 'error': ''}
+
+        for p in (mock.patch.object(KINDS['thumb'], 'run_item', fetch),
+                  mock.patch.object(ai_defaults, 'embed_credentials', return_value=('', None))):
+            p.start()
+            self.addCleanup(p.stop)
         self.c.put('/api/settings', json={'downloads': {'scrape_watch_dir': str(downloads)}}, headers=W)
         w = self.c.post('/api/scrapers/watch', json={'on': True}, headers=W).json()
         self.assertEqual(w, {'watching': True, 'dir': str(downloads)})
@@ -108,6 +119,17 @@ class IoServerTest(unittest.TestCase):
         time.sleep(0.3)
         self.assertTrue((self.data / 'scrapes' / 'fb_saved_new.csv').exists())
         self.assertIn('https://x/w', [r['url'] for r in self.c.get('/api/items').json()['items']])
+        end = time.monotonic() + 5
+        while time.monotonic() < end:
+            rows = self.c.get('/api/items').json()['items']
+            imported = next(r for r in rows if r['url'] == 'https://x/w')
+            if imported['thumb']:
+                break
+            time.sleep(.03)
+        self.assertEqual(fetched, [imported['id']])
+        item = self.c.get(f'/api/items/{imported["id"]}').json()
+        self.assertEqual(item['thumb_path'], 'thumb.jpg')
+        self.assertEqual(item['description'], 'Watched')
         self.assertFalse(self.c.post('/api/scrapers/watch', json={'on': False}, headers=W).json()['watching'])
 
     def test_obsidian_graph(self):

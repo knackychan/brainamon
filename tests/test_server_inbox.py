@@ -61,6 +61,16 @@ class InboxTest(unittest.TestCase):
             again = self.c.post('/api/inbox/link', json={'url': 'Look https://www.instagram.com/reel/C9/?igsh=abc'}, headers=W).json()
         self.assertEqual((again['id'], again['new']), (r['id'], False))
 
+    def test_facebook_watch_and_reel_are_one_item(self):
+        with mock.patch.object(self.app.state.jobs, 'start') as start:
+            first = self.c.post('/api/inbox/link', json={'url': 'https://www.facebook.com/watch/?v=1234567890'}, headers=W).json()
+            again = self.c.post('/api/inbox/link', json={'url': 'https://m.facebook.com/reel/1234567890/'}, headers=W).json()
+            self.assertEqual(again, {'id': first['id'], 'new': False})
+            self.assertEqual(start.call_count, 1)
+            manual = self.c.post('/api/items', json={'url': 'https://www.facebook.com/Example/videos/1234567890/',
+                                                    'description': 'Different title'}, headers=W)
+            self.assertEqual(manual.status_code, 409)
+
     def test_text_goes_to_one_inbox_note(self):
         a = self.c.post('/api/inbox/text', json={'text': 'first thought'}, headers=W).json()
         b = self.c.post('/api/inbox/text', json={'text': 'second thought'}, headers=W).json()

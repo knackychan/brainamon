@@ -7,6 +7,7 @@
   import { syncLanes } from './lanes'
   import { GLYPH, RING_C, ringOf } from './sync-ring'
   import { shell } from './shell.svelte'
+  import { nativeSync } from './sync/native.svelte'
   import MKey from './ui/MKey.svelte'
   import SyncPanel from './SyncPanel.svelte'
 
@@ -14,7 +15,8 @@
   const run = $derived(phone.sync)
   // the vault rounds and the picture queue run on their own; the Drive read is `run` / phone.refreshing
   const lanes = $derived(syncLanes().filter(l => l.tag === 'running' && l.key !== 'network'))
-  const running = $derived((!!run && !run.end) || phone.refreshing || lanes.length > 0)
+  const native = $derived(nativeSync.supported && !!nativeSync.state)
+  const running = $derived((!native && ((!!run && !run.end) || phone.refreshing)) || lanes.length > 0)
   const fill = $derived.by(() => {
     const lane = lanes.find(l => l.key === 'drive' || l.key === 'vault')
     if (lane) return lane.pct === null ? null : lane.pct / 100
@@ -26,7 +28,7 @@
   const ring = $derived(ringOf({
     pull, running, fill,
     manualPause: !!mirrorSource && network.manualPause,
-    waiting: !!mirrorSource && syncPaused() && network.online && !network.manualPause,
+    waiting: native && ['queued', 'retry', 'wifi', 'offline'].includes(nativeSync.state) || !!mirrorSource && syncPaused() && network.online && !network.manualPause,
     problem: amber || run?.end === 'error',
   }))
   // a new page closes the panel

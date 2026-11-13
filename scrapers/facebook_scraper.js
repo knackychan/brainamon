@@ -44,7 +44,8 @@ function extractDescription(a, row, creator) {
     if (t.includes('saved from')) return true;
     if (t.includes('add to collection')) return true;
     if (t.includes('see more') || t.includes('see less')) return true;
-    if (/^reels?\s*[•·]/i.test(t)) return true;
+    if (t === 'view story' || t === 'more options' || (cl && t === cl + ', view story')) return true;
+    if (/^(reels?|videos?)\s*[•·]/i.test(t)) return true;
     if (cl && t === cl) return true;                                    // bare creator name
     if (/^\d+(\.\d+)?[kmb]?\s*(views?|likes?|comments?|shares?|plays?)/i.test(t)) return true;
     if (/^\d+\s*(s|m|h|d|w|y|hr|hrs|min|mins)\b/i.test(t)) return true; // "3d" / "5 h" timestamps
@@ -180,7 +181,7 @@ async function run() {
       }
 
       // Creator (from the "Reel • Creator" label)
-      const cm = fullText.match(/Reels?\s*[•·]\s*([^\n]+)/i);
+      const cm = fullText.match(/(?:Reels?|Videos?)\s*[•·]\s*([^\n]+)/i);
       const creator = cm ? cm[1].trim() : '';
 
       // Description — multi-source (innerText / aria-label / img alt), see extractDescription

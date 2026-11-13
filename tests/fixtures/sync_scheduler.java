@@ -10,7 +10,7 @@ public class SchedulerCheck {
     static JSONObject policy;
     static void reset()throws Exception {
         SyncStore.rows.clear();SyncStore.crashAfterWork=0;SyncStore.workWrites=0;wm.jobs.clear();wm.names.clear();wm.parents.clear();wm.crash="";
-        SyncRunner.calls=0;SyncRunner.budgets=0;SyncRunner.error="";SyncRunner.lateEdit=false;
+        SyncRunner.calls=0;SyncRunner.budgets=0;SyncRunner.priorityEdits=0;SyncRunner.error="";SyncRunner.lateEdit=false;
         SyncWork.active=null;Clock.now=0;c.owner="account-a";c.network="";
         policy=new JSONObject().put("enabled",true).put("paused",false).put("blocked",false).put("generation",1)
             .put("device","phone").put("uri","content://vault").put("wifiOnly",true);
@@ -43,7 +43,7 @@ public class SchedulerCheck {
             assert info(child).constraints.wifi;
             assert info(child).initialDelay==0;
             assert db.work(current).getString("yield").equals("budget");
-            assert info(child).backoff==BackoffPolicy.EXPONENTIAL && info(child).backoffSeconds==30;
+            assert info(child).backoff==BackoffPolicy.LINEAR && info(child).backoffSeconds==10;
             noDone(root);current=child;
         }
         assert run(current).kind.equals("success");assert SyncRunner.calls==4;
@@ -78,6 +78,61 @@ public class SchedulerCheck {
         assert run(root).kind.equals("retry");assert !db.work(root).has("next");
         assert run(root).kind.equals("retry");assert info(root).attempts==2;
         SyncRunner.error="";assert run(root).kind.equals("success");
+
+        // Fresh uploads and explicit retry bypass backoff, preserving data/options and existing observers.
+        reset();root=request(false,false);SyncRunner.error="retry";run(root);
+        info(root).nextAt=System.currentTimeMillis()+80*60_000;
+        String queued=request(true,true);
+        db.put(c.owner,"edit","saved phone changes");
+        JSONObject delayed=SyncWork.status(c,queued);
+        assert delayed.getString("state").equals("retry") && delayed.getBoolean("retryable");
+        assert delayed.getLong("nextAt")==info(root).nextAt;
+        assert request(false,false).equals(root) : "automatic triggers reset backoff";
+        fresh=SyncWork.retry(c);
+        assert !fresh.equals(root) && info(fresh).attempts==0;
+        assert info(root).state==WorkInfo.State.CANCELLED && info(queued).state==WorkInfo.State.CANCELLED;
+        assert info(fresh).input.getBoolean("force",false) && info(fresh).input.getBoolean("legacy",false);
+        assert db.next(c.owner)!=null : "retry discarded staged changes";
+        assert !SyncWork.status(c,root).getBoolean("finished");
+        assert !SyncWork.status(c,queued).getBoolean("finished");
+        assert SyncWork.status(c,root).isNull("nextAt") && !SyncWork.status(c,root).getBoolean("retryable");
+        assert SyncWork.retry(c).equals(fresh) : "repeat tap duplicated fresh work";
+        SyncRunner.error="";run(fresh);
+        assert SyncWork.status(c,root).getString("outcome").equals("idle");
+        assert SyncWork.status(c,queued).getString("outcome").equals("idle");
+        assert db.next(c.owner)==null;
+
+        reset();root=request(false,false);info(root).state=WorkInfo.State.RUNNING;
+        assert SyncWork.retry(c).equals(root) && wm.jobs.size()==1 : "retry cancelled running work";
+        SyncWork.active=new SyncRunner(c,root,policy,()->false);SyncWork.active.cancelled=true;
+        fresh=SyncWork.retry(c);assert !fresh.equals(root) : "new edit joined a stopped runner before Android rescheduled it";
+        SyncWork.active=null;
+        reset();root=request(false,false);run(root);info(root).state=WorkInfo.State.RUNNING;
+        SyncWork.active=new SyncRunner(c,root,policy,()->false);SyncWork.active.accepting=false;
+        db.put(c.owner,"edit","saved just after completion");fresh=SyncWork.retry(c);
+        assert !fresh.equals(root) : "new upload joined the runner after its last outbox check";
+        SyncWork.active=null;run(fresh);assert db.next(c.owner)==null;
+        reset();root=request(false,false);SyncRunner.error="retry";run(root);c.network="offline";
+        assert !SyncWork.status(c,root).getBoolean("retryable");
+        db.put("","policy",new JSONObject(policy.toString()).put("paused",true).toString());
+        try{SyncWork.retry(c);throw new AssertionError("retry bypassed pause");}catch(IllegalStateException expected){}
+
+        // A crash after replacement is enqueued still leaves the fresh request runnable.
+        reset();root=request(false,false);SyncRunner.error="retry";run(root);wm.crash="after-enqueue";
+        try{SyncWork.retry(c);throw new AssertionError("retry crash not reached");}catch(ProcessDeath expected){}
+        wm.crash="";fresh=request(false,false);assert !fresh.equals(root);
+        SyncRunner.error="";run(fresh);assert SyncWork.status(c,fresh).getBoolean("finished");
+
+        // A new phone edit interrupts the low-priority vault at its next safe checkpoint, without backoff.
+        reset();root=request(false,false);SyncRunner.priorityEdits=1;
+        db.put(c.owner,"vault-state","saved vault checkpoint");
+        assert run(root).kind.equals("success");
+        String urgent=next(root);
+        assert db.work(root).getString("yield").equals("uploads");
+        assert info(urgent).initialDelay==0 && info(urgent).attempts==0;
+        assert db.next(c.owner)!=null && db.get(c.owner,"vault-state").equals("saved vault checkpoint");
+        noDone(root);run(urgent);
+        assert db.next(c.owner)==null && SyncWork.status(c,root).getString("outcome").equals("idle");
 
         reset();root=request(false,false);String explicit=request(true,true);SyncRunner.budgets=1;
         run(root);String child=next(root);
@@ -155,9 +210,9 @@ class Clock { static long now; }
 class Context { String owner="account-a",network=""; }
 class Build { static class VERSION { static int SDK_INT=34; } }
 class Constraints { boolean wifi;Constraints(boolean wifi){this.wifi=wifi;} }
-enum BackoffPolicy { EXPONENTIAL }
+enum BackoffPolicy { EXPONENTIAL,LINEAR }
 enum OutOfQuotaPolicy { RUN_AS_NON_EXPEDITED_WORK_REQUEST }
-enum ExistingWorkPolicy { APPEND_OR_REPLACE }
+enum ExistingWorkPolicy { APPEND_OR_REPLACE, REPLACE }
 enum ExistingPeriodicWorkPolicy { UPDATE }
 class Data {
     Map<String,Object> values=new HashMap<>();
@@ -189,9 +244,10 @@ class PeriodicWorkRequest {
 }
 class WorkInfo {
     enum State { ENQUEUED,BLOCKED,RUNNING,SUCCEEDED,FAILED,CANCELLED;boolean isFinished(){return this==SUCCEEDED||this==FAILED||this==CANCELLED;} }
-    UUID id;State state=State.ENQUEUED;Data input,output=new Data();int attempts;Constraints constraints;BackoffPolicy backoff;long backoffSeconds,initialDelay;
+    UUID id;State state=State.ENQUEUED;Data input,output=new Data();int attempts;Constraints constraints;BackoffPolicy backoff;long backoffSeconds,initialDelay,nextAt;
     WorkInfo(OneTimeWorkRequest r){id=r.id;input=r.data;constraints=r.constraints;backoff=r.backoff;backoffSeconds=r.seconds;initialDelay=r.initialDelay;}
     UUID getId(){return id;}State getState(){return state;}Data getOutputData(){return output;}
+    int getRunAttemptCount(){return attempts;}long getNextScheduleTimeMillis(){return nextAt;}
 }
 class Operation {CompletableFuture<Void> getResult(){return CompletableFuture.completedFuture(null);} }
 class WorkManager {
@@ -203,6 +259,7 @@ class WorkManager {
         if(crash.equals("before-enqueue"))throw new ProcessDeath();
         if(jobs.containsKey(r.id))throw new AssertionError("duplicate durable work ID");
         List<UUID> chain=names.computeIfAbsent(name,k->new ArrayList<>());WorkInfo info=new WorkInfo(r);
+        if(p==ExistingWorkPolicy.REPLACE){for(UUID prior:chain)if(!jobs.get(prior).state.isFinished())jobs.get(prior).state=WorkInfo.State.CANCELLED;chain.clear();}
         if(!chain.isEmpty()){UUID prior=chain.get(chain.size()-1);parents.put(r.id,prior);if(!jobs.get(prior).state.isFinished())info.state=WorkInfo.State.BLOCKED;}
         jobs.put(r.id,info);chain.add(r.id);
         if(crash.equals("after-enqueue"))throw new ProcessDeath();return new Operation();
@@ -225,14 +282,15 @@ class SyncStore implements AutoCloseable {
     String get(String scope,String name){return rows.get(scope+"/"+name);}void put(String scope,String name,String value){rows.put(scope+"/"+name,value);}
     JSONObject work(String id){String value=get("","work/"+id);return value==null?null:new JSONObject(value);}void work(String id,JSONObject value){put("","work/"+id,value.toString());if(++workWrites==crashAfterWork)throw new ProcessDeath();}
     JSONObject next(String scope){return get(scope,"edit")==null?null:new JSONObject().put("name","queued-edit");}
+    boolean hasPending(String scope){return next(scope)!=null;}
 }
 class SyncKey {static byte[] utf(String s){return s.getBytes(java.nio.charset.StandardCharsets.UTF_8);} }
 class PhoneSecrets {static String get(Context c,String name){return c.owner;}static String stored(Context c,String name){return c.owner;} }
 class SyncRunner implements AutoCloseable {
     /* CHECKPOINTS */
     String id,scope,savedPair;Context context;JSONObject policy;SyncStore store;long deadline=Long.MAX_VALUE;
-    boolean accepting=true,cancelled;java.util.function.BooleanSupplier stopped;
-    static int calls,budgets;static String error="";static boolean lateEdit;
+    boolean accepting=true,cancelled,prioritizeUploads;java.util.function.BooleanSupplier stopped;
+    static int calls,budgets,priorityEdits;static String error="";static boolean lateEdit;
     SyncRunner(Context c,String id,JSONObject p,java.util.function.BooleanSupplier stop)throws Exception {context=c;this.id=id;policy=p;scope=c.owner;savedPair=c.owner;store=new SyncStore(c);stopped=stop;}
     static JSONObject pair(Context c)throws IOException{if(c.owner==null)throw new IOException("auth");return new JSONObject().put("owner",c.owner);}
     static String scope(JSONObject p,String device){return p.getString("owner");}
@@ -241,6 +299,7 @@ class SyncRunner implements AutoCloseable {
     JSONObject run(boolean force,boolean legacy)throws Exception {
         calls++;checkpoint();store.put("","status",new JSONObject().put("id",id).put("state","syncing").put("libraryReady",true).toString());
         if(!error.isEmpty())throw new IOException(error);
+        if(priorityEdits-->0){prioritizeUploads=true;store.put(scope,"edit","new phone change during vault sync");checkpoint();}
         if(budgets-->0){deadline=Clock.now;checkpoint();}
         if(lateEdit)store.put(scope,"edit","saved");else SyncStore.rows.remove(scope+"/edit");
         return new JSONObject();

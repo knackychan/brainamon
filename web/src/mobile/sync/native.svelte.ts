@@ -1,13 +1,15 @@
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import { withTimeout } from '../wait'
 import { t, type Key } from '../../lib/i18n/index'
+import { fmtTime } from '../../lib/i18n/format'
 import type { FileCounts } from '../vault/sync'
 
-export interface NativeSyncStatus { supported: boolean; state: string; id?: string; observedId?: string; outcome?: string | null; requestReady?: boolean; phase?: string; progress?: number; last?: number; finished?: boolean; scheduled?: boolean; libraryReady?: boolean; vaultFiles?: FileCounts | null; vaultStep?: { key?: Key; done: number; total: number } }
+export interface NativeSyncStatus { supported: boolean; state: string; nextAt?: number | null; retryable?: boolean; id?: string; observedId?: string; outcome?: string | null; requestReady?: boolean; phase?: string; progress?: number; last?: number; finished?: boolean; scheduled?: boolean; libraryReady?: boolean; driveStep?: { key: Key; done?: number; total?: number } | null; vaultFiles?: FileCounts | null; vaultStep?: { key?: Key; done: number; total: number } }
 interface SyncPlugin {
   status(o: { id?: string }): Promise<NativeSyncStatus>
   configure(o: Record<string, unknown>): Promise<NativeSyncStatus>
-  request(o: { force?: boolean; legacy?: boolean }): Promise<{ id: string }>
+  request(o: { force?: boolean; legacy?: boolean; uploads?: boolean }): Promise<{ id: string }>
+  retry(): Promise<{ id: string }>
   barrier(): Promise<void>
   stage(o: { owner: string; id: string; name: string; data: string }): Promise<{ name: string; remote?: string }>
   receipt(o: { owner: string; id: string }): Promise<{ name?: string; remote?: string }>
@@ -23,12 +25,34 @@ const states: Record<string, Key> = {
   conflict: 'settings.sync.native.conflict', update: 'settings.sync.native.update', library: 'settings.sync.native.library',
   attention: 'settings.sync.native.attention', key: 'settings.sync.native.attention', unsupported: 'settings.sync.native.unsupported',
 }
-export const nativeSyncText = (state = nativeSync.state) => t(states[state] ?? 'settings.sync.native.attention')
+export function nativeSyncText(state = nativeSync.state): string {
+  if (['queued', 'retry'].includes(state) && nativeSync.nextAt && nativeSync.retryable) return t('settings.sync.native.delayed', { time: fmtTime(nativeSync.nextAt, { hour: '2-digit', minute: '2-digit' }) })
+  return t(states[state] ?? 'settings.sync.native.attention')
+}
+export const nativeRetry = $state({ busy: false, error: '' })
+export async function retryNativeSync() {
+  if (nativeRetry.busy) return
+  nativeRetry.busy = true; nativeRetry.error = ''
+  try {
+    await policy
+    const { id } = await withTimeout(S.retry(), 30_000, nativeSyncText('retry'))
+    Object.assign(nativeSync, await withTimeout(S.status({ id }), 15_000, nativeSyncText('retry')))
+    checked = 0
+    window.dispatchEvent(new Event('brainamon-sync-resume'))
+  } catch (e) { nativeRetry.error = nativeSyncText((e as Error).message) }
+  finally { nativeRetry.busy = false }
+}
 export function nativePhasePct(): number | null {
-  if (nativeSync.progress === undefined) return null
+  if (nativeSync.progress === undefined || nativeSync.phase === 'send') return null
+  if (nativeSync.phase === 'drive' && nativeSync.progress <= 0) return null
   // SyncRunner reserves 0–40% for Drive and 40–99% for the vault; each lane shows its own progress.
   const fraction = nativeSync.phase === 'vault' ? (nativeSync.progress - 0.4) / 0.59 : nativeSync.progress / 0.4
   return Math.min(99, Math.max(0, Math.round(fraction * 100)))
+}
+export function nativeDriveText(): string {
+  if (nativeSync.phase === 'send') return t('shell.sync.sendStep')
+  const step = nativeSync.driveStep
+  return step?.key ? t(step.key, { done: step.done ?? 0, total: step.total ?? 0 }) : t('shell.sync.reading', { where: t('shell.sync.whereDrive') })
 }
 export const nativeSyncError = (code: string) => Object.assign(new Error(nativeSyncText(code)), { code, displayKey: states[code] })
 let support: Promise<boolean> | undefined
@@ -66,6 +90,16 @@ export async function nativeCache<T>(owner: string, name: string): Promise<T | u
 }
 export const seedNativeVault = (owner: string, state: unknown) => S.seedVault({ owner, state })
 export const nativeReceipt = (owner: string, id: string) => S.receipt({ owner, id })
+export async function nativeUploads(owner: string, ids: string[], round: Promise<void>): Promise<void> {
+  let settled = false, problem: unknown
+  void round.then(() => { settled = true }, e => { settled = true; problem = e })
+  for (;;) {
+    const receipts = await Promise.all(ids.map(id => nativeReceipt(owner, id)))
+    if (receipts.every(r => r.name && r.remote)) return
+    if (settled) throw problem ?? nativeSyncError('retry')
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+}
 export const stageNative = (owner: string, id: string, name: string, data: string) => S.stage({ owner, id, name, data })
 let running: Promise<void> | undefined
 let reading: Promise<void> | undefined
@@ -78,7 +112,7 @@ export function nativeRound(force = false, legacy = false, dirty = false, onProg
   void reading.catch(() => {})
   running = (async () => {
     await policy
-    const { id } = await S.request({ force, legacy })
+    const { id } = await S.request({ force, legacy, uploads: dirty && !force && !legacy })
     for (;;) {
       const observed = await S.status({ id })
       Object.assign(nativeSync, observed)

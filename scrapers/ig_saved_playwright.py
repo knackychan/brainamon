@@ -167,12 +167,22 @@ async (args) => {
 UNSAVE_JS = r"""
 async () => {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-  const scope = document.querySelector('main') || document;
-  const icon = (label) => Array.from(scope.querySelectorAll('svg[aria-label]')).find(s => s.getAttribute('aria-label') === label);
+  const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+  const icon = label => {
+    const dialogs = Array.from(document.querySelectorAll('[role="dialog"]')).filter(visible);
+    if (dialogs.length > 1) return null;
+    const main = dialogs[0] || Array.from(document.querySelectorAll('main, [role="main"]')).find(visible);
+    if (!main) return null;
+    // Suggested posts below the opened post have their own bookmarks.
+    const scope = Array.from(main.querySelectorAll('article')).find(visible) || main;
+    return Array.from(scope.querySelectorAll('[aria-label]')).find(el => visible(el) &&
+      (label === 'Remove' ? /^(remove|unsave|remove from saved)$/i : /^save$/i).test(el.getAttribute('aria-label') || ''));
+  };
   for (let i = 0; i < 20 && !icon('Remove') && !icon('Save'); i++) await sleep(500);
   const saved = icon('Remove');
   if (!saved) return icon('Save') ? 'already' : 'nobutton';
-  (saved.closest('[role="button"], button') || saved).click();
+  const button = saved.closest('[role="button"], button') || saved;
+  button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
   for (let i = 0; i < 20; i++) {
     await sleep(300);
     if (!icon('Remove') && icon('Save')) return 'ok';
@@ -229,6 +239,7 @@ def unsave_all(page, rows: list[dict], delay_ms: int) -> int:
             print(f"[unsave {i:04d}/{len(rows)}] {state} {row['url']}")
         else:
             fails += 1
+            print('[status] unsave-failed', flush=True)
             hint = " (no bookmark labelled 'Remove': is Instagram in English?)" if state == "nobutton" else ""
             print(f"[warn] Could not unsave {row['url']}: {state}{hint}")
             if fails >= MAX_UNSAVE_FAILS:

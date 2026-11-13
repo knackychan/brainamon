@@ -103,6 +103,24 @@ class FilesTest(unittest.TestCase):
         finally:
             V.MAX_FILE = old
 
+    def test_scan_counts_checked_files_including_skips_and_stops_between_files(self):
+        self.put('a.md', 'ok')
+        self.put('big.md', 'too large')
+        self.put('.trash/ignored.md')
+        events, skipped = [], {}
+        report = lambda *args: events.append(args)
+        with mock.patch.object(V, 'MAX_FILE', 3):
+            files, _ = V.scan(self.root, self.key, skipped=skipped, progress=report)
+        self.assertEqual(set(files), {'a.md'})
+        self.assertEqual(skipped, {'big.md': 9})
+        self.assertEqual([e for e in events if e[0] == 'Checking vault files'],
+                         [('Checking vault files', n, 2) for n in range(3)])
+        events.clear()
+        with self.assertRaisesRegex(OSError, 'stopping'):
+            V.scan(self.root, self.key, progress=report,
+                   should_stop=lambda: bool(events and events[-1] == ('Checking vault files', 1, 2)))
+        self.assertEqual(events[-1], ('Checking vault files', 1, 2))
+
     def test_scan_names_the_files_it_leaves_out_for_their_size(self):
         self.put('small.md', 'x')
         self.put('big.md', 'y' * 20)

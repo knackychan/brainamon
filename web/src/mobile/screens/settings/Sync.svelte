@@ -9,7 +9,7 @@
   import { kindOf } from '../../settings-steps'
   import { runPhoneAction, actionBusy, actionLabel } from '../../actions'
   import { runVault, setVaultOn, vault } from '../../vault/auto.svelte'
-  import { nativeSync } from '../../sync/native.svelte'
+  import { nativeSync, nativeRetry, retryNativeSync } from '../../sync/native.svelte'
   import PageKeys from '../../PageKeys.svelte'
   import SettingsProgress from '../../SettingsProgress.svelte'
   import ShellIcon from '../../ShellIcon.svelte'
@@ -46,9 +46,11 @@
     {:else if gated || (st && ['attention', 'failed'].includes(kindOf(st, backup.error)))}<MButton as="a" shape="pill" href="#/backup">{t('backup.group.title')}<ShellIcon name="down" /></MButton>{/if}
   </MStatus>
   <div class="m-settings-chips">
-    <MKey size="mid" wide disabled={gated || busy || syncPaused()} onclick={() => syncNow()}><ShellIcon name="sync" />{t('shell.sync.now')}</MKey>
+    <MKey size="mid" wide disabled={gated || nativeRetry.busy || (busy && !nativeSync.retryable) || syncPaused()} onclick={() => nativeSync.retryable ? retryNativeSync() : syncNow()}><ShellIcon name="sync" />{t(nativeSync.retryable ? 'settings.sync.native.retryNow' : 'shell.sync.now')}</MKey>
     <MKey size="mid" wide disabled={network.pausePending} onclick={() => setSyncPaused(network.pauseFailed || !network.manualPause)}><ShellIcon name={network.manualPause ? 'play' : 'pause'} />{network.pausePending ? t('settings.sync.savingPolicy') : network.pauseFailed ? t('common.retry') : t(network.manualPause ? 'shell.sync.resume' : 'shell.sync.pause')}</MKey>
   </div>
+  {#if nativeRetry.error}<MHint role="alert">{nativeRetry.error}</MHint>{/if}
+  {#if nativeSync.supported && phone.pend.unsent}<MHint>{t('settings.sync.native.pending', { n: phone.pend.unsent })}</MHint>{/if}
   {#if gated}<MHint>{t('backup.warning.localTask')}</MHint>{/if}
   <SettingsProgress />
   {#if phone.sync?.end}<MHint role="status">{phone.sync.msg}</MHint>{/if}

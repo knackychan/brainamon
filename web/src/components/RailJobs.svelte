@@ -118,8 +118,10 @@
     <p class="rj-row"><b class="rj-k">DRIVE</b><span class="l">{mirrorMove}</span>{#if cl?.state === 'disconnecting' && cl.total}<span class="c">{cl.done}/{cl.total}</span>{/if}</p>
   {/if}
   {#if vaultBusy && cl}
-    <p class="rj-row"><b class="rj-k">VAULT</b><span class="l">{cl.vault_state === 'starting' ? 'Obsidian vault · starting' : `${cl.vault_step} · ${cl.vault_done}/${cl.vault_total}${vp.left ? ` · ${vp.left}` : ''}`}</span><span class="c">{vp.pct}%</span></p>
-    {@render segBar('Obsidian vault sync', vp.pct)}
+    <p class="rj-row"><b class="rj-k">VAULT</b><span class="l" title={cl.vault_step}>{cl.vault_step || 'Obsidian vault · starting'}</span>{#if cl.vault_total}<span class="c">{cl.vault_done}/{cl.vault_total} · {vp.pct}%</span>{:else if cl.vault_done}<span class="c">{cl.vault_done} files</span>{/if}</p>
+    {#if cl.vault_total}{@render segBar('Obsidian vault sync', vp.pct)}
+    {:else}<div class="rj-run" role="progressbar" aria-label={cl.vault_step || 'Starting Obsidian vault sync'}></div>{/if}
+    {#if vp.left}<p class="rj-step">{vp.left}</p>{/if}
   {/if}
   {#if vaultMove}
     <p class="rj-row"><b class="rj-k">VAULT</b><span class="l">{vaultMove}</span></p>

@@ -952,6 +952,8 @@ def _scrape_process(job, args, env, say, name):
             status = statuses.get(line.strip())
             if status:
                 say(status)
+            if line.strip() == '[status] unsave-failed':
+                say('Could not confirm removal of some posts from Saved. Their exported CSV is safe; check your saved list before retrying.', 'r')
             count = re.fullmatch(r'\[done\] (Scraped|Unsaved) ([0-9]+)(?: of ([0-9]+))? (items|posts)\s*', line)
             if count:
                 say(count.group(0).strip())

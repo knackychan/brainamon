@@ -23,7 +23,8 @@ public final class SyncPlugin extends Plugin {
         if(patch.has("uri") && !patch.getString("uri").isEmpty() && !patch.getString("uri").startsWith("content://"))throw new IllegalArgumentException("Invalid vault");
         SyncWork.configure(getContext(),patch);return SyncWork.status(getContext(),"");
     });}
-    @PluginMethod public void request(PluginCall c){call(c,()->new JSONObject().put("id",SyncWork.request(getContext(),c.getBoolean("force",false),c.getBoolean("legacy",false))));}
+    @PluginMethod public void request(PluginCall c){call(c,()->new JSONObject().put("id",c.getBoolean("uploads",false)?SyncWork.retry(getContext()):SyncWork.request(getContext(),c.getBoolean("force",false),c.getBoolean("legacy",false))));}
+    @PluginMethod public void retry(PluginCall c){call(c,()->new JSONObject().put("id",SyncWork.retry(getContext())));}
     @PluginMethod public void barrier(PluginCall c){call(c,()->{SyncWork.barrier(getContext());return new JSONObject();});}
     private String scope(String expected)throws Exception {
         JSONObject p=SyncRunner.pair(getContext());
@@ -47,7 +48,7 @@ public final class SyncPlugin extends Plugin {
             synchronized(SyncWork.POLICY){
                 scope(c.getString("owner",""));
                 db.stage(scope,id,name,data);
-                if(SyncWork.enabled(SyncWork.policy(getContext())))SyncWork.request(getContext(),false,false);
+                if(SyncWork.enabled(SyncWork.policy(getContext())))SyncWork.retry(getContext());
             }
             return db.receipt(scope,id);
         }

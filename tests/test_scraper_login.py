@@ -149,8 +149,9 @@ class StatusTest(unittest.TestCase):
         from server import job_kinds
         proc = mock.Mock(stdout=iter([
             '[status] login\n', '[status] instagram-saved\n', '[status] collecting\n',
+            '[status] unsave-failed\n', '[status] unsave-failed synthetic-secret\n',
             '[status] login synthetic-secret\n', '[action] synthetic-secret\n',
-            'Traceback: synthetic-secret\n', '[done] Scraped 3 posts\n',
+            'Traceback: synthetic-secret\n', '[done] Scraped 3 posts\n', '[done] Unsaved 2 of 3 posts\n',
         ]))
         proc.wait.return_value = 0
         say = mock.Mock()
@@ -163,6 +164,10 @@ class StatusTest(unittest.TestCase):
         self.assertIn('profile > Saved > All posts', output)
         self.assertIn('Collecting', output)
         self.assertIn('Scraped 3 posts', output)
+        self.assertIn('Unsaved 2 of 3 posts', output)
+        warnings = [call.args[0] for call in say.call_args_list if call.args[1:] == ('r',)]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn('Could not confirm removal', warnings[0])
         self.assertNotIn('synthetic-secret', output)
 
 

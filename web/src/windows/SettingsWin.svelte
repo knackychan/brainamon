@@ -643,7 +643,7 @@
     if (!c.licensed) return 'Update Brainamon on this PC for payment-free vault sync.'
     if (c.vault_state === 'starting') return c.state === 'signing-in' ? 'Waiting for the Google sign-in.' : 'Starting: comparing the vault with the phone.'
     if (c.vault_state === 'stopping') return 'Stopping vault sync. Finishing requests already in progress.'
-    if (c.vault_state === 'syncing') { const pr = progress(c.vault_done, c.vault_total, c.vault_since); return `${c.vault_step}: ${c.vault_done} of ${c.vault_total} files${pr.left ? `, ${pr.left}` : ''}.` }
+    if (c.vault_state === 'syncing') { const pr = progress(c.vault_done, c.vault_total, c.vault_since); return `${c.vault_step}${c.vault_total ? `: ${c.vault_done} of ${c.vault_total} files${pr.left ? `, ${pr.left}` : ''}` : c.vault_done ? `: ${c.vault_done} files` : ''}.` }
     if (c.vault_state === 'brake') return 'Held: this round would delete many files.'
     if (c.vault_state === 'error') return 'Stopped on an error. The reason is below.'
     if (c.vault_running) return c.vault_skipped_note ? `Vault sync is on. ${c.vault_skipped_note}` : 'Vault sync is on. Up to date.'

@@ -35,7 +35,7 @@ class SyncSchedulerTest(unittest.TestCase):
             source = source.replace(method(source, signature), body)
         runner = (NATIVE / 'SyncRunner.java').read_text(encoding='utf-8')
         checkpoints = '\n'.join(method(runner, s) for s in (
-            'static final class BudgetExpired', 'static final class Cancelled',
+            'static final class BudgetExpired', 'static final class UploadsPending', 'static final class Cancelled',
             'void checkpoint()', 'void checkpoint(boolean budget)', 'static String reason('))
         checkpoints = checkpoints.replace('android.os.SystemClock.elapsedRealtime()', 'Clock.now')
         harness = (ROOT / 'tests/fixtures/sync_scheduler.java').read_text(encoding='utf-8').replace('/* CHECKPOINTS */', checkpoints)

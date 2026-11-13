@@ -374,11 +374,11 @@ def _link(db, ch: dict, at: int, alias: dict, out: Applied) -> None:
     uid = str(ch.get('uid') or '')
     if not http_url(url):
         return
-    row = db.conn.execute('SELECT id, uid FROM items WHERE url = ?', (url,)).fetchone()
+    row = db.get_item_by_url(url)
     if row:
         out.dups += 1
         if uid:
-            alias[uid] = row[1]
+            alias[uid] = row['uid']
         return
     phone_uid = uid
     if not _UID.match(uid) or db.conn.execute('SELECT 1 FROM items WHERE uid = ?', (uid,)).fetchone():

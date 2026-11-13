@@ -159,6 +159,9 @@ class JobManager:
         self.current: Job | None = None
         self.last: Job | None = None
         self.dirty: set[int] = set()
+        # shortcut: pending fetches live in memory; persist them if they must survive app exit.
+        self._fetch_ids: set[int] = set()
+        self._fetch_lock = threading.Lock()
         self._lock = threading.Lock()
         self._closing = False
         self._seq = 0
@@ -639,6 +642,8 @@ class JobManager:
         return self.snapshot()
 
     def shutdown(self) -> None:
+        with self._lock:
+            self._closing = True
         self.stop()
         t = self._thread
         if t is not None:
@@ -778,7 +783,23 @@ class JobManager:
                 fn(kind.key, job)
             except Exception as exc:
                 app_console.emit('error', 'Job finish hook failed', level='error', error=exc)
+        self.queue_fetch(())
         self._follow_up(kind, job)
+
+    def queue_fetch(self, ids) -> None:
+        """Fetch missing previews after a scrape, waiting for the running job to finish."""
+        with self._fetch_lock:
+            self._fetch_ids.update(int(i) for i in ids)
+            if self.current is not None or self._closing or not self._fetch_ids:
+                return
+            pending = sorted(self._fetch_ids)
+            self._fetch_ids.clear()
+            try:
+                self.start('thumb', pending, force=False, auto=True)
+            except Busy:
+                self._fetch_ids.update(pending)
+            except JobError as exc:
+                app_console.emit('log', f'Automatic fetch pass skipped: {exc}')
 
     def reindex(self, ids) -> None:
         """Items added or changed outside a job (an import): embed them now, or after the running

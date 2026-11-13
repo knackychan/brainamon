@@ -13,6 +13,7 @@
   import { network, setSyncPaused, syncPaused } from './network.svelte'
   import { syncLanes } from './lanes'
   import { shell } from './shell.svelte'
+  import { nativeSync, nativeRetry, retryNativeSync } from './sync/native.svelte'
   import MButton from './ui/MButton.svelte'
   import MHint from './ui/MHint.svelte'
   import MRunBar from './ui/MRunBar.svelte'
@@ -25,8 +26,9 @@
   const done = $derived(run ? run.steps.filter(s => s.state === 'ok' || s.state === 'err').length : 0)
   // the header names where the sync goes, with the step count while a run is open (whole clauses, not a glued suffix)
   const running = $derived(!!run && !run.end)
+  const native = $derived(nativeSync.supported && !!nativeSync.state)
   const head = $derived(source.kind === 'mirror'
-    ? (running ? t('shell.sync.headDriveRun', { done, total }) : t('shell.sync.headDrive'))
+    ? (running && !native ? t('shell.sync.headDriveRun', { done, total }) : t('shell.sync.headDrive'))
     : (running ? t('shell.sync.headPcRun', { done, total }) : t('shell.sync.headPc')))
   const st = $derived(phoneStatus())
   const owner = $derived(st?.strip ? st : null)
@@ -61,6 +63,8 @@
   <header class="m-syncp-head"><span>{head}</span><button type="button" class="m-syncp-fold" aria-label={t('shell.sync.close')} onclick={close}>▴</button></header>
   {#if owner}
     <p class="m-syncp-why"><b>{owner.text}</b><small>{t('shell.sync.keepsCopy', { n: phone.rows.length, items, ago: fmtAgo(phone.synced) })}</small></p>
+  {:else if native && (running || nativeSync.state !== 'idle')}
+    {#if phone.pend.unsent}<p class="m-syncp-why" role="status">{t('settings.sync.native.pending', { n: phone.pend.unsent })}</p>{/if}
   {:else if run}
     <ol class="m-syncp-steps">
       {#each run.steps as s (s.key)}
@@ -85,9 +89,10 @@
       <MButton as="a" size="sm" variant="dk" href="#/backup">{t('shell.sync.backupLink')}</MButton>
       <MButton size="sm" disabled>{t('shell.sync.now')}</MButton>
     {:else}
-      <MButton size="sm" variant="dk" disabled={busy || paused || !!backup.task || backup.busy} onclick={() => syncNow()}>{t('shell.sync.now')}</MButton>
+      <MButton size="sm" variant="dk" disabled={nativeRetry.busy || (busy && !nativeSync.retryable) || paused || !!backup.task || backup.busy} onclick={() => nativeSync.retryable ? retryNativeSync() : syncNow()}>{t(nativeSync.retryable ? 'settings.sync.native.retryNow' : 'shell.sync.now')}</MButton>
       {#if mirrorSource}<MButton size="sm" disabled={network.pausePending} onclick={() => setSyncPaused(network.pauseFailed || !network.manualPause)}>{network.pausePending ? t('settings.sync.savingPolicy') : network.pauseFailed ? t('common.retry') : t(network.manualPause ? 'shell.sync.resume' : 'shell.sync.pause')}</MButton>{/if}
       <MButton as="a" size="sm" href={backupHere ? '#/backup' : '#/more'}>{backupHere ? t('shell.sync.backupLink') : t('shell.sync.settingsLink')}</MButton>
     {/if}
   </div>
+  {#if nativeRetry.error}<MHint role="alert">{nativeRetry.error}</MHint>{/if}
 </section>

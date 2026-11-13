@@ -21,7 +21,7 @@ export const GLYPH: Record<RingGlyph, string> = { check: '✓', sync: '↻', war
 const clamp = (n: number) => Math.min(1, Math.max(0, n))
 
 export function ringOf(f: RingFacts): Ring {
-  if (f.pull > 0 && !f.running) {
+  if (f.pull > 0) {
     const p = clamp(f.pull)
     return { tone: p >= 1 ? 'run' : 'pull', glyph: 'down', frac: p, spin: false, turn: Math.round(p * 180) }
   }

@@ -2,6 +2,9 @@ import type { messages as English } from '../en/shell.ts'
 import type { Localized } from '../en/index.ts'
 
 export const messages = {
+  "shell.sync.checkingAccess": "正在確認同步存取權限…",
+  "shell.sync.readingIndex": "正在讀取 Google 雲端硬碟檔案清單…",
+  "shell.sync.readingFiles": "正在讀取 Google 雲端硬碟 · 已檢查 {done}/{total} 個檔案",
 
 
 

@@ -202,3 +202,118 @@ class PhoneUnsaveBrowser(unittest.TestCase):
             }''')
             self.assertEqual(result, [False, False, True, 2, True])
             self.assertEqual(errors, [])
+
+    def test_facebook_menu_without_wrapper_ignores_existing_unrelated_actions(self):
+        with mobile_browser() as (browser, base), synthetic_phone(browser, base, 390, 844, 'light') as (page, errors):
+            page.set_content('''<article><div><a href="https://www.facebook.com/reel/123456/">Post</a>
+              <span>Add to collection</span></div><button aria-label="More options">More</button></article>
+              <button role="menuitem" onclick="throw Error('unrelated')">Unsave</button>''')
+            adapter = (ROOT / 'scrapers/sites/facebook.js').read_text(encoding='utf-8')
+            runner = (ROOT / 'scrapers/sites/_runner.js').read_text(encoding='utf-8')
+            result = page.evaluate('async () => {' + adapter + runner + '''
+                sleep=async()=>{};
+                const cards=SITE.read(document), row=SITE.rows.get(cards[0].url);
+                row.querySelector('button').onclick=()=>{
+                  const item=document.createElement('button');item.role='menuitem';item.textContent='Remove from saved';
+                  item.onclick=()=>{row.remove();item.remove()};document.body.append(item)};
+                return SITE.unsave(document,cards[0].url,()=>true);
+            }''')
+            self.assertTrue(result)
+            self.assertEqual(errors, [])
+
+    def test_facebook_more_dialog_button_with_post_label(self):
+        with mobile_browser() as (browser, base), synthetic_phone(browser, base, 390, 844, 'light') as (page, errors):
+            page.set_content('''<article id="target"><div><a href="https://www.facebook.com/reel/123456/">Post</a>
+              <span>Add to collection</span></div><div role="button" aria-label="More, unrelated">Other</div>
+              <div role="button" aria-haspopup="dialog" aria-label="More, sample saved post">More</div></article>
+              <article><a href="https://www.facebook.com/reel/999999/">Other</a><span>Add to collection</span></article>''')
+            adapter = (ROOT / 'scrapers/sites/facebook.js').read_text(encoding='utf-8')
+            runner = (ROOT / 'scrapers/sites/_runner.js').read_text(encoding='utf-8')
+            result = page.evaluate('async () => {' + adapter + runner + '''
+                sleep=async()=>{};
+                const cards=SITE.read(document), row=document.querySelector('#target');let clicked=0;
+                row.querySelector('[aria-haspopup="dialog"]').onclick=()=>{
+                  const item=document.createElement('div');item.role='menuitem';item.textContent='Unsave';
+                  item.onclick=()=>{clicked++;row.remove();item.remove()};document.body.append(item)};
+                const removed=await SITE.unsave(document,cards[0].url,()=>true);
+                return [removed,clicked,document.querySelectorAll('article').length];
+            }''')
+            self.assertEqual(result, [True, 1, 1])
+            self.assertEqual(errors, [])
+
+    def test_facebook_refreshes_rows_after_redraw_and_checks_removal(self):
+        with mobile_browser() as (browser, base), synthetic_phone(browser, base, 390, 844, 'light') as (page, errors):
+            page.set_content('<main></main>')
+            adapter = (ROOT / 'scrapers/sites/facebook.js').read_text(encoding='utf-8')
+            runner = (ROOT / 'scrapers/sites/_runner.js').read_text(encoding='utf-8')
+            result = page.evaluate('async () => {' + adapter + runner + '''
+                sleep=async()=>{};
+                let ids=['123456','999999'], clicks=[];
+                function render(remove) {
+                  document.querySelector('main').innerHTML=ids.map(id=>`<article>
+                    <a href="https://www.facebook.com/reel/${id}/">Post</a><span>Add to collection</span>
+                    <button aria-label="More options" data-id="${id}">More</button></article>`).join('');
+                  document.querySelectorAll('article button').forEach(button=>button.onclick=()=>{
+                    const item=document.createElement('button');item.role='menuitem';item.textContent='Unsave';
+                    item.onclick=()=>{clicks.push(button.dataset.id);if(remove)ids=ids.filter(id=>id!==button.dataset.id);item.remove();render(remove)};
+                    document.body.append(item);
+                  });
+                }
+                render(true);
+                const cards=SITE.read(document);
+                const first=await SITE.unsave(document,cards[0].url,()=>true);
+                const second=await SITE.unsave(document,cards[1].url,()=>true);
+                ids=['123456'];render(false);
+                const unchanged=await SITE.unsave(document,cards[0].url,()=>true);
+                return [first,second,unchanged,clicks];
+            }''')
+            self.assertEqual(result, [True, True, False, ['123456', '999999', '123456']])
+            self.assertEqual(errors, [])
+
+    def test_facebook_does_not_remove_a_recycled_row(self):
+        with mobile_browser() as (browser, base), synthetic_phone(browser, base, 390, 844, 'light') as (page, errors):
+            page.set_content('''<article><a href="https://www.facebook.com/reel/123456/">Post</a>
+              <span>Add to collection</span><button aria-label="More options">More</button></article>''')
+            adapter = (ROOT / 'scrapers/sites/facebook.js').read_text(encoding='utf-8')
+            runner = (ROOT / 'scrapers/sites/_runner.js').read_text(encoding='utf-8')
+            result = page.evaluate('async () => {' + adapter + runner + '''
+                sleep=async()=>{};
+                const url=SITE.read(document)[0].url;let clicks=0;
+                document.querySelector('article button').onclick=()=>{
+                  const item=document.createElement('button');item.role='menuitem';item.textContent='Unsave';
+                  item.onclick=()=>clicks++;document.body.append(item)};
+                const removed=await SITE.unsave(document,url,()=>{
+                  document.querySelector('article a').href='https://www.facebook.com/reel/999999/';return true});
+                return [removed,clicks];
+            }''')
+            self.assertEqual(result, [False, 0])
+            self.assertEqual(errors, [])
+
+    def test_instagram_waits_for_bookmark_and_handles_svg_and_button_labels(self):
+        with mobile_browser() as (browser, base), synthetic_phone(browser, base, 390, 844, 'light') as (page, errors):
+            saved = 'https://www.instagram.com/sam.example/saved/all-posts/'
+            page.route(saved, lambda route: route.fulfill(body='''<main>
+              <a href="/p/Target123/">Target</a><button aria-label="Remove"
+                onclick="throw Error('background')">Remove</button></main>''', content_type='text/html'))
+            adapter = (ROOT / 'scrapers/sites/instagram.js').read_text(encoding='utf-8')
+            runner = (ROOT / 'scrapers/sites/_runner.js').read_text(encoding='utf-8')
+            for tag, label in [('svg', 'Remove'), ('button', 'Remove from saved')]:
+                with self.subTest(tag=tag, label=label):
+                    page.goto(saved)
+                    result = page.evaluate('async ({tag,label}) => {' + adapter + runner + '''
+                        const url=SITE.canon(document.querySelector('a').href);
+                        let clicks=0, waits=0, dialog;
+                        document.querySelector('a').onclick=e=>{
+                          e.preventDefault();history.pushState({},'','/p/Target123/');
+                          dialog=document.createElement('div');dialog.role='dialog';document.body.append(dialog)};
+                        sleep=async()=>{
+                          if (++waits !== 3) return;
+                          dialog.innerHTML='<article><'+tag+' width="24" height="24" aria-label="'+label+'">Bookmark</'+tag+'></article><svg width="24" height="24" aria-label="Close"></svg>';
+                          dialog.querySelector('[aria-label]').onclick=e=>{clicks++;e.currentTarget.setAttribute('aria-label','Save')};
+                          dialog.lastChild.onclick=()=>{dialog.remove();history.pushState({},'','/sam.example/saved/all-posts/')};
+                        };
+                        const removed=await SITE.unsave(document,url,()=>true);
+                        return [removed,clicks,SITE.onSaved(location)];
+                    }''', {'tag': tag, 'label': label})
+                    self.assertEqual(result, [True, 1, True])
+            self.assertEqual(errors, [])

@@ -5,13 +5,14 @@
   import { onMount, tick, untrack } from 'svelte'
   import { api } from '../lib/api'
   import { live, on } from '../lib/events.svelte'
+  import { jobBusyMsg, jobHooks } from '../lib/jobs'
   import { openImport } from '../lib/io-commands.svelte'
   import ImportSetup from '../components/ImportSetup.svelte'
   import { isSite, scrapeGuide, SITE_NAME, type Site } from '../lib/onboarding'
   import { SRC_MARK } from '../lib/cards/card'
   import { toast } from '../lib/ui.svelte'
   import { confirmWin } from '../lib/windows.svelte'
-  import Field from '../components/ui/Field.svelte'
+  import ToggleRow from '../components/ui/ToggleRow.svelte'
   import Hint from '../components/ui/Hint.svelte'
   import Disclosure from '../components/ui/Disclosure.svelte'
   import WinBody from '../components/ui/WinBody.svelte'
@@ -25,13 +26,17 @@
   let site = $state<Site | ''>(untrack(() => isSite(focus) ? focus : 'instagram'))
   let mode = $state<Method>(untrack(() => isSite(focus) ? 'manual' : 'automatic'))
   const methods = $derived<Method[]>(site === 'youtube' ? ['playlist', 'manual', 'file'] : ['automatic', 'manual', 'file'])
-  const methodName: Record<Method, string> = { automatic: 'Scan saved posts', manual: 'Browser script', playlist: 'Playlist link', file: 'Import CSV' }
+  const methodName: Record<Method, string> = { automatic: 'Automatic', manual: 'Manual Scraping', playlist: 'Playlist link', file: 'Import CSV' }
+  const methodHint: Record<Method, string> = { automatic: 'Brainamon scans for you', manual: 'Run a script in your browser', playlist: 'Paste a YouTube link', file: 'Use an exported file' }
   function chooseSite(key: Site) {
     if (site === key) { site = ''; return }
     site = key; mode = key === 'youtube' ? 'playlist' : 'automatic'
     unsave = false; remember = false; stopAt = ''; copyMessage = ''; errorMessage = ''
   }
-  function chooseMethod(key: Method) { mode = key; unsave = false; copyMessage = ''; errorMessage = '' }
+  function chooseMethod(key: Method) {
+    if (mode === key) return
+    mode = key; unsave = false; copyMessage = ''; errorMessage = ''
+  }
   async function methodKey(event: KeyboardEvent) {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
     event.preventDefault()
@@ -177,17 +182,15 @@
           {#if site === key}
             <div class="scraper-methods" role="tablist" aria-label={`${SITE_NAME[key]} import method`}>
               {#each methods as method}
-                <Button role="tab" id={`scraper-method-${method}`} data-method={method} aria-controls="scraper-method-panel" aria-selected={mode === method} tabindex={mode === method ? 0 : -1} disabled={preparingAny} onclick={() => chooseMethod(method)} onkeydown={methodKey}>{methodName[method]}</Button>
+                <button type="button" role="tab" id={`scraper-method-${method}`} data-method={method} aria-controls="scraper-method-panel" aria-selected={mode === method} tabindex={mode === method ? 0 : -1} disabled={preparingAny} onclick={() => chooseMethod(method)} onkeydown={methodKey}><strong>{methodName[method]}</strong><span>{methodHint[method]}</span></button>
               {/each}
             </div>
             {#key `${key}-${mode}`}
               <div id="scraper-method-panel" role="tabpanel" aria-labelledby={`scraper-method-${mode}`} class="scraper-work">
                 {#if auto}
-                  <h2>Scan your saved posts</h2>
-                  <Hint>Sign in to {SITE_NAME[key]} in the browser that opens.</Hint>
-                  <label class="chk scraper-remember"><input type="checkbox" bind:checked={remember} disabled={preparingAny} />Remember this login on this PC</label>
+                  <Hint>Brainamon opens a separate browser, scans your saved posts and imports them. Sign in to {SITE_NAME[key]} there if asked.</Hint>
                 {:else if mode === 'manual'}
-                  <h2>Use your own browser</h2><Hint>Copy the script, then run it on your Saved {key === 'youtube' ? 'playlist' : 'page'}.</Hint>
+                  <Hint>Use the browser where you’re already signed in. You run the script; Brainamon imports the CSV it downloads.</Hint>
                 {:else if mode === 'playlist'}
                   <h2>Import a playlist</h2>
                   <form id="scraper-playlist" class="playlist-import" onsubmit={importPlaylist}>
@@ -198,47 +201,51 @@
                   <h2>Import a saved file</h2><Hint>Choose a scraper CSV from your computer.</Hint>
                 {/if}
 
-                {#if mode !== 'file'}
-                  <Disclosure class="scraper-options" summary="Advanced options">
-                    {#if mode === 'playlist'}
-                      <Hint>Private playlists may need YouTube cookies in Settings > Imports & downloads. Browser script is another option.</Hint>
-                    {:else}
-                      <div class="fg">
-                        <Field label="Stop at title" for="s-stop"><input class="inp" id="s-stop" bind:value={stopAt} placeholder="Optional: stop at an already imported post" autocomplete="off" disabled={preparingAny} /></Field>
-                        {#if auto && key === 'instagram'}<Field label="Instagram username" for="s-iguser"><input class="inp" id="s-iguser" bind:value={igUser} placeholder="Optional: found from the page if empty" autocomplete="off" disabled={preparingAny} /></Field>{/if}
+                {#if auto || mode === 'manual'}
+                  <div class="scraper-preferences">
+                    {#if key !== 'youtube'}
+                      <div class="scraper-preference">
+                        <ToggleRow label="Remove from saved posts after export" bind:checked={unsave} disabled={!canUnsave || preparingAny} describedby="scraper-remove-help" />
+                        <Hint id="scraper-remove-help">{canUnsave ? `Only exported posts are removed from ${SITE_NAME[key]} Saved. Keep the CSV until import succeeds.` : key === 'threads' ? 'Removal is not available for Threads.' : 'Choose Automatic to remove exported posts from Saved.'}</Hint>
                       </div>
-                      {#if key !== 'youtube'}
-                        <label class="chk scraper-remove"><input type="checkbox" bind:checked={unsave} disabled={!canUnsave || preparingAny} aria-describedby="scraper-remove-help" />Remove from saved posts after export</label>
-                        <Hint id="scraper-remove-help">{canUnsave ? `Changes your ${SITE_NAME[key]} saved list. Only collected posts are removed.` : key === 'threads' ? 'Removal is not available for Threads.' : 'Use Scan saved posts to remove originals.'}</Hint>
-                      {/if}
                     {/if}
-                  </Disclosure>
+                    {#if auto}
+                      <div class="scraper-preference">
+                        <ToggleRow label="Remember this login on this PC" bind:checked={remember} disabled={preparingAny} describedby="scraper-login-help" />
+                        <Hint id="scraper-login-help">Stores this site’s login in protected Windows storage on this PC.</Hint>
+                      </div>
+                    {/if}
+                  </div>
+                  <div class="scraper-fields">
+                    <label class="scraper-field" for="s-stop">Stop at title (optional)<input class="inp" id="s-stop" bind:value={stopAt} placeholder="Stop at an already imported post" autocomplete="off" disabled={preparingAny} /></label>
+                    {#if auto && key === 'instagram'}<label class="scraper-field" for="s-iguser">Instagram username (optional)<input class="inp" id="s-iguser" bind:value={igUser} placeholder="Found from the page if empty" autocomplete="off" disabled={preparingAny} /></label>{/if}
+                  </div>
                 {/if}
 
-                <Disclosure class="scraper-help" summary="How it works">
+                <div class="scraper-help">
                   {#if guide}
-                    <ol>{#each guide.steps as step}<li>{step}</li>{/each}</ol>
                     {#if auto}
-                      <Hint>Finish sign-in, 2FA or CAPTCHA in the separate browser. Your usual browser’s passwords are not available there. Scans stop after two hours; Stop keeps any exported files.</Hint>
-                      <Hint>Remember login stores this site’s login in protected Windows storage on this PC. A site may ask you to sign in again.</Hint>
+                      <Hint>Finish sign-in, 2FA or CAPTCHA in the separate browser. Scans stop after two hours; Stop keeps any exported files.</Hint>
                     {:else}
-                      <Hint>Use F12, then Console. Paste with Ctrl+V and press Enter. Only run scripts you trust. If pasting is blocked, use {key === 'youtube' ? 'Playlist link' : 'Scan saved posts'} or Import CSV.</Hint>
+                      <ol>{#each guide.steps as step}<li>{step}</li>{/each}</ol>
+                      <Hint>Only run scripts you trust. If pasting is blocked, use {key === 'youtube' ? 'Playlist link' : 'Automatic'} or Import CSV.</Hint>
                       {#if key === 'facebook'}<Hint>If removal is enabled, verify each downloaded CSV when the script asks before confirming removal.</Hint>{/if}
-                      <a href="/guides/manual-scraping.png" target="_blank" rel="noreferrer"><img src="/guides/manual-scraping.png" alt="Facebook Saved and Developer Tools with Console selected and the paste prompt highlighted." width="1536" height="1024" loading="lazy" /></a>
+                      <a class="scraper-tutorial" href="/guides/manual-scraping.png" target="_blank" rel="noreferrer">View the illustrated guide</a>
                     {/if}
                     <Hint>{watching ? `Watching for scraper CSVs in: ${dir}` : `CSV folder: ${dir || 'Downloads'}`}. Keep this window open until import finishes.</Hint>
                     {#if remove}<Hint>A CSV is exported before removal. Keep it until import succeeds. Interrupted Facebook scans keep recovery CSVs in the CSV folder’s pending subfolder.</Hint>{/if}
                   {:else if mode === 'playlist'}
                     <Hint>Imports video links and available titles, up to 10,000 entries per playlist. Existing links are skipped. Videos are not downloaded. Keep this window open until import finishes.</Hint>
+                    <Hint>Private playlists may need YouTube cookies in Settings > Imports & downloads. Manual Scraping is another option.</Hint>
                   {:else}
                     <Hint>Use a CSV exported by a Brainamon scraper. Existing links are skipped. File import does not change your original account.</Hint>
                   {/if}
-                </Disclosure>
+                </div>
 
                 {#if auto}
-                  <Disclosure class="scraper-tools" summary={runtimeReady ? 'Browser tools' : 'Set up browser tools'}>
+                  <div class="scraper-tools" hidden={runtimeReady}>
                     <ImportSetup section="browser" onready={ready => runtimeReady = ready} />
-                  </Disclosure>
+                  </div>
                 {/if}
 
                 <div class="scraper-actions">
@@ -253,7 +260,10 @@
                     <Button variant="pri" data-run onclick={() => openImport()}>Choose CSV file</Button>
                   {/if}
                 </div>
-                {#if auto && !runtimeReady}<Hint>Set up browser tools above, or use Browser script.</Hint>{/if}
+                {#if mode !== 'file' && live.jobs.current && !pwRunning && !playlistRunning}
+                  <Hint role="status">{jobBusyMsg()}. Wait for it to finish, or stop it in progress. <button class="linkk" type="button" onclick={() => jobHooks.openProgress?.()}>Show progress</button></Hint>
+                {/if}
+                {#if auto && !runtimeReady}<Hint>Set up browser tools above, or choose Manual Scraping.</Hint>{/if}
                 {#if mode !== 'file' && mode !== 'playlist'}<Hint class="scraper-account">{remove ? `Removes collected posts from ${SITE_NAME[key]} Saved.` : 'Saves stay in your account.'}</Hint>{/if}
                 {#if mode === 'manual' && copyMessage}<Hint role="status" class="scraper-copy">{copyMessage}</Hint>{/if}
               </div>
@@ -288,20 +298,21 @@
   .scraper-chevron { margin-left: auto; width: 7px; height: 7px; border-top: 1.5px solid currentColor; border-right: 1.5px solid currentColor; transform: rotate(45deg) }
   .scraper-toggle[aria-expanded="true"] .scraper-chevron { transform: rotate(135deg) }
   .scraper-content { margin: 0 14px; padding: 13px 0 14px; border-top: 1px solid var(--rw-dim) }
-  .scraper-methods { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px }
-  .scraper-methods :global([aria-selected="true"]) { background: var(--rw-ink); color: var(--rw); border-color: var(--rw-ink); box-shadow: none }
+  .scraper-methods { display: grid; grid-template-columns: 1fr 1fr .8fr; padding: 4px; gap: 4px; margin-bottom: 16px; border: 1px solid var(--rw-dim); border-radius: 8px; background: var(--rw-2) }
+  .scraper-methods button { min-width: 0; display: grid; gap: 5px; padding: 10px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--rw-ink); text-align: left; cursor: pointer; font: 500 11px/1.4 var(--mono) }
+  .scraper-methods button strong { font: 700 14px/1.2 var(--display) }
+  .scraper-methods button:hover { background: var(--rw) }
+  .scraper-methods button[aria-selected="true"] { background: var(--rw-ink); color: var(--rw) }
+  .scraper-methods button:disabled { cursor: default; opacity: .6 }
   .scraper-work { display: grid; gap: 10px; min-width: 0 }
   .scraper-work h2 { margin: 0; font: 700 16px/1.2 var(--display); letter-spacing: -.01em }
-  .scraper-remember { margin: 2px 0 }
-  .scraper-work :global(.set-more) { margin: 0; min-width: 0 }
-  .scraper-work :global(.set-more>summary) { padding: 9px 0 }
-  .scraper-work :global(.scraper-options) { margin-top: 6px; border-top: 1px solid var(--rw-dim) }
-  .scraper-work :global(.scraper-options .fg) { margin: 8px 0 12px }
-  .scraper-remove { margin: 10px 0 7px }
-  .scraper-work :global(.scraper-help[open]), .scraper-work :global(.scraper-tools[open]) { padding-bottom: 8px }
-  .scraper-work :global(.scraper-help>.hint) { margin: 10px 0 }
-  .scraper-work :global(.scraper-help ol) { padding-left: 20px; margin: 8px 0 12px; display: grid; gap: 10px; font: var(--type-steps) }
-  .scraper-work :global(.scraper-help img) { display: block; width: 100%; height: auto; margin: 12px 0; border: 1px solid var(--rw-ink) }
+  .scraper-preferences { display: grid; gap: 12px; padding: 16px 0; border-block: 1px solid var(--rw-dim); margin: 4px 0 }
+  .scraper-preference :global(.tgl) { flex-direction: row-reverse; justify-content: space-between; min-height: 28px; font: 600 13px/1.4 var(--display) }
+  .scraper-preference :global(.hint) { margin: 3px 48px 0 0 }
+  .scraper-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px; margin: 4px 0 }
+  .scraper-help { display: grid; gap: 10px }
+  .scraper-help ol { padding-left: 20px; margin: 6px 0; display: grid; gap: 10px; font: var(--type-steps) }
+  .scraper-tutorial { color: var(--rw-ink); font: var(--type-aside); text-underline-offset: 3px }
   .scraper-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 6px }
   .playlist-import { margin-top: 4px }
   .scraper-field { display: grid; gap: 8px; font: 500 12px/1.4 var(--mono) }
@@ -309,6 +320,6 @@
   .scraper-work :global(.scraper-account)::before { content: ''; display: inline-block; width: 5px; height: 5px; margin-right: 7px; background: var(--ok); border-radius: 50%; vertical-align: 2px }
   :global(.scraper-body>.scraper-activity) { margin-top: 16px }
   .scraper-footer-status { color: var(--rw-dim); font: var(--type-status) }
-  @media(max-width:480px) { .scraper-content { margin: 0 12px }.scraper-content .fg { grid-template-columns: minmax(0,1fr); gap: 7px }.scraper-methods { gap: 8px }.scraper-actions { align-items: stretch }.scraper-work :global(.scraper-tools .gbox) { grid-template-columns: minmax(0,1fr) } }
+  @media(max-width:480px) { .scraper-content { margin: 0 12px }.scraper-methods { grid-template-columns: 1fr 1fr }.scraper-methods button:last-child { grid-column: 1/-1; grid-template-columns: 1fr 1fr; align-items: center }.scraper-actions { align-items: stretch }.scraper-work :global(.scraper-tools .gbox) { grid-template-columns: minmax(0,1fr) } }
   @media(pointer:coarse) { .scraper-toggle { min-height: 52px } }
 </style>

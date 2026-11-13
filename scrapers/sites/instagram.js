@@ -76,22 +76,26 @@ var SITE = {
     if (!link) return false
     link.click()
     var scope = null
+    function icon(label) {
+      if (!scope) return null
+      var post = Array.from(scope.querySelectorAll('article')).find(visible) || scope
+      return Array.from(post.querySelectorAll('[aria-label]')).find(function (s) {
+        return visible(s) && (label === 'Remove' ? /^(remove|unsave|remove from saved)$/i : /^save$/i)
+          .test(s.getAttribute('aria-label') || '')
+      })
+    }
     for (var i = 0; i < 20; i++) {
       await sleep(500)
       var dialogs = Array.from(doc.querySelectorAll('[role="dialog"]')).filter(visible)
-      if (SITE.canon(location.href) === url && dialogs.length === 1) { scope = dialogs[0]; break }
+      scope = SITE.canon(location.href) === url && dialogs.length === 1 ? dialogs[0] : null
+      if (icon('Remove') || icon('Save')) break
     }
     if (!scope) return false
-    function icon(label) {
-      return Array.from(scope.querySelectorAll('svg[aria-label]')).find(function (s) {
-        return visible(s) && s.getAttribute('aria-label') === label
-      })
-    }
     var saved = icon('Remove'), ok = !!icon('Save') && !saved
     if (saved) {
       if (!await canRemove()) return false
       var bookmark = saved.closest('[role="button"], button') || saved
-      bookmark.click()
+      bookmark.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }))
       for (var j = 0; j < 20; j++) {
         await sleep(300)
         if (!icon('Remove') && icon('Save')) { ok = true; break }
@@ -100,7 +104,7 @@ var SITE = {
     var close = Array.from(doc.querySelectorAll('[aria-label="Close"]')).find(visible)
     if (!close) return false
     var closeButton = close.closest('[role="button"], button') || close
-    closeButton.click()
+    closeButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }))
     for (var k = 0; k < 20; k++) {
       await sleep(300)
       if (SITE.onSaved(location) && !visible(scope)) return ok

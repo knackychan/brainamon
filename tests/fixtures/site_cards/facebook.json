@@ -6,6 +6,8 @@
     ["https://m.facebook.com/reel/1234567890/?s=yWDuG2&fs=e&mibextid=abc", "https://www.facebook.com/reel/1234567890/", "fb:1234567890"],
     ["http://web.facebook.com/reel/1234567890/", "https://www.facebook.com/reel/1234567890/", "fb:1234567890"],
     ["https://www.facebook.com/watch/?v=9876543210&ref=sharing", "https://www.facebook.com/watch/?v=9876543210", "fb:9876543210"],
+    ["https://www.facebook.com/watch/?v=%31%32%33%34%35%36%37%38%39%30", "https://www.facebook.com/watch/?v=1234567890", "fb:1234567890"],
+    ["https://www.facebook.com/watch/?v=&v=1234567890", "", ""],
     ["https://www.facebook.com/watch/9876543210/", "https://www.facebook.com/watch/?v=9876543210", "fb:9876543210"],
     ["https://www.facebook.com/SomePage/videos/9876543210/", "https://www.facebook.com/watch/?v=9876543210", "fb:9876543210"],
     ["https://www.facebook.com/SomePage/videos/a-made-up-title/9876543210/", "https://www.facebook.com/watch/?v=9876543210", "fb:9876543210"],

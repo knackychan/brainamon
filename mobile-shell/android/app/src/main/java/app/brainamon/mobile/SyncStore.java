@@ -73,6 +73,9 @@ final class SyncStore extends SQLiteOpenHelper {
             return c.moveToFirst() ? new JSONObject().put("id",c.getString(0)).put("name",c.getString(1)).put("data",expand(c.getString(2))) : null;
         }
     }
+    boolean hasPending(String scope) {
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT 1 FROM outbox WHERE scope=? AND remote IS NULL LIMIT 1",new String[]{scope})){return c.moveToFirst();}
+    }
     void delivered(String scope, String id, String remote) {
         ContentValues v = new ContentValues(); v.put("remote",remote);
         // Keep a small receipt until the page commits its journal acknowledgement.

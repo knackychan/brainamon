@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The command deck (V6 .deck): the terminal search with the SMART switch, and ADD / IMPORT / SCRAPE.
+  // The command deck (V6 .deck): search with SMART, and the library action buttons.
   // Typing searches after 150 ms (the app's debounce); Enter with SMART on re-ranks by meaning.
   import Px from '../../lib/Px.svelte'
   import { runCmd } from '../../lib/commands'
@@ -41,5 +41,12 @@
     <button class="mk pri" type="button" onclick={() => runCmd('add')}><Px name="plus" /><b>ADD</b><small>new item</small></button>
     <button class="mk" type="button" onclick={() => runCmd('import')}><Px name="up" /><b>IMPORT</b><small>CSV · JSON</small></button>
     <button class="mk" type="button" onclick={() => runCmd('scrape')}><Px name="magnet" /><b>SCRAPE</b><small>FB · IG · YT · RD</small></button>
+    <button class="mk" type="button" aria-label="Processing tools" title="Choose a processing step for selected or visible items" onclick={() => runCmd('process-items')}><Px name="core" /><b>TOOLS</b><small>processing</small></button>
   </div>
 </div>
+
+<style>
+  @media (max-width: 860px) {
+    .keys { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  }
+</style>

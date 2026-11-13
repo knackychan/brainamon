@@ -175,6 +175,7 @@ def scraper_watch(request: Request, body: dict = Body(...)):
             say(f'Could not back up {p.name}: {exc}', 'r')
         try:
             r = run_import(app, p, p.name)
+            app.state.jobs.queue_fetch(r['ids'])
             say(f'{p.name}: imported {r["added"]} new, skipped {r["skipped"]}.', 'g')
             hub.publish('toast', {'text': f'Scraper imported {r["added"]} new item(s)', 'level': ''})
             if r['added']:

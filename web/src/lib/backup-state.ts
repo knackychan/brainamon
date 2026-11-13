@@ -156,7 +156,7 @@ export function backupState(c: ModelCloud | null, rec: RecoveryView | null | 'er
   const vault: Line = !c.licensed ? line('empty', 'optional', 'Needs a PC update')
     : c.vault_state === 'starting' ? line('working', 'busy', c.state === 'signing-in' ? 'Waiting for the Google sign-in' : 'Starting: comparing the vault with the phone')
     : c.vault_state === 'stopping' ? line('working', 'busy', 'Stopping')
-    : c.vault_state === 'syncing' ? line('working', 'busy', `${c.vault_step || 'Syncing'} · ${num(c.vault_done)} of ${num(c.vault_total)} files`)
+    : c.vault_state === 'syncing' ? line('working', 'busy', `${c.vault_step || 'Syncing'}${c.vault_total ? ` · ${num(c.vault_done)} of ${num(c.vault_total)} files` : c.vault_done ? ` · ${num(c.vault_done)} files` : ''}`)
     : c.vault_state === 'brake' ? line('paused', 'next', 'Held: this round would delete many files')
     : c.vault_state === 'error' ? line('failed', 'next', 'Stopped on an error')
     : c.vault_running ? line('done', 'done', `On${c.vault_last ? ` · last round ${hm(c.vault_last)}` : ''}`, c.vault_skipped_note || undefined)

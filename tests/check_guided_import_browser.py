@@ -54,7 +54,13 @@ def check_scrapers(page, opened, runtime, out):
     scraper = page.get_by_role('dialog', name='Scrapers', exact=True)
     expect(scraper.locator('button[data-site]')).to_have_count(5)
     expect(scraper.locator('[data-site][aria-expanded=true]')).to_have_count(1)
-    assert not scraper.locator('.scraper-help[open], .scraper-options[open]').count()
+    expect(scraper.get_by_role('tab', name='Automatic', exact=False)).to_be_visible()
+    expect(scraper.get_by_role('tab', name='Manual Scraping', exact=False)).to_be_visible()
+    expect(scraper.get_by_role('switch', name='Remove from saved posts after export', exact=True)).to_be_visible()
+    expect(scraper.get_by_role('switch', name='Remember this login on this PC', exact=True)).to_be_visible()
+    expect(scraper.get_by_label('Stop at title', exact=False)).to_be_visible()
+    expect(scraper.locator('.scraper-options')).to_have_count(0)
+    expect(scraper.get_by_role('button', name='Close', exact=True)).to_have_count(2)
     assert not launches and not playlists and not opened
     for width in (1280, 390):
         page.set_viewport_size({'width': width, 'height': 960})
@@ -72,10 +78,7 @@ def check_scrapers(page, opened, runtime, out):
         return scraper
 
     def options():
-        details = scraper.locator('.scraper-options')
-        if details.get_attribute('open') is None:
-            details.locator('summary').click()
-        return scraper.get_by_label('Remove from saved posts after export', exact=False)
+        return scraper.get_by_role('switch', name='Remove from saved posts after export', exact=True)
 
     # Category/method selection alone never copies, launches or imports anything.
     for key in ('facebook', 'instagram', 'threads', 'youtube', 'reddit'):
@@ -101,7 +104,7 @@ def check_scrapers(page, opened, runtime, out):
         assert not opened
     site('facebook', 'manual')
     options()
-    scraper.get_by_label('Stop at title', exact=True).fill("Tutorial's saved title")
+    scraper.get_by_label('Stop at title', exact=False).fill("Tutorial's saved title")
     scraper.get_by_role('button', name='Copy script', exact=True).click()
     page.wait_for_function("window.__copiedScript.includes(\"Tutorial\\\\'s saved title\")")
     page.evaluate('window.__clipboardFail = true')
@@ -112,6 +115,8 @@ def check_scrapers(page, opened, runtime, out):
 
     # Cancel preserves both clipboard and account. Confirmation alone enables removal.
     options().check()
+    scraper.locator('[data-method="manual"]').click()
+    expect(options()).to_be_checked()
     for width in (1280, 390):
         page.set_viewport_size({'width': width, 'height': 960})
         page.screenshot(path=str(out / f'facebook-removal-{width}.png'))
@@ -136,12 +141,11 @@ def check_scrapers(page, opened, runtime, out):
     for key in ('facebook', 'instagram', 'reddit'):
         site(key, 'automatic')
         options().check()
+        scraper.locator('[data-method="automatic"]').click()
+        expect(options()).to_be_checked()
         scraper.get_by_label('Remember this login', exact=False).check()
         start_button = scraper.locator('[data-run]')
         if start_button.is_disabled():
-            tools_panel = scraper.locator('.scraper-tools')
-            if tools_panel.get_attribute('open') is None:
-                tools_panel.locator('summary').click()
             check = scraper.get_by_role('button', name='Check browser tools again', exact=True)
             if check.count():
                 check.click()
@@ -186,14 +190,24 @@ def check_scrapers(page, opened, runtime, out):
     scraper.locator('[data-method="automatic"]').press('ArrowRight')
     expect(scraper.locator('[data-method="manual"]')).to_have_attribute('aria-selected', 'true')
     expect(scraper.locator('[data-method="manual"]')).to_be_focused()
-    help_panel = scraper.locator('.scraper-help')
-    if help_panel.get_attribute('open') is None:
-        help_panel.locator('summary').click()
-    image = help_panel.get_by_role('img')
-    if image.count():
-        image.scroll_into_view_if_needed()
-        image.evaluate('e => e.decode()')
-        assert image.evaluate('e => e.naturalWidth') == 1536
+    expect(scraper.locator('.scraper-help ol')).to_be_visible()
+    expect(scraper.get_by_role('link', name='View the illustrated guide')).to_have_attribute('href', '/guides/manual-scraping.png')
+    options().check()
+    scraper.locator('[data-method="automatic"]').click()
+    expect(options()).not_to_be_checked()
+    expect(scraper.locator('[data-run]')).to_be_enabled()
+    expect(scraper.locator('.scraper-tools')).to_be_hidden()
+    for theme in ('light', 'dark'):
+        page.evaluate('theme => document.documentElement.dataset.theme = theme', theme)
+        for key in ('facebook', 'instagram'):
+            site(key, 'automatic')
+            expect(scraper.locator('[data-run]')).to_be_enabled()
+            for width in (1280, 390):
+                page.set_viewport_size({'width': width, 'height': 960})
+                assert scraper.evaluate('e => e.scrollWidth <= e.clientWidth + 1')
+                page.screenshot(path=str(out / f'{key}-automatic-{theme}-{width}.png'))
+    page.evaluate("document.documentElement.dataset.theme = 'light'")
+    site('facebook', 'manual')
     for width in (1280, 390):
         page.set_viewport_size({'width': width, 'height': 960})
         assert scraper.evaluate('e => e.scrollWidth <= e.clientWidth + 1')
@@ -394,12 +408,11 @@ def main():
                     scraper.get_by_text('Facebook script copied to clipboard.', exact=True).wait_for()
                     assert not opened
                     scraper.locator('[data-run]').click()
-                    scraper.get_by_text('script copied and page opened.', exact=False).wait_for()
+                    scraper.get_by_text('script copied and page opened.', exact=False).wait_for(state='attached')
                     assert len(opened) == 1 and '/facebook/open' in opened[0]
                     scraper.locator('[data-method="automatic"]').click()
                     assert scraper.get_by_label('Instagram username').count() == 0
                     scraper.locator('[data-site="instagram"]').click()
-                    scraper.locator('.scraper-options summary').click()
                     scraper.get_by_label('Instagram username').wait_for()
                     scraper.locator('[data-method="manual"]').focus()
                     page.keyboard.press('Enter')

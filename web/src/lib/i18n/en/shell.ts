@@ -3,6 +3,9 @@ export const messages = {
 
 
   "shell.sync.whereDrive": "Google Drive",
+  "shell.sync.checkingAccess": "Checking sync access…",
+  "shell.sync.readingIndex": "Reading the Google Drive file list…",
+  "shell.sync.readingFiles": "Reading Google Drive · {done}/{total} files checked",
   "shell.sync.wherePc": "the PC",
   "shell.sync.wherePcCap": "The PC",
   "shell.sync.fetching": "Fetching the library",

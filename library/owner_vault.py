@@ -90,11 +90,21 @@ def write_manifest(vault, man: dict) -> None:
     atomic_write(Path(vault) / MANIFEST, json.dumps(man, ensure_ascii=False, indent=1, sort_keys=True).encode('utf-8'))
 
 
-def generated_paths(vault, man: dict) -> set:
+def generated_paths(vault, man: dict, *, progress=None, should_stop=lambda: False) -> set:
     """Spec 1b decision 1: the listed paths whose file still carries the recorded hash, the only ones vault sync
     sends one way. An adopted (edited) or missing file is not generated. Computed when asked, never stored."""
     root = Path(vault)
-    return {rel for rel, entry in man['files'].items() if file_hash(root / rel) == entry['hash']}
+    generated, total = set(), len(man['files'])
+    if progress:
+        progress('Checking generated notes', 0, total)
+    for done, (rel, entry) in enumerate(man['files'].items(), 1):
+        if should_stop():
+            raise OSError('Vault sync is stopping.')
+        if file_hash(root / rel) == entry['hash']:
+            generated.add(rel)
+        if progress:
+            progress('Checking generated notes', done, total)
+    return generated
 
 
 def record_removed(man: dict, rel: str, hash_: str | None) -> None:

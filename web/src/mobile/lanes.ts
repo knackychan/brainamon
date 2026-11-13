@@ -38,6 +38,7 @@ export function syncLanes(): Lane[] {
     const v = vault, lamp = vaultLamp()
     if (lamp === 'paused') out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'paused', active: false, text: t('backup.lane.resumes'), pct: null })
     else if (v.opts.on && nativeSync.supported && ['queued', 'retry', 'wifi', 'offline'].includes(nativeSync.state)) out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'waiting', active: false, text: nativeSyncText(), pct: null })
+    else if (v.opts.on && nativeSync.supported && nativeSync.state === 'syncing' && nativeSync.phase !== 'vault') out.push({ key: 'vault', name: t('backup.lane.vault'), tag: 'waiting', active: false, text: t('backup.lane.queued', { where: dname }), pct: null })
     else if (nativeSync.supported && nativeSync.state === 'syncing' && nativeSync.phase === 'vault') {
       const step = nativeSync.vaultStep
       const text = step?.key ? t(step.key) : nativeSyncText()

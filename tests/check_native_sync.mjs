@@ -15,7 +15,7 @@ const signer = await webcrypto.subtle.generateKey({ name: 'ECDSA', namedCurve: '
 const verifier = Buffer.from(await webcrypto.subtle.exportKey('spki', signer.publicKey)).toString('base64url')
 async function fixture() {
   const files = new Map(), cache = new Map(), queue = [], counts = { creates: 0, delivered: 0, reads: 0 }
-  const f = { files, cache, queue, counts, fetched: [], fail: '', lost: false, paused: false, expires: 0 }
+  const f = { files, cache, queue, counts, fetched: [], phases: [], progress: [], readSteps: [], fail: '', lost: false, paused: false, expires: 0 }
   f.add = async (logical, value) => {
     const name = await key.name(logical), data = await key.seal(logical, text(JSON.stringify(value)))
     files.set(name, { id: name, name, data }); return name
@@ -59,7 +59,7 @@ async function run(f, solo = false) {
       case 'save': f.cache.set(a[0], structuredClone(a[1])); return null
       case 'find': return [...f.files.values()].filter(x => x.name === a[0]).map(({ id, name }) => ({ id, name }))
       case 'list': return [...f.files.values()].map(({ id, name }) => ({ id, name }))
-      case 'get': f.counts.reads++; f.fetched.push(a[0]); return { data: b64(f.files.get(a[0]).data) }
+      case 'get': f.counts.reads++; f.fetched.push(a[0]); f.readSteps.push(structuredClone(f.progress.at(-1))); return { data: b64(f.files.get(a[0]).data) }
       case 'outbox': return f.queue.find(x => !x.remote) ?? null
       case 'create': {
         f.counts.creates++
@@ -68,7 +68,7 @@ async function run(f, solo = false) {
         return a[0]
       }
       case 'delivered': f.queue.find(x => x.id === a[0]).remote = a[1]; f.counts.delivered++; return null
-      case 'progress': return null
+      case 'progress': f.phases.push(a[0]); f.progress.push(structuredClone(a)); return null
       default: throw Error('Unexpected operation ' + method)
     }
   }
@@ -93,10 +93,15 @@ await ordered.add('manifest.json', ordered.manifest)
 assert.equal((await run(ordered)).ok, true)
 assert.deepEqual(ordered.fetched.filter(id => parts.some(p => ordered.manifest.files[p].id === id)),
   await Promise.all(['library/part-002.json', 'library/part-001.json', 'library/part-000.json'].map(p => key.name(p))))
+assert.equal(ordered.readSteps[0], undefined, 'access checks must not enable Drive-read preemption before pending uploads drain')
+assert.equal(ordered.readSteps[1][2].key, 'shell.sync.readingIndex', 'the manifest read has a visible step before I/O')
+assert.deepEqual(ordered.readSteps[2], ['drive', 0, { key: 'shell.sync.readingFiles', done: 0, total: 4 }])
+assert.deepEqual(ordered.progress.at(-1), ['drive', 1, { key: 'shell.sync.readingFiles', done: 4, total: 4 }])
 
 // A lost POST response must neither acknowledge early nor create a second encrypted envelope.
 const lost = await fixture(); await lost.enqueue(); lost.lost = true
 assert.equal((await run(lost)).ok, false)
+assert.equal(lost.phases.at(-1), 'send', 'sending changes is distinct from access checks or reading the library')
 assert.equal(lost.counts.delivered, 0)
 assert.equal((await run(lost)).ok, true)
 assert.equal(lost.counts.creates, 1); assert.equal(lost.counts.delivered, 1)
@@ -108,6 +113,7 @@ const solo = await fixture(); await solo.enqueue()
 assert.equal((await run(solo, true)).ok, true)
 assert.equal(solo.counts.delivered, 1)
 assert.equal(solo.counts.reads, 0, 'a phone must not download the backup it just uploaded')
+assert.deepEqual(solo.progress.at(-1), ['drive', 1, { key: 'shell.sync.readingFiles', done: 1, total: 1 }], 'cached solo backups also advance the count')
 assert.equal(solo.cache.get('pc-mirror'), true, 'native solo sync retains the desktop-mirror warning')
 solo.files.clear()
 assert.equal((await run(solo, true)).ok, true)
@@ -121,6 +127,7 @@ await lost.add('manifest.json', lost.manifest)
 lost.files.delete(missing)
 assert.equal((await run(lost)).ok, false)
 assert.deepEqual(lost.cache.get('manifest'), prior)
+assert.equal(lost.progress.at(-1)[2].done, 0, 'an interrupted file is not counted as checked')
 
 for (const reason of ['expired', 'disabled', 'paused']) {
   const f = await fixture(); await f.enqueue()
@@ -146,12 +153,12 @@ assert.notEqual(await transferId(doc), await transferId({ ...doc, previous: 'chg
 // Startup, resume and manual refresh share one native request. A later dirty queue bypasses the cooldown.
 let requests = 0, finish
 const bridge = { status: async ({ id }) => id ? new Promise(resolve => { finish = () => resolve({ supported: true, state: 'idle', finished: true }) }) : { supported: true, state: 'idle' },
-  request: async () => ({ id: String(++requests) }), configure: async () => ({ supported: true, state: 'idle' }) }
+  request: async () => ({ id: String(++requests) }), retry: async () => ({ id: 'explicit' }), configure: async () => ({ supported: true, state: 'idle' }) }
 const exports = {}
 const code = ts.transpileModule(readFileSync('web/src/mobile/sync/native.svelte.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
-vm.runInNewContext(code, { exports, $state: x => x, setTimeout, clearTimeout, require: name => ({
+vm.runInNewContext(code, { exports, $state: x => x, setTimeout, clearTimeout, Event, window: { dispatchEvent() {} }, require: name => ({
   '@capacitor/core': { Capacitor: { isNativePlatform: () => true, getPlatform: () => 'android' }, registerPlugin: () => bridge },
-  '../wait': { withTimeout: p => p }, '../../lib/i18n/index': { t: key => key },
+  '../wait': { withTimeout: p => p }, '../../lib/i18n/index': { t: key => key }, '../../lib/i18n/format': { fmtTime: () => '18:30' },
 }[name]) })
 const first = exports.nativeRound(), joined = exports.nativeRound(), manual = exports.nativeRound()
 assert.equal(first, joined); assert.equal(first, manual)
@@ -165,6 +172,12 @@ const cleanup = exports.nativeRound(false, true)
 await new Promise(resolve => setImmediate(resolve)); finish(); await active
 await new Promise(resolve => setImmediate(resolve)); finish(); await cleanup
 assert.equal(requests, 4, 'an explicit cleanup must run after the ordinary round')
+const retry = exports.retryNativeSync()
+await new Promise(resolve => setImmediate(resolve)); finish(); await retry
+const refreshed = exports.nativeRound()
+await new Promise(resolve => setImmediate(resolve))
+assert.equal(requests, 5, 'an explicit retry must bypass the recently completed refresh cooldown')
+finish(); await refreshed
 // A committed library is available before the vault finishes; it is never a full-round receipt.
 const snapshot = Promise.withResolvers(), vaultDone = Promise.withResolvers()
 let polls = 0, complete = false
@@ -217,13 +230,62 @@ for (const state of ['paused', 'auth', 'access', 'permission']) {
   bridge.status = async () => ({ supported: true, state, scheduled: true, finished: false })
   await assert.rejects(exports.nativeRound(false, false, true), e => e.code === state)
 }
+Object.assign(exports.nativeSync, { state: 'retry', retryable: true, nextAt: Date.now() + 80 * 60_000 })
+assert.equal(exports.nativeSyncText(), 'settings.sync.native.delayed')
+assert.equal(exports.nativeSyncText('offline'), 'settings.sync.native.offline', 'network restrictions take precedence over a retry time')
+exports.nativeSync.retryable = false
+assert.equal(exports.nativeSyncText('queued'), 'settings.sync.native.queued')
+Object.assign(exports.nativeSync, { phase: 'send', progress: 0 })
+assert.equal(exports.nativePhasePct(), null, 'upload progress is not the library-read percentage')
+Object.assign(exports.nativeSync, { phase: 'drive', progress: 0, driveStep: { key: 'shell.sync.readingIndex' } })
+assert.equal(exports.nativePhasePct(), null, 'startup has no measurable percentage')
+assert.equal(exports.nativeDriveText(), 'shell.sync.readingIndex')
+exports.nativeSync.progress = .2
+assert.equal(exports.nativePhasePct(), 50)
+// Confirm each requested upload independently, even while the vault round is still unfinished.
+const longVault = Promise.withResolvers()
+let delivery = false, delivered = false
+bridge.receipt = async ({ id }) => ({ name: id, ...(delivery ? { remote: 'drive-' + id } : {}) })
+const sent = exports.nativeUploads('synthetic', ['one', 'two'], longVault.promise).then(() => { delivered = true })
+await new Promise(resolve => setImmediate(resolve))
+assert.equal(delivered, false, 'staging must not be reported as delivery')
+delivery = true
+await sent
+assert.equal(delivered, true, 'uploads should complete without waiting for the vault')
+longVault.reject(Error('later vault failure'))
+await new Promise(resolve => setImmediate(resolve))
+delivery = false
+await assert.rejects(exports.nativeUploads('synthetic', ['three'], Promise.reject(Error('auth'))), /auth/)
+await assert.rejects(exports.nativeUploads('synthetic', ['three'], Promise.resolve()), e => e.code === 'retry')
+// Exercise the real MirrorSource send path: a confirmed edit must leave the page journal before vault completion.
+const mirrorSource = ts.createSourceFile('mirror.ts', readFileSync('web/src/mobile/source/mirror.ts', 'utf8'), ts.ScriptTarget.Latest, true)
+const mirrorClass = mirrorSource.statements.find(n => ts.isClassDeclaration(n) && n.name.text === 'MirrorSource')
+const flowCode = 'export class Flow {' + mirrorClass.members.filter(n => ['runNative', 'flush'].includes(n.name?.getText(mirrorSource))).map(n => n.getText(mirrorSource)).join('\n') + '}'
+const flowExports = {}, heldVault = Promise.withResolvers()
+let acknowledged = 0, changesOpen = 0
+vm.runInNewContext(ts.transpileModule(flowCode, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, {
+  exports: flowExports, nativeRound: () => heldVault.promise, nativeUploads: exports.nativeUploads,
+  nativeReceipt: exports.nativeReceipt, nativeSyncError: exports.nativeSyncError,
+  cloudStopped: () => false, network: { online: true, wifiOnly: false },
+  beginCloudChange: () => changesOpen++, endCloudChange: () => changesOpen--,
+  transferId: async () => 'one', deviceId: () => 'synthetic',
+})
+const flow = new flowExports.Flow()
+Object.assign(flow, { nativeScope: 'synthetic', nativeDirty: true, nativeReady: async () => true, stagePending: async () => ['one'],
+  mine: new Set(), drive: { checkpoint() {} }, changes: { flush: async send => { await send({}); return ++acknowledged } } })
+delivery = true
+assert.equal(await flow.flush(), 1)
+assert.equal(acknowledged, 1); assert.equal(changesOpen, 0); assert.equal(flow.lastError, '')
+heldVault.reject(Error('vault still needs attention'))
+await new Promise(resolve => setImmediate(resolve))
+assert.equal(flow.lastError, '', 'a later vault failure cannot undo a confirmed item upload')
 // Unsupported native engines must release vault ownership before any foreground fallback.
 const fallback = {}, calls = []
 const unsupported = { status: async () => ({ supported: false, state: 'unsupported' }),
   configure: async p => { calls.push(p); return { supported: false } }, barrier: async () => { calls.push('barrier') } }
 vm.runInNewContext(code, { exports: fallback, $state: x => x, setTimeout, clearTimeout, require: name => ({
   '@capacitor/core': { Capacitor: { isNativePlatform: () => true, getPlatform: () => 'android' }, registerPlugin: () => unsupported },
-  '../wait': { withTimeout: p => p }, '../../lib/i18n/index': { t: key => key },
+  '../wait': { withTimeout: p => p }, '../../lib/i18n/index': { t: key => key }, '../../lib/i18n/format': { fmtTime: () => '18:30' },
 }[name]) })
 assert.equal(await fallback.nativeSyncSupported(), false)
 assert.equal(await fallback.nativeSyncSupported(), false)
@@ -246,6 +308,9 @@ for (const state of ['retry', 'queued', 'wifi', 'offline']) {
 Object.assign(laneState, { state: 'syncing', phase: 'vault', progress: .63 })
 assert.equal(laneExports.syncLanes().find(l => l.key === 'vault').tag, 'running')
 assert.equal(laneExports.syncLanes().find(l => l.key === 'vault').pct, null, 'weighted attempt progress is never a vault percentage')
+laneState.phase = 'send'
+assert.equal(laneExports.syncLanes().find(l => l.key === 'vault').tag, 'waiting', 'vault yields while phone changes are being sent')
+laneState.phase = 'vault'
 laneState.vaultFiles = { done: 125, total: 430 }
 assert.equal(laneExports.syncLanes().find(l => l.key === 'vault').files.done, 125)
 laneState.state = 'retry'

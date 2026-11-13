@@ -5,7 +5,7 @@ db.py — SQLite database layer for Brainamon.
 import sqlite3, json, re, time, uuid
 from pathlib import Path
 from typing import Optional
-from core.urls import http_url
+from core.urls import facebook_post_key, http_url
 
 # Conversational filler dropped from FTS queries so a natural-language question
 # ("what do we have for knee injuries?") matches on its content words only.
@@ -452,6 +452,9 @@ class Database:
 
     # ── Items ──────────────────────────────────────────────────────────────
     def add_item(self, data: dict) -> int:
+        url = data.get('url', '')
+        if facebook_post_key(url) and self.item_exists(url):
+            raise sqlite3.IntegrityError('This Facebook post is already in the library.')
         now = int(time.time() * 1000)
         c = self.conn.cursor()
         c.execute("""
@@ -600,9 +603,20 @@ class Database:
         return (self.item_dir(item_id) / 'thumb.jpg').exists()
 
     def item_exists(self, url: str) -> bool:
-        return self.conn.cursor().execute(
-            "SELECT 1 FROM items WHERE url = ?", (url,)
-        ).fetchone() is not None
+        return self.get_item_by_url(url) is not None
+
+    def get_item_by_url(self, url: str) -> Optional[dict]:
+        row = self.conn.execute('SELECT * FROM items WHERE url = ?', (url,)).fetchone()
+        if row:
+            return dict(row)
+        key = facebook_post_key(url)
+        if key:
+            # Match old stored URLs too, without rewriting links or merging existing items.
+            for row in self.conn.execute("SELECT id, url FROM items WHERE url LIKE ? OR instr(url, '%') > 0 ORDER BY id",
+                                         ('%' + key[3:] + '%',)):
+                if facebook_post_key(row['url']) == key:
+                    return self.get_item(row['id'])
+        return None
 
     def count_items(self, category: str = None) -> int:
         c = self.conn.cursor()

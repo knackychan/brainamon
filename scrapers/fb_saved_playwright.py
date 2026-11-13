@@ -242,7 +242,8 @@ EXTRACT_VISIBLE_JS = r"""
       if (t.includes('saved from')) return true;
       if (t.includes('add to collection')) return true;
       if (t.includes('see more') || t.includes('see less')) return true;
-      if (/^reels?\s*[•·]/i.test(t)) return true;
+      if (t === 'view story' || t === 'more options' || (cl && t === cl + ', view story')) return true;
+      if (/^(reels?|videos?)\s*[•·]/i.test(t)) return true;
       if (cl && t === cl) return true;
       if (/^\d+(\.\d+)?[kmb]?\s*(views?|likes?|comments?|shares?|plays?)/i.test(t)) return true;
       if (/^\d+\s*(s|m|h|d|w|y|hr|hrs|min|mins)\b/i.test(t)) return true;
@@ -333,7 +334,7 @@ EXTRACT_VISIBLE_JS = r"""
     const out = [];
     for (const { id, a, row } of getVisibleRows()) {
       const fullText = row.innerText || '';
-      const creatorMatch = fullText.match(/Reels?\s*[•·]\s*([^\n]+)/i);
+      const creatorMatch = fullText.match(/(?:Reels?|Videos?)\s*[•·]\s*([^\n]+)/i);
       const creator = creatorMatch ? creatorMatch[1].trim() : '';
       const description = extractDescription(a, row, creator);
       const type = /\/(watch|videos)\//.test(a.href) ? 'Video' : 'Reel';
@@ -351,6 +352,15 @@ EXTRACT_VISIBLE_JS = r"""
 UNSAVE_VISIBLE_JS = r"""
 (targetIds) => {
   const ids = new Set(targetIds || []);
+  const visible = el => el.isConnected && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+  const moreButton = row => {
+    const buttons = Array.from(row.querySelectorAll('[role="button"], button')).filter(b => {
+      const label = b.getAttribute('aria-label') || '';
+      return visible(b) && (label.includes('More options') ||
+        (b.getAttribute('aria-haspopup') === 'dialog' && /^more(?:\s|,|$)/i.test(label)));
+    });
+    return buttons.length === 1 && buttons[0];
+  };
 
   function getReelId(a) {
     try {
@@ -362,15 +372,18 @@ UNSAVE_VISIBLE_JS = r"""
   }
 
   function getVisibleRows() {
-    const rows = [];
+    const rows = new Map();
     document.querySelectorAll('a[href]').forEach(a => {
       const id = getReelId(a);
-      if (!id || !ids.has(id)) return;
+      if (!id || !ids.has(id) || rows.has(id) || !visible(a)) return;
       let el = a.parentElement;
       for (let i = 0; i < 20; i++) {
         if (!el) break;
-        if ((el.innerText || '').includes('Add to collection')) {
-          rows.push({ id, row: el });
+        const collections = (el.innerText || '').split('Add to collection').length - 1;
+        if (collections > 1) break;
+        // The menu button can be a sibling of the caption and collection control.
+        if (collections === 1 && moreButton(el)) {
+          rows.set(id, el);
           return;
         }
         el = el.parentElement;
@@ -381,24 +394,31 @@ UNSAVE_VISIBLE_JS = r"""
 
   const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-  async function unsave(row) {
+  async function unsave(id, row) {
     try {
-      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.scrollIntoView({ behavior: 'instant', block: 'center' });
       await sleep(600);
-      const btn = Array.from(row.querySelectorAll('[role="button"]'))
-        .find(b => (b.getAttribute('aria-label') || '').includes('More options'));
+      if (getVisibleRows().get(id) !== row) return false;
+      const btn = moreButton(row);
       if (!btn) return false;
+      const previous = new Set(Array.from(document.querySelectorAll('[role="menuitem"]')).filter(visible));
       btn.click();
       await sleep(800);
-      const item = Array.from(document.querySelectorAll('[role="menuitem"]'))
-        .find(m => (m.innerText || '').toLowerCase().includes('unsave'));
+      // Facebook can portal menu items without a role="menu" wrapper.
+      const items = Array.from(document.querySelectorAll('[role="menuitem"]'))
+        .filter(m => !previous.has(m) && visible(m) && /^(unsave|remove from saved)(\s|$)/i.test((m.innerText || '').trim()));
+      const item = items.length === 1 && items[0];
       if (!item) {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         return false;
       }
+      if (getVisibleRows().get(id) !== row || !visible(item)) return false;
       item.click();
-      await sleep(1000);
-      return true;
+      for (let i = 0; i < 20; i++) {
+        await sleep(300);
+        if (!visible(row) && !getVisibleRows().has(id)) return true;
+      }
+      return false;
     } catch (e) {
       return false;
     }
@@ -406,8 +426,9 @@ UNSAVE_VISIBLE_JS = r"""
 
   return (async () => {
     const result = {};
-    for (const { id, row } of getVisibleRows()) {
-      result[id] = await unsave(row);
+    for (const id of ids) {
+      const row = getVisibleRows().get(id);
+      if (row) result[id] = await unsave(id, row);
     }
     return result;
   })();
@@ -465,6 +486,8 @@ def scrape_saved_items(page, stop_at: str, capture_thumbs: bool, unsave: bool,
             unsaved = page.evaluate(UNSAVE_VISIBLE_JS, batch_ids)
             for item in scraped[-len(batch_ids):]:
                 item["unsaved"] = bool(unsaved.get(item["id"]))
+                if not item["unsaved"]:
+                    print('[status] unsave-failed', flush=True)
 
         page.mouse.wheel(0, 900)
         page.wait_for_timeout(scroll_pause_ms)
@@ -536,6 +559,8 @@ def main() -> int:
                 except OSError as exc:
                     print(f"[warn] Could not clean up the published CSV checkpoint: {exc}")
             print(f"[done] Scraped {len(rows)} items")
+            if args.unsave:
+                print(f"[done] Unsaved {sum(bool(row.get('unsaved')) for row in rows)} of {len(rows)} posts")
             print(f"[done] CSV written to {out_path}")
             return 0
         finally:

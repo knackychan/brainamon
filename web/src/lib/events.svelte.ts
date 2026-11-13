@@ -76,9 +76,17 @@ export async function connect() {
     const backlog = await api.get<ConsoleEntry[]>('/api/console')
     backlog.forEach(pushLine)
   } catch { /* the stream still connects; the console starts empty */ }
+  openStream()
+}
+
+function openStream() {
   es = new EventSource('/api/events')
   es.onopen = () => { live.connected = true }
-  es.onerror = () => { live.connected = false }
+  es.onerror = () => {
+    live.connected = false
+    // HTTP errors can close EventSource permanently instead of triggering its automatic retry.
+    if (es?.readyState === EventSource.CLOSED) setTimeout(openStream, 3000)
+  }
   for (const kind of KINDS) {
     es.addEventListener(kind, ev => {
       const data = JSON.parse((ev as MessageEvent).data)

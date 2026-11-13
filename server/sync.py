@@ -2802,6 +2802,8 @@ class SyncService:
                                                    db.get_setting('obsidian_mode', '')))
             if current != (on, folder, mode):
                 return
+            self._set(vault_state='syncing', vault_reason='', vault_step='Checking Google Drive access',
+                      vault_done=0, vault_total=0, vault_since=int(time.time() * 1000))
             tok = drive_client.load_token(self.token_path)
             if tok is None:
                 self._set(vault_state='error', vault_reason='Sign in to Google Drive first.')
@@ -2871,7 +2873,21 @@ class SyncService:
         from library import owner_vault
         from server.map_service import MANIFEST_MISSING, PHONES_UNCHECKED, phone_old
         import re
+        last_progress = 0.0
+
+        def progress(step, done=0, total=0):
+            nonlocal last_progress
+            if self._vault_stopped():
+                return
+            now = time.monotonic()
+            changed = self.st['vault_step'] != step
+            if changed or done == 0 or (total and done == total) or now - last_progress >= 0.2:
+                self._set(vault_state='syncing', vault_reason='', vault_step=step, vault_done=done, vault_total=total,
+                          vault_since=int(time.time() * 1000) if changed else self.st['vault_since'])
+                last_progress = now
+
         self._set(vault_devices=None)
+        progress('Checking Google Drive access')
         self.recovery.guard(client)
         if self._vault_stopped():
             raise ExportStopped()
@@ -2881,6 +2897,7 @@ class SyncService:
         ended = dict(vault_step='', vault_done=0, vault_total=0, vault_since=0)
         man, generated, removed = None, None, {}
         if owner:
+            progress('Reading vault manifest')
             man = owner_vault.read_manifest(vault)
             if man is None:                       # Fred 2026-10-28: wait for Reclaim rather than change identity twice
                 self._vault_report(client, key, push=True, vault_state='error', vault_reason=MANIFEST_MISSING, vault_summary='')
@@ -2889,7 +2906,7 @@ class SyncService:
                 owner_vault.settle_pending(vault, man)
                 owner_vault.write_manifest(vault, man)
             identity = man['vault_id']
-            generated = owner_vault.generated_paths(vault, man)
+            generated = owner_vault.generated_paths(vault, man, progress=progress, should_stop=self._vault_stopped)
             removed = dict(man.get('removed') or {})
             st['vault_ids'][_folder_key(vault)] = identity
         else:
@@ -2904,16 +2921,18 @@ class SyncService:
         st['vault'], st['folder'] = identity, ''
         _save_vault_state(sp, st)
         force, self._vault_force = self._vault_force, False
+        progress('Listing files in Google Drive')
         listing = client.list()
         if self._vault_stopped():
             raise ExportStopped()
         by_name = {f['name']: f for f in listing}
         self._vault_status_id = by_name.get(vault_sync.status_name(key), {}).get('id', '')
         over: dict = {}         # files left out for their size (vault_sync.MAX_FILE): counted, never called "in step"
-        mine, cache = vault_sync.scan(vault, key, st['cache'], should_stop=self._vault_stopped, skipped=over)
+        mine, cache = vault_sync.scan(vault, key, st['cache'], should_stop=self._vault_stopped, skipped=over, progress=progress)
         pc_index = vault_sync.index_name(key, 'pc')
         phones, caps, kept, unreadable, failed = {}, {}, {}, 0, 0
         retired_files = set(retired_files)
+        progress('Reading phone vault indexes')
         for f in listing:
             if self._vault_stopped():
                 raise ExportStopped()
@@ -2990,7 +3009,7 @@ class SyncService:
                 total[k] += done[k]
             st['bases'][device] = plan.new_base
             if done['pulled'] or done['trashed']:
-                mine, cache = vault_sync.scan(vault, key, cache, should_stop=self._vault_stopped, skipped=over)
+                mine, cache = vault_sync.scan(vault, key, cache, should_stop=self._vault_stopped, skipped=over, progress=progress)
         sent = 0
         if not braked and not failed:
             by_id = {}
@@ -3003,6 +3022,7 @@ class SyncService:
                 sent = self._vault_send(client, key, vault, pending)
             if self._vault_stopped():
                 raise ExportStopped()
+            progress('Saving vault index')
             if man is not None:
                 # deletion records (spec 1b decision 2) stay until every phone list has dropped the path; a path the
                 # PC has again (rendered again, or taken back as the user's file) is an ordinary listed file
@@ -3018,6 +3038,7 @@ class SyncService:
                 client.upload(pc_index, data=key.seal(vault_sync.INDEX_LOGICAL, index), file_id=by_name.get(pc_index, {}).get('id', ''))
                 st['index_sig'] = sig
             if not unreadable and not missing:
+                progress('Checking unused vault files in Google Drive')
                 referenced = set(mine.values())
                 for files in phones.values():
                     referenced.update(files.values())

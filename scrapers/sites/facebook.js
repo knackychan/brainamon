@@ -40,6 +40,7 @@ var SITE = {
     if (t.length <= 5) return true
     if (t.indexOf('saved from') >= 0 || t.indexOf('add to collection') >= 0) return true
     if (t.indexOf('see more') >= 0 || t.indexOf('see less') >= 0) return true
+    if (t === 'view story' || t === 'more options' || (cl && t === cl + ', view story')) return true
     if (/^(reels?|videos?)\s*[•·]/.test(t)) return true
     if (cl && t === cl) return true
     if (/^\d+(\.\d+)?[kmb]?\s*(views?|likes?|comments?|shares?|plays?)/.test(t)) return true
@@ -66,30 +67,43 @@ var SITE = {
     area.scrollBy({ top: Math.max(300, area.clientHeight * 0.85), behavior: 'instant' })
   },
 
+  moreButton: function (row) {
+    var buttons = Array.from(row.querySelectorAll('[role="button"], button')).filter(function (b) {
+      var label = b.getAttribute('aria-label') || ''
+      return b.isConnected && b.getClientRects().length > 0 && getComputedStyle(b).visibility !== 'hidden' &&
+        (label.indexOf('More options') >= 0 || (b.getAttribute('aria-haspopup') === 'dialog' && /^more(?:\s|,|$)/i.test(label)))
+    })
+    return buttons.length === 1 && buttons[0]
+  },
+
   unsave: async function (doc, url, canRemove) {
+    SITE.read(doc)
     var row = SITE.rows.get(url)
     if (!row || !row.isConnected || !visible(row)) return false
     row.scrollIntoView({ block: 'center', behavior: 'instant' })
-    var button = Array.from(row.querySelectorAll('[role="button"], button')).find(function (b) {
-      return visible(b) && (b.getAttribute('aria-label') || '').indexOf('More options') >= 0
-    })
+    var button = SITE.moreButton(row)
     if (!button) return false
+    var previous = new Set(Array.from(doc.querySelectorAll('[role="menuitem"]')).filter(visible))
     button.click()
     await sleep(800)
-    var menus = Array.from(doc.querySelectorAll('[role="menu"]')).filter(visible)
-    if (menus.length !== 1) return false
-    var item = Array.from(menus[0].querySelectorAll('[role="menuitem"]')).find(function (m) {
-      return visible(m) && /^(unsave|remove from saved)(\s|$)/i.test((m.innerText || '').trim())
+    // Facebook can portal menu items without a role="menu" wrapper.
+    var items = Array.from(doc.querySelectorAll('[role="menuitem"]')).filter(function (m) {
+      return !previous.has(m) && visible(m) && /^(unsave|remove from saved)(\s|$)/i.test((m.innerText || '').trim())
     })
+    var item = items.length === 1 && items[0]
     if (!item) {
       doc.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
       return false
     }
     if (!await canRemove()) return false
+    SITE.read(doc)
+    if (SITE.rows.get(url) !== row || !item.isConnected || !visible(item)) return false
     item.click()
     for (var i = 0; i < 20; i++) {
       await sleep(300)
-      if (!row.isConnected || !visible(row)) return true
+      if (!row.isConnected || !visible(row)) {
+        if (!SITE.read(doc).some(function (card) { return SITE.key(card.url) === SITE.key(url) })) return true
+      }
     }
     return false
   },
@@ -111,7 +125,7 @@ var SITE = {
         var n = words(el)
         if (n === 1) {
           if (!row) row = el
-          if (el.querySelector('[aria-label*="More options"]')) return el
+          if (SITE.moreButton(el)) return el
         }
         if (n > 1) break
       }

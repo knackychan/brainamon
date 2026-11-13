@@ -54,17 +54,17 @@ async def drop_link(request: Request, body: dict = Body(...)):
     url = inbox.link(str(body.get('url') or ''))
     if not url:
         raise HTTPException(400, 'That is not a web link.')
-    row = reader(request.app.state.db_path).conn.execute('SELECT id FROM items WHERE url = ?', (url,)).fetchone()
+    row = reader(request.app.state.db_path).get_item_by_url(url)
     if row:
-        return {'id': row[0], 'new': False}
+        return {'id': row['id'], 'new': False}
 
     def write(db):
         return db.add_item({'url': url, 'description': url})
     try:
         new_id = await request.app.state.writer.run(write)
     except sqlite3.IntegrityError:
-        row = reader(request.app.state.db_path).conn.execute('SELECT id FROM items WHERE url = ?', (url,)).fetchone()
-        return {'id': row[0] if row else None, 'new': False}
+        row = reader(request.app.state.db_path).get_item_by_url(url)
+        return {'id': row['id'] if row else None, 'new': False}
     request.app.state.hub.publish('items_changed', {'ids': [new_id]})
     request.app.state.notify('capture', 'Link saved to your library', url)
     try:

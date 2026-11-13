@@ -291,6 +291,27 @@ class VaultSyncPcTest(unittest.TestCase):
         for k in ('vault_step', 'vault_done', 'vault_total', 'vault_since'):
             self.assertIn(k, status)
 
+    def test_preflight_reports_checks_before_any_upload_and_on_unchanged_rounds(self):
+        self.owner_vault(**{'Brainamon/a.md': 'a', 'Brainamon/b.md': 'b'})
+        original_list = self.drive.list
+
+        def listing(*args, **kwargs):
+            self.assertEqual(self.svc.st['vault_step'], 'Listing files in Google Drive')
+            self.assertEqual(self.svc.st['vault_state'], 'syncing')
+            return original_list(*args, **kwargs)
+
+        for _ in range(2):
+            self.svc.hub.events.clear()
+            with mock.patch.object(self.drive, 'list', side_effect=listing):
+                self.pc_round(owner=True)
+            steps = [(d['vault_step'], d['vault_done'], d['vault_total'])
+                     for k, d in self.svc.hub.events if k == 'cloud']
+            for stage in ('Checking generated notes', 'Checking vault files'):
+                self.assertIn((stage, 0, 2), steps)
+                self.assertIn((stage, 2, 2), steps)
+            self.assertIn(('Reading phone vault indexes', 0, 0), steps)
+            self.assertEqual(self.svc.st['vault_state'], 'idle')
+
     def test_files_over_the_limit_are_counted_and_the_round_does_not_say_up_to_date(self):
         """C4: a file over the vault's size limit is not synced, and neither the PC nor the phone's panel calls the vault complete."""
         self.put(self.pc, 'small.md', 'ok')

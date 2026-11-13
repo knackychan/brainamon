@@ -146,7 +146,7 @@ class ShellRulesTest(unittest.TestCase):
             ring('ok', 'check', 1), ring('pull', 'down', 0.5, turn=90), ring('run', 'down', 1, turn=180),
             ring('run', 'sync', 0.5, True), ring('run', 'sync', 0.25, True), ring('run', 'sync', 0.05, True),
             ring('paused', 'pause', 0), ring('paused', 'pause', 0), ring('warn', 'warn', 1),
-            ring('run', 'sync', 0.4, True)])
+            ring('pull', 'down', 0.5, turn=90)])
 
     def test_shell_glyphs_are_12_by_12(self):
         out = json.loads(node(TS_RESOLVE + """

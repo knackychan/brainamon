@@ -417,6 +417,19 @@ class OwnershipTest(unittest.TestCase):
         self.assertEqual(V.generated_paths(self.vault, self.man), {'Brainamon/Items/a-1.md', 'Brainamon/Knowledge Map.md'})
         self.assertEqual(V.generated_paths(self.vault, V.new_manifest('lib1')), set())
 
+    def test_generated_check_reports_counts_and_can_stop_between_files(self):
+        V.apply_render(self.vault, self.man, files_of(**{'Brainamon/a.md': 'a', 'Brainamon/b.md': 'b'}))
+        events = []
+        report = lambda *args: events.append(args)
+        self.assertEqual(V.generated_paths(self.vault, self.man, progress=report), set(self.man['files']))
+        self.assertEqual(events, [('Checking generated notes', n, 2) for n in range(3)])
+        events.clear()
+        with mock.patch.object(V, 'file_hash', wraps=V.file_hash) as hashed:
+            with self.assertRaisesRegex(OSError, 'stopping'):
+                V.generated_paths(self.vault, self.man, progress=report,
+                                  should_stop=lambda: bool(events and events[-1][1] == 1))
+            self.assertEqual(hashed.call_count, 1)
+
     def test_removal_records_survive_a_crash_before_final_manifest_save(self):
         rel = 'Brainamon/Items/a.md'
         for action in ('render', 'reset', 'leftovers'):

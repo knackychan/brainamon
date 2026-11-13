@@ -80,11 +80,48 @@ public final class SyncWork extends Worker {
             return work.getId().toString();
         }
     }
+    static String retry(Context c)throws Exception {
+        synchronized(POLICY){
+            JSONObject p=policy(c);if(!supported() || !enabled(p))throw new IllegalStateException("paused");
+            SyncRunner r=active;
+            if(r!=null && !r.cancelled && r.accepting)return r.id;
+            WorkManager wm=WorkManager.getInstance(c);
+            java.util.List<WorkInfo> pending=new java.util.ArrayList<>();
+            boolean delayed=false,force=false,legacy=false;
+            for(WorkInfo info:wm.getWorkInfosForUniqueWork(NOW).get(10,TimeUnit.SECONDS)){
+                if(info.getState().isFinished())continue;
+                try(SyncStore db=new SyncStore(c)){
+                    JSONObject saved=db.work(info.getId().toString());
+                    boolean stopping=r!=null && r.cancelled && r.id.equals(info.getId().toString());
+                    if(info.getState()==WorkInfo.State.RUNNING && !stopping){
+                        if(saved==null || !saved.has("done") && !saved.has("next"))return info.getId().toString();
+                        continue;
+                    }
+                    if(saved==null || saved.has("done") || !current(c,p,saved))continue;
+                    pending.add(info);force|=saved.optBoolean("force");legacy|=saved.optBoolean("legacy");
+                    delayed|=stopping || info.getState()==WorkInfo.State.ENQUEUED && info.getRunAttemptCount()>0;
+                }
+            }
+            if(!delayed)return request(c,false,false);
+            JSONObject record=new JSONObject().put("owner",SyncRunner.scope(SyncRunner.pair(c),p.optString("device")))
+                .put("generation",p.optLong("generation")).put("force",force).put("legacy",legacy);
+            OneTimeWorkRequest work=chunk(UUID.randomUUID(),p,record);
+            try(SyncStore db=new SyncStore(c)){
+                db.work(work.getId().toString(),record);
+                // Fresh phone changes and explicit retries bypass old backoff; saved content stays intact.
+                wm.enqueueUniqueWork(NOW,ExistingWorkPolicy.REPLACE,work).getResult().get(10,TimeUnit.SECONDS);
+                for(WorkInfo info:pending){
+                    JSONObject saved=db.work(info.getId().toString());saved.put("next",work.getId().toString());db.work(info.getId().toString(),saved);
+                }
+            }
+            return work.getId().toString();
+        }
+    }
     private static OneTimeWorkRequest chunk(UUID id,JSONObject p,JSONObject record)throws Exception {
         OneTimeWorkRequest.Builder builder=new OneTimeWorkRequest.Builder(SyncWork.class).setId(id).setConstraints(constraints(p))
             .setInputData(new Data.Builder().putBoolean("force",record.optBoolean("force")).putBoolean("legacy",record.optBoolean("legacy"))
                 .putString("owner",record.getString("owner")).putLong("generation",record.getLong("generation")).build())
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL,30,TimeUnit.SECONDS);
+            .setBackoffCriteria(BackoffPolicy.LINEAR,10,TimeUnit.SECONDS);
         if(record.optString("yield").equals("contention"))builder.setInitialDelay(5,TimeUnit.SECONDS);
         else if(Build.VERSION.SDK_INT>=31)builder.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST);
         return builder.build();
@@ -115,7 +152,7 @@ public final class SyncWork extends Worker {
       synchronized(POLICY){
         JSONObject p=policy(c),out;
         try(SyncStore db=new SyncStore(c)){String s=db.get("","status");out=s==null?new JSONObject():new JSONObject(s);}
-        out.put("vaultFiles",JSONObject.NULL);
+        out.put("vaultFiles",JSONObject.NULL).put("nextAt",JSONObject.NULL).put("retryable",false);
         // Progress belongs to the authenticated pairing and chosen folder, including after reopening.
         try(SyncStore db=new SyncStore(c)){
             if(PhoneSecrets.get(c,"bp-pair")!=null){
@@ -159,6 +196,18 @@ public final class SyncWork extends Worker {
             if(terminal && !done && info.getState()!=WorkInfo.State.SUCCEEDED)out.put("outcome","paused");
             out.put("scheduled",!done && (info==null && tracked || info!=null && (info.getState()==WorkInfo.State.ENQUEUED || info.getState()==WorkInfo.State.BLOCKED)));
             if(!done && !terminal && !observed.equals(out.optString("id")) && active==null && enabled(p) && network(c,p).isEmpty())out.put("state","queued");
+            if(!done && !terminal && active==null && enabled(p) && network(c,p).isEmpty()){
+                WorkInfo waiting=info;
+                if(info!=null && info.getState()==WorkInfo.State.BLOCKED)
+                    for(WorkInfo candidate:WorkManager.getInstance(c).getWorkInfosForUniqueWork(NOW).get(10,TimeUnit.SECONDS))
+                        if(candidate.getState()==WorkInfo.State.ENQUEUED){waiting=candidate;break;}
+                if(waiting!=null && waiting.getState()==WorkInfo.State.ENQUEUED){
+                    long next=waiting.getNextScheduleTimeMillis();
+                    if(next>System.currentTimeMillis() && next<Long.MAX_VALUE)out.put("nextAt",next);
+                    out.put("retryable",waiting.getRunAttemptCount()>0);
+                    out.put("state",waiting.getRunAttemptCount()>0?"retry":"queued");
+                }
+            }
         }
         return out;
       }
@@ -204,8 +253,8 @@ public final class SyncWork extends Worker {
                 return finish(c,id,record,state,System.currentTimeMillis());
             }
         }catch(Exception e){
-            if(e instanceof SyncRunner.BudgetExpired && runner!=null)try{
-                synchronized(POLICY){runner.accepting=false;runner.checkpoint(false);record.put("yield","budget");handoff(c,runner.store,id,record);}
+            if((e instanceof SyncRunner.BudgetExpired || e instanceof SyncRunner.UploadsPending) && runner!=null)try{
+                synchronized(POLICY){runner.accepting=false;runner.checkpoint(false);record.put("yield",e instanceof SyncRunner.UploadsPending?"uploads":"budget");handoff(c,runner.store,id,record);}
                 return Result.success();
             }catch(Exception handoff){e=handoff;}
             if(runner!=null)runner.accepting=false;

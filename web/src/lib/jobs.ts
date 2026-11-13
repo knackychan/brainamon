@@ -128,7 +128,8 @@ export async function startJob(kind: string, o: StartOpts = {}): Promise<boolean
       if (!ok) return false
     }
     await api.post('/api/jobs', { kind, ids: T.ids, force: T.force, opts })
-    toast(`${k.label}: ${plural(p.count, 'item')} started`, '', jobHooks.openProgress ? { label: 'Progress', run: jobHooks.openProgress } : undefined)
+    if (jobHooks.openProgress) jobHooks.openProgress()
+    else toast(`${k.label}: ${plural(p.count, 'item')} started`)
     return true
   } catch (e) {
     toast(e instanceof ApiError ? e.message : String(e), 'w')

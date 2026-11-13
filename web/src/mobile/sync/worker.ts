@@ -115,7 +115,7 @@ async function round(config: Config) {
       const batch = await rpc<{ id: string; name: string; data: string } | null>('outbox')
       if (!batch) return
       await authorize()
-      await rpc('progress', 'drive', 0)
+      await rpc('progress', 'send', 0)
       // Same immutable name/bytes across retries, including an upload whose response was lost.
       const found = await rpc<{ id: string }[]>('find', batch.name)
       const sealed = unb64(batch.data)
@@ -129,18 +129,22 @@ async function round(config: Config) {
     }
   }
   await upload()
-  await rpc('progress', 'drive', 0)
+  await rpc('progress', 'drive', 0, { key: 'shell.sync.readingIndex' })
   if (config.solo) {
     const prefix = 'solo-' + await key.name('phone-backup') + '-'
     const all = await drive.list()
     await save('pc-mirror', all.some(f => isLibraryName(f.name)))
     const listing = all.filter(f => f.name.startsWith(prefix) || /^chg-[a-f0-9]{32}$/.test(f.name))
+    let count = 0
+    await rpc('progress', 'drive', 0, { key: 'shell.sync.readingFiles', done: 0, total: listing.length })
     for (const f of listing) {
-      if (await read('solo/' + f.name)) continue
-      try {
-        const data = await key.openText(f.name, await drive.get(f.id))
-        await save('solo/' + f.name, { name: f.name, doc: JSON.parse(data) })
-      } catch (e) { if (f.name.startsWith(prefix) || (e as Error).message !== 'key') throw e }
+      if (!await read('solo/' + f.name)) {
+        try {
+          const data = await key.openText(f.name, await drive.get(f.id))
+          await save('solo/' + f.name, { name: f.name, doc: JSON.parse(data) })
+        } catch (e) { if (f.name.startsWith(prefix) || (e as Error).message !== 'key') throw e }
+      }
+      await rpc('progress', 'drive', ++count / listing.length, { key: 'shell.sync.readingFiles', done: count, total: listing.length })
     }
     await save('solo-list', listing.map(f => f.name))
   } else {
@@ -151,6 +155,7 @@ async function round(config: Config) {
     const want = Object.entries(manifest.files).filter(([p]) => /^(library\/|notes\/|chats\/|search\/text-)/.test(p) || ['canvases/index.json', 'canvas-results.json'].includes(p))
       .sort(([a], [b]) => Number(b.startsWith('library/')) - Number(a.startsWith('library/')) || (a < b ? 1 : a > b ? -1 : 0))
     let count = 0
+    await rpc('progress', 'drive', 0, { key: 'shell.sync.readingFiles', done: 0, total: want.length })
     for (const [logical, file] of want) {
       const f = file as { id?: string; n: string; v: string }
       const cacheKey = `file/${logical}/${f.v}`
@@ -162,7 +167,7 @@ async function round(config: Config) {
         const text = logical.endsWith('.gz') ? await rpc<string>('gunzip', b64(data)) : new TextDecoder().decode(data)
         await save(cacheKey, { v: f.v, data: text })
       }
-      await rpc('progress', 'drive', ++count / Math.max(1, want.length))
+      await rpc('progress', 'drive', ++count / want.length, { key: 'shell.sync.readingFiles', done: count, total: want.length })
     }
     // Publish a snapshot only when all of its required files are durable.
     await save('manifest', manifest)

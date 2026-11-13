@@ -36,6 +36,8 @@ function load(file) {
 const processing = modules['./processing'] = load('processing')
 const { processingTargets, recommendedProcessing } = processing
 const { jobTargets, startJob, jobHooks } = load('jobs')
+let queuesOpened = 0
+jobHooks.openProgress = () => queuesOpened++
 
 assert.deepEqual(processingTargets(rows, 'thumb'), [1], 'Fetch only web links missing thumbnails')
 assert.deepEqual(processingTargets(rows, 'thumb', true), [1, 2, 3, 5], 'Rerun still excludes local items')
@@ -57,6 +59,7 @@ assert.deepEqual(jobTargets('describe', { ids: [] }).ids, [], 'An empty explicit
 
 assert.equal(await startJob('describe', { ids: [1] }), false)
 assert.equal(posts.length, 1, 'Cancel sends only preview, never a job')
+assert.equal(queuesOpened, 0, 'Cancel must not open a queue')
 assert.match(confirmations.at(-1).msg, /already described are skipped/)
 allow = true
 assert.equal(await startJob('describe', { ids: [2], force: true }), true)
@@ -64,6 +67,12 @@ assert.match(confirmations.at(-1).msg, /Replaces existing AI descriptions/)
 assert.deepEqual(posts.at(-1), { url: '/api/jobs', body: { kind: 'describe', ids: [2], force: true, opts: {} } })
 assert.equal(await startJob('thumb', { ids: [2], force: true }), true)
 assert.match(confirmations.at(-1).detail, /captions may be replaced/)
+assert.equal(queuesOpened, 2, 'Describe and Fetch both open their progress queue after starting')
+jobHooks.analyzeOptions = async () => ({})
+for (const [kind, ids, opts] of [['categorize', [1], {}], ['index', [1], {}], ['analyze', [3], {}], ['note', [1], { topic: 'Test' }]]) {
+  assert.equal(await startJob(kind, { ids, opts }), true)
+}
+assert.equal(queuesOpened, 6, 'Every processing tool opens its queue')
 
 const before = posts.length
 live.jobs.current = { kind: 'describe', label: 'Describe' }

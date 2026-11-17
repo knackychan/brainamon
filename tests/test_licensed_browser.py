@@ -78,6 +78,13 @@ class LicensedBrowser(unittest.TestCase):
                                 app.state.writer.call(lambda db: db.set_setting('automatic_updates','1'))
                                 ctx = browser.new_context(viewport={'width':1280,'height':900}, color_scheme=theme, locale='en-US')
                                 ctx.add_init_script("localStorage.setItem('bp-lang','en')")
+                                ctx.add_init_script('''window.__cloudStreams = [];
+                                    window.EventSource = class extends EventSource {
+                                      constructor(...args) {
+                                        super(...args); window.__cloudStreams.push(this);
+                                        this.addEventListener('cloud', e => { if (window.__holdCloud && e.isTrusted) e.stopImmediatePropagation() });
+                                      }
+                                    };''')
                                 ctx.route('**/*', lambda route: route.continue_() if route.request.url.startswith((origin+'/',base_drive+'/')) else route.abort())
                                 page = ctx.new_page()
                                 errors=[]; page.on('pageerror', lambda e: errors.append(str(e)))
@@ -100,6 +107,31 @@ class LicensedBrowser(unittest.TestCase):
                                 page.locator('#set-tbackup').click()
                                 board.get_by_role('button', name='Show Phones').click()
                                 expect(panel.get_by_role('button',name='Add a phone',exact=True)).to_be_visible(timeout=15000)
+                                # Pairing itself emits busy/ready events; deliver busy before the response and ready only via GET.
+                                emit_cloud = "data => window.__cloudStreams.forEach(s => s.dispatchEvent(new MessageEvent('cloud', {data: JSON.stringify(data)})))"
+                                gates = []
+                                def delayed_pair(route):
+                                    response = route.fetch()
+                                    status = app.state.sync.status()
+                                    gate = dict(status, seq=status['seq'] - 1, recovery_gate_active=True, pair_ready=False)
+                                    gates.append(gate)
+                                    page.evaluate(emit_cloud, gate)
+                                    route.fulfill(response=response)
+                                ctx.route('**/api/cloud/pair', delayed_pair)
+                                page.evaluate('window.__holdCloud = true')
+                                panel.get_by_role('button',name='Add a phone',exact=True).click()
+                                expect(panel.get_by_role('img',name='Phone pairing QR code')).to_be_visible()
+                                page.evaluate(emit_cloud, gates[-1])
+                                expect(panel.get_by_role('img',name='Phone pairing QR code')).to_be_visible()
+                                panel.get_by_role('button', name='Hide code', exact=True).click()
+                                ctx.route('**/api/cloud', lambda route: route.fulfill(status=503, json={'detail': 'Synthetic status failure'}))
+                                panel.get_by_role('button',name='Add a phone',exact=True).click()
+                                expect(panel.get_by_role('alert')).to_have_text('Could not check phone pairing. Try again.')
+                                expect(panel.get_by_role('img',name='Phone pairing QR code')).to_have_count(0)
+                                ctx.unroute('**/api/cloud')
+                                ctx.unroute('**/api/cloud/pair', delayed_pair)
+                                page.evaluate('window.__holdCloud = false')
+                                page.evaluate(emit_cloud, app.state.sync.status())
                                 panel.get_by_role('button',name='Add a phone',exact=True).click()
                                 expect(panel.get_by_role('img',name='Phone pairing QR code')).to_be_visible()
                                 page.screenshot(path=str(output / f'desktop-{theme}-free-pairing.png'))

@@ -2,6 +2,12 @@
 
 Every release bumps `core/version.py` and adds a section here in the same commit. Newest first.
 
+## 1.1.15 - 2026-11-17
+
+- Simplifies video analysis options and makes frame sampling easier to adjust.
+- Refreshes open item details after background jobs while preserving unsaved edits.
+- Keeps a new phone pairing code visible when delayed backup status updates arrive.
+
 ## 1.1.14 - 2026-11-16
 
 - Refines desktop and phone motion, navigation and note and knowledge workspaces.

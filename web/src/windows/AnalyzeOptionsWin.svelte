@@ -29,7 +29,7 @@
     err = ''
     const noFrames = !(+o.frame_interval > 0), noTranscript = !o.transcribe
     if (noFrames && noTranscript) {
-      if (o.analysis_provider === 'none') { err = 'Nothing to analyze: set a frame interval or turn transcription on.'; return }
+      if (o.analysis_provider === 'none') { err = 'Nothing to analyze: turn on Sample frames or the transcription.'; return }
       const ok = await confirmWin({
         title: 'No input for AI analysis', code: 'ANL-12', ok: 'Run transcript-only (no AI)',
         msg: 'You disabled both frame extraction and transcription, so the AI analysis would run with no frames and no transcript to summarize.',
@@ -44,7 +44,8 @@
 </script>
 
 <WinBody>
-  <Hint style="margin-bottom:12px">Analyze videos examines the video’s content through sampled frames and/or audio transcription, according to your options. It uses the local video or downloads it if missing, and can produce an AI report. Describe uses the available post text, title and thumbnail for a static summary. This can take several minutes per video. Estimated AI report cost: about ${(count * 0.03).toFixed(2)}; actual cost varies by model and video length. Transcription and search indexing may add charges. {force ? 'Existing analysis may be replaced.' : 'Already analyzed videos are skipped.'}</Hint>
+  <Hint style="margin-bottom:6px">Reads the video’s frames and audio, then writes an AI report. Uses the saved video, or downloads it first. A few minutes per video. {force ? 'Replaces the existing analysis.' : 'Already analyzed videos are skipped.'}</Hint>
+  <Hint style="margin-bottom:14px">Report about ${(count * 0.03).toFixed(2)}{count > 1 ? ` for ${count} videos` : ''}; transcription and search indexing add a little. Varies with model and length.</Hint>
   {#if o}<AnalyzeOptionsForm bind:o {err} />{:else}<Hint>{err || 'Loading the options…'}</Hint>{/if}
 </WinBody>
 <WinFoot>

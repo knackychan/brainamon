@@ -31,7 +31,7 @@ KEY = base64.urlsafe_b64encode(RAW).decode().rstrip('=')
 FP = hashlib.sha256(b'brainamon-mirror-1 id' + RAW).hexdigest()[:12]
 PAIR = dict(v=2, k=KEY, f=FP, c='', e='', ai={}, at=0, solo=True)
 SETTLED = "async () => { const { phone } = await import('/src/mobile/state.svelte.ts'); return phone.tried && !phone.refreshing }"
-ROWS = ['Backup & phones', 'Sync', 'Wiskit on this phone', 'Obsidian', 'Storage', 'Look', 'About']
+ROWS = ['Backup & phones', 'Sync', 'Wiskit on this phone', 'Obsidian', 'Storage', 'Language and Style', 'About']
 
 
 def fits(page):
@@ -115,7 +115,7 @@ def main():
                         shoot(page, f'settings-{width}')
 
                         # Every hub row opens its own page, with its own Back and no cut words.
-                        for title, route in [('Sync', 'sync'), ('Wiskit on this phone', 'wiskit'), ('Obsidian', 'obsidian'), ('Storage', 'storage'), ('Look', 'look'), ('About', 'about')]:
+                        for title, route in [('Sync', 'sync'), ('Wiskit on this phone', 'wiskit'), ('Obsidian', 'obsidian'), ('Storage', 'storage'), ('Language and Style', 'look'), ('About', 'about')]:
                             page.locator(f'a[href="#/more/{route}"]').click()
                             expect(page).to_have_url(base + '/mobile.html#/more/' + route)
                             expect(page.locator('.m-page:visible h1')).to_have_text(title)

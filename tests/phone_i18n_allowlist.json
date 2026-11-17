@@ -2220,14 +2220,14 @@
   },
   {
     "file": "web/src/windows/AnalyzeOptionsForm.svelte",
-    "line": 35,
+    "line": 68,
     "kind": "expression",
     "value": "none",
     "reason": "Fixed enum comparison (none/auto); displayed option labels resolve lazily through shared.analysis keys, payload values unchanged."
   },
   {
     "file": "web/src/windows/AnalyzeOptionsForm.svelte",
-    "line": 36,
+    "line": 71,
     "kind": "expression",
     "value": "auto",
     "reason": "Fixed enum comparison (none/auto); displayed option labels resolve lazily through shared.analysis keys, payload values unchanged."

@@ -81,7 +81,7 @@
     if (!o) return
     err = ''
     if (!path) { out('No video selected.', 'r'); return }
-    if (!(+o.frame_interval > 0) && !o.transcribe) { err = 'Nothing to analyze: set a frame interval or turn transcription on.'; return }
+    if (!(+o.frame_interval > 0) && !o.transcribe) { err = 'Nothing to analyze: turn on Sample frames or the transcription.'; return }
     if (jobBusy()) { toast(running ? 'A video is already being analyzed.' : jobBusyMsg(), 'w'); return }
     try { await api.put('/api/settings/analyze', o) } catch { /* the run still uses these options */ }
     folder = ''

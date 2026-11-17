@@ -831,7 +831,7 @@ def fixture(root):
                     ctx, p, d = phone(direct=True)
                     p.goto(page_url + '#/backup')
                     settle(p)
-                    expect(open_group(p, 'Look').get_by_role('button', name='Night', exact=True)).to_be_visible()   # Settings (its Look group)
+                    expect(open_group(p, 'Language and Style').get_by_role('button', name='Night', exact=True)).to_be_visible()   # Settings (its Look group)
                     expect(p.locator('#m-backup-status')).to_have_count(0)
                     expect(p.locator('#m-status')).to_have_count(0)
                     extra(p, '#/more', 'unpaired-more', 'More in a phone browser with no pairing (no status card)')

@@ -37,7 +37,7 @@
     cloud: CloudView; sizes: Sizes | null; err: { where: string; msg: string } | null
     run: (path: string, body?: unknown, pending?: Partial<CloudView>, where?: string) => Promise<boolean>
     setOption: (o: Partial<CloudView['options']> | { phone_url: string }, where?: string) => Promise<void>
-    reload: () => void; onrecover: () => void; onrecoverprimary?: (primary: boolean) => void; onform?: (open: boolean) => void
+    reload: () => Promise<boolean>; onrecover: () => void; onrecoverprimary?: (primary: boolean) => void; onform?: (open: boolean) => void
     rec: RecoveryView | null; recError: string; recPending: boolean; loadRec: () => Promise<void>
     sectionRequest?: { id: string; serial: number }
     actionRequest?: { id: ActId; serial: number }; onmodel?: (state: BackupState) => void
@@ -269,7 +269,13 @@
     if (pairingReason(cloud)) return
     const account = cloud.account
     making = true; pairError = ''
-    try { const result = await api.post<Pairing>('/api/cloud/pair', { keys: pairKeys }); pairing = account === cloud.account && !pairingReason(cloud) ? result : null } catch (e) { pairError = message(e); pairing = null } finally { making = false }
+    try {
+      const result = await api.post<Pairing>('/api/cloud/pair', { keys: pairKeys })
+      // Pairing emits temporary gate events; refresh past them before accepting its code.
+      if (!await reload()) throw new Error('Could not check phone pairing. Try again.')
+      await tick()
+      pairing = account === cloud.account && !pairingReason(cloud) ? result : null
+    } catch (e) { pairError = message(e); pairing = null } finally { making = false }
     if (pairing) { await tick(); qr?.focus() }
   }
   const openSignOutHelp = () => { window.open(GOOGLE_SIGN_OUT_URL, '_blank', 'noopener,noreferrer') }

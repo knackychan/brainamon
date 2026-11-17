@@ -701,7 +701,7 @@
     cloudError = ''
     if (reset) { cloudEpoch++; cloudSnap = null; freshCloud = true }
     const epoch = cloudEpoch
-    api.get<CloudView>('/api/cloud').then(c => { if (epoch === cloudEpoch) { takeView(c); focusSection() } }).catch(e => { if (epoch === cloudEpoch) cloudError = (e as Error).message })
+    return api.get<CloudView>('/api/cloud').then(c => { if (epoch !== cloudEpoch) return false; takeView(c); focusSection(); return true }).catch(e => { if (epoch === cloudEpoch) cloudError = (e as Error).message; return false })
   }
   onMount(() => {
     const window = wins.find(w => w.id === 'settings')

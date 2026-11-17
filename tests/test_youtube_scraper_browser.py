@@ -154,6 +154,7 @@ class YoutubeScraperBrowserTest(unittest.TestCase):
                     page.get_by_role('button', name='File', exact=True).click()
                     page.get_by_role('menuitem', name='Scrapers', exact=False).click()
                     dialog = page.get_by_role('dialog', name='Scrapers', exact=True)
+                    dialog.get_by_role('button', name='YouTube', exact=True).click()
                     link = dialog.get_by_label('Playlist link', exact=True)
                     submit = dialog.get_by_role('button', name='Import playlist', exact=True)
                     expect(submit).to_be_disabled()

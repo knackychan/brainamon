@@ -605,7 +605,9 @@ export async function linkImage(url){
 }
 '''))
             page.goto(base + '/mobile.html#/import')
-            page.wait_for_function("async()=>{const s=await import('/src/mobile/state.svelte.ts');return s.phone.tried && !s.phone.refreshing && s.pics.state==='idle'}")
+            expect(page.locator('.m-import-screen')).to_be_visible()
+            state = page.evaluate_handle("() => import('/src/mobile/state.svelte.ts')")
+            page.wait_for_function("s => s.phone.tried && !s.phone.refreshing && s.pics.state==='idle'", arg=state)
             result = page.evaluate('''async()=>{
               const {mirrorSource:s}=await import('/src/mobile/state.svelte.ts');
               const {kv,changes}=await import('/src/mobile/store.ts');

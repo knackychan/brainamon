@@ -20,7 +20,8 @@ class PhonePullBrowser(unittest.TestCase):
                 # Keep synthetic in-flight reads held; test the native retry call independently of resume callbacks.
                 page.add_init_script("window.addEventListener('brainamon-sync-resume',e=>e.stopImmediatePropagation())")
                 page.goto(base + '/mobile.html#/lib')
-                page.wait_for_function("async () => (await import('/src/mobile/state.svelte.ts')).phone.tried")
+                ready = page.evaluate_handle("async () => ({phone:(await import('/src/mobile/state.svelte.ts')).phone,onb:(await import('/src/mobile/onboard.svelte.ts')).onb})")
+                page.wait_for_function("s => s.phone.tried && s.onb.loaded", arg=ready)
                 page.evaluate("""async()=>{
                   const {source,mirrorSource}=await import('/src/mobile/state.svelte.ts');
                   await (await import('/src/mobile/onboard.svelte.ts')).saveOnb({answer:'phone',hidden:true,coach:true});
@@ -28,6 +29,7 @@ class PhonePullBrowser(unittest.TestCase):
                   source.rows=async()=>({rows:[],cats:[]});
                 }""")
                 expect(page.locator('.m-main')).to_be_visible()
+                expect(page.locator('.m-ob')).to_have_count(0)
                 retries = 0
                 for state in ('retry', 'queued', 'reading', 'syncing', 'idle', 'paused', 'offline', 'wifi', 'stopped'):
                     with self.subTest(state=state):

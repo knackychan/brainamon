@@ -891,17 +891,21 @@ class PairRoutesTest(test_sync.RoutesTest):
         writer.call(lambda db: db.set_setting('cloud_account', 'dev@brainamon.local'))
         self.assertEqual(self.c.post('/api/cloud/sign-out', json={}).status_code, 403)
         with mock.patch.object(drive_client, 'revoke') as rv:
-            v = self.c.post('/api/cloud/sign-out', json={}, headers={'X-CM': '1'}).json()
+            self.assertEqual(self.c.post('/api/cloud/sign-out', json={}, headers={'X-CM': '1'}).status_code, 200)
+            worker = self.client.app.state.sync._thread
+            worker.join(5)
+            self.assertFalse(worker.is_alive())
             rv.assert_called_once()
+        v = self.c.get('/api/cloud').json()
         self.assertFalse(tok.exists())
         self.assertFalse(v['signed_in'])
         self.assertEqual(writer.read(lambda db: db.get_setting('cloud_account', '')), 'dev@brainamon.local')
-        v = self.c.post('/api/cloud/sign-out', json={'delete_mirror': True}, headers={'X-CM': '1'}).json()
+        self.assertEqual(self.c.post('/api/cloud/sign-out', json={'delete_mirror': True}, headers={'X-CM': '1'}).status_code, 200)
+        worker = self.client.app.state.sync._thread
+        worker.join(5)
+        self.assertFalse(worker.is_alive())
+        v = self.c.get('/api/cloud').json()
         self.assertEqual((v['account'], v['signed_in']), ('', False))
-        # Disconnect is a saved worker task; its local cleanup can finish after the accepted response.
-        until = time.monotonic() + 5
-        while writer.read(lambda db: db.get_setting('cloud_account', '')) and time.monotonic() < until:
-            time.sleep(.01)
         self.assertEqual(writer.read(lambda db: db.get_setting('cloud_account', '')), '')
 
     def test_pair_link_and_unpair(self):

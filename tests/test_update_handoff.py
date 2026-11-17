@@ -30,6 +30,7 @@ class Fixture {
             Thread.Sleep(60000);
         } else {
             File.WriteAllLines(System.Reflection.Assembly.GetExecutingAssembly().Location + ".started", args);
+            Thread.Sleep(250);
         }
     }
 }
@@ -50,6 +51,14 @@ class Fixture {
         self.checksum = hashlib.sha256(self.installer.read_bytes()).hexdigest()
         self.marker = self.installer.with_name(self.installer.name + '.started')
         self.log = self.installer.with_suffix('.handoff.log')
+        self.addCleanup(self.wait_for_installer_exit)
+
+    def wait_for_installer_exit(self):
+        # The startup marker precedes process exit; Windows still locks the executable.
+        subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
+                        'Get-Process | Where-Object { $_.Path -eq $env:HANDOFF_INSTALLER } | Wait-Process -Timeout 10 -ErrorAction Stop'],
+                       env={**os.environ, 'HANDOFF_INSTALLER': str(self.installer)},
+                       check=True, capture_output=True, timeout=15, creationflags=updater.app_paths.NO_WINDOW)
 
     def start(self, command):
         process = subprocess.Popen(command, creationflags=updater.app_paths.NO_WINDOW)

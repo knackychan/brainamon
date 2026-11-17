@@ -18,6 +18,7 @@
   import { attachItems } from '../lib/attach'
   import { mdHTML } from '../lib/md'
   import { toast } from '../lib/ui.svelte'
+  import { on } from '../lib/events.svelte'
   import Button from '../components/ui/Button.svelte'
   import Hint from '../components/ui/Hint.svelte'
   import Label from '../components/ui/Label.svelte'
@@ -65,7 +66,39 @@
       setTimeout(() => (pending = undefined), 2000)
     } catch (e) { toast(`Could not open No.${id}: ${(e as Error).message}`, 'w'); close() }
   }
-  onMount(load)
+  onMount(() => {
+    load()
+    // a job finished this item (Analyze, Describe, Fetch link info...): refresh in place
+    let t = 0
+    const off = on('items_changed', (d: { ids: number[] }) => {
+      if (!d.ids?.includes(id)) return
+      clearTimeout(t)
+      t = window.setTimeout(refresh, 250)
+    })
+    return () => { off(); clearTimeout(t) }
+  })
+
+  // Reload the server copy. Fields the user has not edited take the new values; edited ones are kept.
+  // The report reloads if it was shown, and the frames get a new cache key (same file names after a rerun).
+  let ver = $state(0)
+  async function refresh() {
+    let r: Full
+    try { r = await api.get<Full>(`/api/items/${id}`) } catch { return }
+    const old = it
+    if (old) {
+      for (const k of Object.keys(f) as (keyof typeof f)[]) {
+        const before = k === 'type' ? old.type || 'Reel' : k === 'category' ? old.category || 'INTERESTING' : old[k] || ''
+        const after = k === 'type' ? r.type || 'Reel' : k === 'category' ? r.category || 'INTERESTING' : r[k] || ''
+        if (f[k] === before) f[k] = after
+      }
+    }
+    it = r
+    ver++
+    if (r.files.report && (askedReport || wantReport)) {
+      askedReport = true
+      fetch(`/files/items/${id}/report.md?v=${ver}`, { cache: 'no-store' }).then(x => (x.ok ? x.text() : '')).then(t => (report = t)).catch(() => {})
+    } else if (!r.files.report) { report = null; askedReport = false }
+  }
 
   // the card with its own HandCard (normal idle sway); redrawn when the row changes
   $effect(() => {
@@ -317,7 +350,7 @@
               <summary>Frames <small>{it.files.frames} · data/items/{id}/frames</small></summary>
               <div class="frames strip">
                 {#each it.files.frame_names as name, k (name)}
-                  <figure class="frm"><img src={`/files/items/${id}/frames/${name}`} alt={`Frame ${k + 1}`} loading="lazy" /><time>{name.replace(/\.jpg$/, '')}</time>
+                  <figure class="frm"><img src={`/files/items/${id}/frames/${name}${ver ? `?v=${ver}` : ''}`} alt={`Frame ${k + 1}`} loading="lazy" /><time>{name.replace(/\.jpg$/, '')}</time>
                     <Button size="sm" aria-label={`Add frame ${k + 1} to the canvas`} onclick={e => attachItems([id], 'frame', e.currentTarget.closest('figure'), name)}>+ canvas</Button></figure>
                 {/each}
               </div>

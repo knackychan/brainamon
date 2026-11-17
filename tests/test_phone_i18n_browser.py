@@ -38,6 +38,10 @@ SCENE_CHECK = r"""() => {
   }
   for (const e of document.querySelectorAll('.m-askbox > span:last-child, .m-key.wide > span, .m-chip, .m-btn, .m-key, .m-tg, .m-tabline > *, .m-it-info > dt')) {
     if (!shown(e) || e.scrollWidth <= e.clientWidth + 1) continue
+    // The active top pill yields to the Notes/sync/search keys on narrow phones, retaining its full accessible name.
+    if (vw <= 360 && e.matches('.m-top > .m-key.wide[aria-current="page"] > span') && e.clientWidth > 0 &&
+        getComputedStyle(e).textOverflow === 'ellipsis' && e.parentElement.getAttribute('aria-label') === e.textContent &&
+        e.parentElement.getAttribute('title') === e.textContent) continue
     // a label that gives way with an ellipsis keeps its full name in the control's aria-label: reported apart, never silent
     out.push((getComputedStyle(e).textOverflow === 'ellipsis' && e.closest('[aria-label]') ? 'ellipsized: ' : 'text wider than its control: ') + name(e))
   }
@@ -67,6 +71,21 @@ def check_scene(test, page, language, theme, name, sweep='02', expected=()):
 @unittest.skipUnless(importlib.util.find_spec('playwright') and (ROOT / 'web/node_modules/vite/bin/vite.js').is_file(),
                      'requires installed Playwright/Edge and web dependencies')
 class PhoneLanguageStartupBrowser(unittest.TestCase):
+    def test_scene_check_allows_only_accessibly_named_narrow_navigation_ellipsis(self):
+        with mobile_browser() as (browser, base), synthetic_phone(browser, base, 360, 740, 'light') as (page, errors):
+            page.set_content('''<meta name="viewport" content="width=device-width,initial-scale=1"><div id="m-app"><header class="m-top">
+              <a class="m-key wide" aria-current="page" aria-label="Library" title="Library"><span>Library</span></a>
+              </header><button class="m-btn">Unexpected clipped control</button></div>
+              <style>.wide span,.m-btn{display:block;width:30px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}</style>''')
+            self.assertEqual(page.evaluate(SCENE_CHECK), ['text wider than its control: Unexpected clipped control'])
+            page.locator('.m-btn').evaluate('e => e.remove()')
+            page.locator('.wide').evaluate('e => e.removeAttribute("aria-label")')
+            self.assertEqual(page.evaluate(SCENE_CHECK), ['text wider than its control: Library'])
+            page.locator('.wide').evaluate('e => e.setAttribute("aria-label", "Library")')
+            page.set_viewport_size(dict(width=390, height=740))
+            self.assertEqual(page.evaluate(SCENE_CHECK), ['ellipsized: Library'])
+            self.assertEqual(errors, [])
+
     def test_rich_links_are_safe_and_actions_are_keyboard_operable(self):
         from playwright.sync_api import expect
         with mobile_browser() as (browser, base), synthetic_phone(browser, base, 360, 740, 'light') as (page, errors):
@@ -129,7 +148,7 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
                 category:await kv.get('wiskit-category-proposal:' + f), canvas:await kv.get('wiskit-canvas-proposal:' + f), onboard:await kv.get('onboard')}
             }"""
             before = page.evaluate(snapshot)
-            open_group(page, 'Look')
+            open_group(page, 'Language and Style')
             with page.expect_navigation(wait_until='domcontentloaded'):
                 page.get_by_role('group', name='Language', exact=True).get_by_role('button', name='FR', exact=True).click()
             expect(page.locator('.m-page-keys')).to_be_visible()
@@ -199,7 +218,7 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
             page.get_by_role('button', name='Clear', exact=True).click()
             page.get_by_role('button', name='Sure? Clear', exact=True).click()
             page.wait_for_function('()=>!!window.__finishClear')
-            open_group(page, 'Look')
+            open_group(page, 'Language and Style')
             page.get_by_role('group', name='Language', exact=True).get_by_role('button', name='FR', exact=True).click()
             expect(page.get_by_role('alert')).to_contain_text('Finish or save your work')
             self.assertEqual(page.evaluate("localStorage.getItem('bp-lang')"), 'en')
@@ -215,7 +234,7 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
             page.goto(base + '/mobile.html#/more', wait_until='domcontentloaded')
             page.wait_for_function("async () => { const {phone} = await import('/src/mobile/state.svelte.ts'); return phone.tried && !phone.refreshing }")
             page.evaluate("async () => (await import('/src/mobile/capture.svelte.ts')).shareIn('Synthetic preserved draft')")
-            open_group(page, 'Look')
+            open_group(page, 'Language and Style')
             group = page.get_by_role('group', name='Language', exact=True)
             expect(group).to_be_visible()
             page.evaluate('window.__noReload = true')
@@ -229,7 +248,7 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
                 self.assertEqual(page.evaluate("localStorage.getItem('bp-lang')"), stored)
                 self.assertEqual(page.locator('html').get_attribute('lang'), html_lang)
                 self.assertTrue(page.evaluate("async () => (await (await import('/src/mobile/store.ts')).drafts.all()).some(d => d.text === 'Synthetic preserved draft')"))
-                title = {'en': 'Look', 'fr': 'Style', 'zh-Hant-TW': '外觀'}[html_lang]
+                title = {'en': 'Language and Style', 'fr': 'Langue et style', 'zh-Hant-TW': '語言與樣式'}[html_lang]
                 open_group(page, title)
                 group = page.get_by_role('group', name=group_name, exact=True)
                 expect(group).to_be_visible()
@@ -243,7 +262,7 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
             page.route('**/api/**', lambda route: route.abort())
             page.goto(base + '/mobile.html#/more', wait_until='domcontentloaded')
             page.wait_for_function("async () => { const {phone} = await import('/src/mobile/state.svelte.ts'); return phone.tried && !phone.refreshing }")
-            open_group(page, 'Look')
+            open_group(page, 'Language and Style')
             group = page.get_by_role('group', name='Language', exact=True)
             page.evaluate("""async () => {
               const { registerLanguageCheck } = await import('/src/mobile/language-switch.ts')
@@ -275,7 +294,7 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
             page.route('**/api/**', lambda route: route.abort())
             page.goto(base + '/mobile.html#/more', wait_until='domcontentloaded')
             page.wait_for_function("async () => { const {phone} = await import('/src/mobile/state.svelte.ts'); return phone.tried && !phone.refreshing }")
-            open_group(page, 'Look')
+            open_group(page, 'Language and Style')
             group = page.get_by_role('group', name='Language', exact=True)
             page.evaluate("""async () => {
               const { registerLanguageCheck } = await import('/src/mobile/language-switch.ts')
@@ -669,7 +688,7 @@ class PhoneLanguageStartupBrowser(unittest.TestCase):
             }""")
             self.assertEqual(result['result'], {'status': 'blocked', 'reason': 'settings.language.unsavedKeys'})
             self.assertEqual((result['before'], result['after']), (None, None))
-            open_group(page, 'Look')
+            open_group(page, 'Language and Style')
             page.get_by_role('group', name='Language', exact=True).get_by_role('button', name='FR', exact=True).click()
             expect(page.get_by_role('alert')).to_contain_text('Save or clear your key draft')
             self.assertEqual(page.evaluate("localStorage.getItem('bp-lang')"), 'en')
@@ -1496,12 +1515,12 @@ class PhoneLanguageBuiltAppBrowser(unittest.TestCase):
 
                     def language(name):
                         page.evaluate("location.hash = '#/more'")
-                        look = {'en': 'Look', 'fr': 'Style', 'zh-Hant-TW': '外觀'}[page.locator('html').get_attribute('lang')]
+                        # Mounted controls can precede startup's guarded refresh and cache writes.
+                        expect(page.locator('#m-conn button.m-btn')).to_be_enabled()
+                        look = {'en': 'Language and Style', 'fr': 'Langue et style', 'zh-Hant-TW': '語言與樣式'}[page.locator('html').get_attribute('lang')]
                         open_group(page, look)
                         group = page.get_by_role('group', name=name, exact=True)
                         expect(group).to_be_visible()
-                        # Mounted controls can precede startup's guarded refresh and cache writes.
-                        expect(page.locator('#m-conn button.m-btn')).to_be_enabled()
                         self.settle(page)
                         return group
 
@@ -1975,7 +1994,9 @@ class PhoneNotesCanvasWiskitProcessingScenes(unittest.TestCase):
         page.locator('.m-lib-tools').click()
         panel=page.get_by_role('dialog', name=w['tools'], exact=True)
         expect(panel).to_be_visible()
-        self.assertEqual(panel.locator('.m-step-rw').first.get_attribute('aria-label'), w['describe'])
+        fetch = {'en':'Fetch link info','fr':'Récupérer les infos','zh-Hant':'擷取連結資訊'}[language]
+        self.assertEqual(panel.locator('.m-step-rw').evaluate_all('rows => rows.map(row => row.getAttribute("aria-label"))'),
+                         [fetch, w['describe'], w['categorize']])
         shoot('processing-actions')
         panel.get_by_role('button', name=w['categorize'], exact=True).click()
         expect(panel.locator('.m-tl-ask')).to_be_visible()
@@ -2136,21 +2157,21 @@ WORDS04 = {
 
 
 WORDS05 = {
-    'en': dict(sync='Sync', ai='Wiskit on this phone', storage='Storage', look='Look', about='About',
+    'en': dict(sync='Sync', ai='Wiskit on this phone', storage='Storage', look='Language and Style', about='About',
                save='Save', change='Change', failed='Key could not be saved securely.', clear='Clear', sure_clear='Sure? Clear',
                clearing='Clearing…', recovery='Recovery', account='Google account', phone='This phone',
                password='Passphrase', file='File', code='Code', forgot='Forgot passphrase?', close='Close', cancel='Cancel',
                find='Find backup', find_setups='Find recovery setups', manage='Manage phone backups…',
                replace='Replace with this phone’s content…', delete='Delete backup and disconnect…',
                confirm_replace='Confirm replacement', resume='Resume task', retry='Retry task'),
-    'fr': dict(sync='Synchronisation', ai='Wiskit sur ce téléphone', storage='Stockage', look='Style', about='À propos',
+    'fr': dict(sync='Synchronisation', ai='Wiskit sur ce téléphone', storage='Stockage', look='Langue et style', about='À propos',
                save='Enregistrer', change='Changer', failed='La clé n’a pas pu être enregistrée', clear='Vider', sure_clear='Confirmer',
                clearing='Suppression…', recovery='Récupération', account='Compte Google', phone='Ce téléphone',
                password='Phrase secrète', file='Fichier', code='Code', forgot='Phrase secrète oubliée\u202f?', close='Fermer', cancel='Annuler',
                find='Trouver la sauvegarde', find_setups='Chercher les configurations', manage='Gérer les sauvegardes…',
                replace='Remplacer par ce téléphone…', delete='Supprimer et déconnecter…',
                confirm_replace='Confirmer', resume='Reprendre la tâche', retry='Réessayer'),
-    'zh-Hant': dict(sync='同步', ai='此手機上的 Wiskit', storage='儲存空間', look='外觀', about='關於',
+    'zh-Hant': dict(sync='同步', ai='此手機上的 Wiskit', storage='儲存空間', look='語言與樣式', about='關於',
                     save='儲存', change='變更', failed='無法安全儲存金鑰', clear='清除', sure_clear='確定清除？',
                     clearing='清除中…', recovery='復原', account='Google 帳戶', phone='此手機',
                     password='密碼片語', file='檔案', code='復原碼', forgot='忘記密碼片語？', close='關閉', cancel='取消',
@@ -2215,7 +2236,7 @@ class PhoneSettingsBackupRecoveryScenes(unittest.TestCase):
                               const {vault}=await import('/src/mobile/vault/auto.svelte.ts')
                               const {phoneWords}=await import('/src/mobile/settings-words.ts')
                               network.manualPause=state==='paused';network.online=state!=='offline';network.wifiOnly=false
-                              vault.busy=state==='running';vault.queued=state==='queued';vault.prog={pct:45,left:''}
+                              vault.busy=state==='running';vault.queued=state==='queued';vault.pct=45
                               vault.step=phoneWords('backup.vault.step.listing')
                               vault.brake=state==='held'?phoneWords('backup.vault.brakeHere',{n:101,files:100,percent:20}):''
                               vault.outcome=state==='error'?'error':'ok'
@@ -2546,7 +2567,7 @@ class PhoneSettingsBackupRecoveryScenes(unittest.TestCase):
                         }""")
                         self.group(page, w['sync'])
                         self.shot(page, language, theme, 'sync-queued-and-paused')
-                        page.evaluate("""async()=>{const {network}=await import('/src/mobile/network.svelte.ts');const {vault}=await import('/src/mobile/vault/auto.svelte.ts');network.manualPause=false;network.wifiOnly=false;vault.queued=false;vault.busy=true;vault.step='Original native step';vault.prog={pct:45,left:''}}""")
+                        page.evaluate("""async()=>{const {network}=await import('/src/mobile/network.svelte.ts');const {vault}=await import('/src/mobile/vault/auto.svelte.ts');network.manualPause=false;network.wifiOnly=false;vault.queued=false;vault.busy=true;vault.step='Original native step';vault.pct=45}""")
                         self.shot(page, language, theme, 'sync-running-vault')
                         page.evaluate("""async()=>{const {phone}=await import('/src/mobile/state.svelte.ts');const {vault}=await import('/src/mobile/vault/auto.svelte.ts');phone.sync=null;vault.busy=false}""")
                         page.evaluate("location.hash='#/backup'")
@@ -2731,6 +2752,13 @@ class PhoneCaptureImportVoiceScenes(unittest.TestCase):
                         expect(page.get_by_role('heading',name=w['imported'],exact=True)).to_be_visible()
                         for name in ('Instagram','Facebook','Threads','TikTok'):
                             block=show(page,name)
+                            if name == 'TikTok':
+                                soon = {'en':'Coming soon','fr':'Bientôt disponible','zh-Hant':'即將推出'}[language]
+                                expect(block.locator('.m-import-expanded')).to_have_text(soon)
+                                expect(block.locator('.m-import-expanded button, .m-import-expanded a, .m-import-expanded input')).to_have_count(0)
+                                settle_import(page)
+                                self.shot(page,language,theme,'import-tiktok')
+                                continue
                             expect(block.get_by_role('button',name={'en':'Scan saved posts','fr':'Parcourir les favoris','zh-Hant':'掃描已收藏的貼文'}[language],exact=True)).to_be_disabled()
                             settle_import(page)
                             self.shot(page,language,theme,'import-'+name.lower())
@@ -2989,10 +3017,10 @@ class PhoneCaptureImportVoiceScenes(unittest.TestCase):
               return {outbox:await outbox.all(),voice:await Promise.all((await queued()).map(async q=>({...q,blob:await q.blob.text()})))}
             }"""
             before=page.evaluate(snapshot)
-            open_group(page, 'Look')
+            open_group(page, 'Language and Style')
             with page.expect_navigation(wait_until='domcontentloaded'):
                 page.get_by_role('group',name='Language',exact=True).get_by_role('button',name='FR',exact=True).click()
-            expect(page.locator('#m-status')).to_be_visible()
+            expect(page.get_by_role('heading',name=WORDS05['fr']['look'],exact=True)).to_be_visible()
             self.assertEqual(page.locator('html').get_attribute('lang'),'fr')
             self.assertEqual(page.evaluate(snapshot),before)
             seen=page.evaluate("""async()=>{
@@ -3046,9 +3074,7 @@ class PhoneOnboardingSharedScenes(unittest.TestCase):
     group = PhoneSettingsBackupRecoveryScenes.group
 
     def shot(self, page, language, theme, scene):
-        # Fred accepted this exact 320px Library pill in 02; it sits behind the full-screen Welcome here.
-        expected = ['ellipsized: Bibliothèque'] if language == 'fr' and scene == 'welcome-larger-text-standin' else []
-        check_scene(self, page, language, theme, scene, sweep='06', expected=expected)
+        check_scene(self, page, language, theme, scene, sweep='06')
 
     def test_welcome_answers_help_coach_and_get_started_preserve_facts(self):
         from playwright.sync_api import expect
@@ -3212,13 +3238,14 @@ class PhoneOnboardingSharedScenes(unittest.TestCase):
                         self.assertEqual(root.locator('#ao-send option').all_text_contents(),w['budgets'])
                         self.assertEqual(root.locator('#ao-keep option').all_text_contents(),w['choices'])
                         self.assertEqual(root.locator('#ao-pr option').evaluate_all('es=>es.map(e=>e.value)'),['claude','openai','freellmapi','none'])
-                        self.assertEqual(root.locator('#ao-mod option').evaluate_all('es=>es.map(e=>e.value)'),['whisper-api'])
+                        self.assertEqual(root.locator('#ao-mod').count(),0)
                         expect(root.locator('.err')).to_have_text('Original PC error <img src=x onerror=alert(1)>')
                         expect(root.locator('img')).to_have_count(0)
                         interval=root.get_by_label(w['interval'],exact=True)
                         interval.focus();interval.fill('5')
                         expect(interval).to_be_focused()
                         self.shot(page,language,theme,'analysis-error-focus')
+                        root.locator('details.set-more').first.evaluate('d=>{d.open=true}')
                         for value,keep,show in [('0',True,True),('1',True,False),('2',False,False)]:
                             root.locator('#ao-keep').select_option(value)
                             page.wait_for_function('([keep,show])=>window.__options.keep_frames===keep&&window.__options.show_frames_in_canvas===show',arg=[keep,show])
@@ -3233,7 +3260,7 @@ class PhoneOnboardingSharedScenes(unittest.TestCase):
                         expect(root.get_by_role('link',name='me@fredtomas.com',exact=True)).to_have_attribute('href','mailto:me@fredtomas.com')
                         for i,(_,path) in enumerate(for_policy):
                             root.locator('summary').nth(i).press('Enter')
-                            self.assertEqual(root.locator('pre').nth(i).text_content(),(ROOT/path).read_text(encoding='utf-8'))
+                            self.assertEqual(root.locator('pre').nth(i).text_content(),(ROOT/path).read_bytes().decode('utf-8'))
                             if i == 0:
                                 self.shot(page,language,theme,'legal-english-policy')
                             root.locator('summary').nth(i).press('Enter')
@@ -3349,7 +3376,7 @@ class PhoneLegalScenes08(unittest.TestCase):
                             summaries.first.focus(); page.keyboard.press('Enter')
                             expect(policy).to_be_visible()
                             path = 'privacy-policy.md' if language == 'en' else f'privacy-policy.{language}.md'
-                            self.assertEqual(policy.text_content(), (ROOT / 'mobile-shell/store' / path).read_text(encoding='utf-8'))
+                            self.assertEqual(policy.text_content(), (ROOT / 'mobile-shell/store' / path).read_bytes().decode('utf-8'))
                             expect(policy).to_have_attribute('lang', 'zh-Hant-TW' if language == 'zh-Hant' else language)
                             self.assertTrue(policy.evaluate('e=>e.scrollWidth<=e.clientWidth+1'))
                             self.assertEqual(policy.evaluate('e=>getComputedStyle(e).whiteSpace'), 'pre-wrap')
@@ -3366,7 +3393,7 @@ class PhoneLegalScenes08(unittest.TestCase):
                                 original.locator('summary').focus(); page.keyboard.press('Enter')
                                 expect(original.locator('pre')).to_be_visible()
                                 expect(original.locator('pre')).to_have_attribute('lang','en')
-                                self.assertEqual(original.locator('pre').text_content(),(ROOT/'mobile-shell/store/privacy-policy.md').read_text(encoding='utf-8'))
+                                self.assertEqual(original.locator('pre').text_content(),(ROOT/'mobile-shell/store/privacy-policy.md').read_bytes().decode('utf-8'))
                                 check_scene(self,page,language,theme,'english-original'+suffix,sweep='08')
                                 page.keyboard.press('Space')
                                 expect(original.locator('pre')).not_to_be_visible()
@@ -3379,7 +3406,7 @@ class PhoneLegalScenes08(unittest.TestCase):
                                 summaries.nth(index).focus();page.keyboard.press('Enter')
                                 body = legal.locator(':scope > details').nth(index).locator('pre')
                                 expect(body).to_be_visible();expect(body).to_have_attribute('lang','en')
-                                self.assertEqual(body.text_content(),(ROOT/file).read_text(encoding='utf-8'))
+                                self.assertEqual(body.text_content(),(ROOT/file).read_bytes().decode('utf-8'))
                                 self.assertTrue(body.evaluate('e=>e.scrollWidth<=e.clientWidth+1'))
                                 page.keyboard.press('Space');expect(body).not_to_be_visible()
                             self.assertEqual(errors, [])
@@ -3406,7 +3433,7 @@ class PhoneLegalScenes08(unittest.TestCase):
             self.assertEqual(root.locator('pre').first.text_content(),hostile)
             self.assertEqual(root.locator('img,script,b,[onerror]').count(),0)
             self.assertFalse(page.evaluate('!!window.__injected08'))
-            self.assertEqual(page.locator('#legal-default08 pre').first.text_content(),(ROOT/'mobile-shell/store/privacy-policy.md').read_text(encoding='utf-8'))
+            self.assertEqual(page.locator('#legal-default08 pre').first.text_content(),(ROOT/'mobile-shell/store/privacy-policy.md').read_bytes().decode('utf-8'))
             expect(page.locator('#legal-default08 pre')).to_have_count(3)
             self.assertEqual(errors,[])
 
@@ -3479,7 +3506,7 @@ class PhoneLegalProduction08(unittest.TestCase):
                     page.on('response',lambda response:assets.append((response.url,response.from_service_worker)) if '/assets/' in response.url else None)
                     page.goto(self.base+'/mobile.html#/more',wait_until='domcontentloaded')
                     expect(page.locator('.m-page-keys')).to_be_visible()
-                    for choice,language,html_lang,look,label in [('FR','fr','fr','Look','Language'),('繁中','zh-Hant','zh-Hant-TW','Style','Langue')]:
+                    for choice,language,html_lang,look,label in [('FR','fr','fr','Language and Style','Language'),('繁中','zh-Hant','zh-Hant-TW','Langue et style','Langue')]:
                         PhoneSettingsBackupRecoveryScenes.group(test,page,look)
                         group=page.get_by_role('group',name=label,exact=True)
                         page.wait_for_function('()=>window.__busy===0')
@@ -3492,10 +3519,10 @@ class PhoneLegalProduction08(unittest.TestCase):
                         PhoneSettingsBackupRecoveryScenes.group(test,page,WORDS05[language]['about'])
                         legal=page.locator('.legal-documents');legal.locator('summary').first.press('Enter')
                         expect(legal.locator('pre').first).to_be_visible()
-                        test.assertEqual(legal.locator('pre').first.text_content(),(ROOT/f'mobile-shell/store/privacy-policy.{language}.md').read_text(encoding='utf-8'))
+                        test.assertEqual(legal.locator('pre').first.text_content(),(ROOT/f'mobile-shell/store/privacy-policy.{language}.md').read_bytes().decode('utf-8'))
                         expect(legal.locator('pre').first).to_have_attribute('lang',html_lang)
                         original=legal.locator('details details');original.locator('summary').press('Enter')
-                        test.assertEqual(original.locator('pre').text_content(),(ROOT/'mobile-shell/store/privacy-policy.md').read_text(encoding='utf-8'))
+                        test.assertEqual(original.locator('pre').text_content(),(ROOT/'mobile-shell/store/privacy-policy.md').read_bytes().decode('utf-8'))
                     after=page.evaluate("async()=>(await (await caches.open('bp-shell-v7')).keys()).map(r=>new URL(r.url).pathname).sort()")
                     test.assertEqual(after,before,'Offline policies must not need any newly fetched shell asset')
                     test.assertTrue(assets);test.assertTrue(all(sw for _,sw in assets),assets)

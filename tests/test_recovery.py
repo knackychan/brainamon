@@ -763,6 +763,7 @@ class RecoveryServiceTest(Library):
             self.assertTrue(self.wait(lambda: self.service.status()['enrolled']), self.svc.status())
             self.assertTrue(self.wait(lambda: self.svc.vault_running and self.svc._vault_thread is not thread))
             self.assertFalse(thread.is_alive())
+            self.assertTrue(self.wait(lambda: not self.svc.status().get('recovery_gate_active')))
             self.assertEqual(self.svc.mirror_key().master, key.master)
 
     def test_failed_recovery_setup_resumes_existing_uploads(self):

@@ -10,6 +10,8 @@
   import { t } from '../lib/i18n/index.ts'
   import { srcMark } from './outbox.svelte'
   import { work, workLabel, type WorkMark } from './work.svelte'
+  import { arrival, turn } from './arrival.svelte.ts'
+  import { motionOn } from '../lib/motion/motion.ts'
 
   let { rows, scroller }: { rows: Row[]; scroller: HTMLElement | undefined } = $props()
 
@@ -167,6 +169,18 @@
     apply(r)
     return { update: apply }
   }
+  // ARRIVE (motion language): the cards of the posts an import just added slide in, 90 ms apart, once the Library showed
+  // (arrival.svelte.ts). A cell that mounts after its turn, scrolled to or remounted, is simply there; `--mo-d` is its
+  // delay less the time elapsed, so a card in the middle of its turn joins it in place. The first 18 places set the pace.
+  const arrives = (id: number, place: number) => (node: HTMLElement) => {
+    const cur = arrival.cur
+    if (!cur || !cur.at || !cur.ids.has(id) || !motionOn()) return
+    const { delay, live } = turn(Math.min(place, 17), performance.now() - cur.at)
+    if (!live) return
+    node.dataset.mo = 'arrive'
+    node.style.setProperty('--mo-d', `${Math.round(delay)}ms`)
+    return () => { delete node.dataset.mo; node.style.removeProperty('--mo-d') }
+  }
   const cellLabel = (r: Row, w: WorkMark | undefined) => {
     const title = r.title || 'No.' + r.id
     if (!w) return t('library.cell.open', { title })
@@ -177,13 +191,13 @@
 <div class="m-grid" class:m-gallery-dense={cols > 2} bind:this={el} style:--m-gap="{gap}px" style:--m-cols={cols} style:--m-card-height="{cellW * 88 / 63}px">
   <div style:height="{topH}px"></div>
   <div class="m-grid-rows">
-    {#each slice as r (r.id)}
+    {#each slice as r, si (r.id)}
       {@const w = work.get(r.id)}
       <!-- processing marks (work.svelte.ts): waiting, worked on, then done or failed for a moment; a Tools run's
            skipped and failed cards keep theirs until the panel closes (projects/phone-processing-flow) -->
-      <div class="m-cell" class:m-selected={phone.selection?.has(r.id)} class:m-w-wait={w?.st === 'wait'} class:m-w-run={w?.st === 'run'} class:m-w-done={w?.st === 'done'} class:m-w-err={w?.st === 'err'} class:m-w-skip={w?.st === 'skip'} style:height="{rowH - gap}px">
+      <div class="m-cell" class:m-selected={phone.selection?.has(r.id)} class:m-w-wait={w?.st === 'wait'} class:m-w-run={w?.st === 'run'} class:m-w-done={w?.st === 'done'} class:m-w-err={w?.st === 'err'} class:m-w-skip={w?.st === 'skip'} class:m-w-pic={w?.lane === 'pics'} style:height="{rowH - gap}px" {@attach arrives(r.id, first * cols + si)}>
         {#if phone.selection}<span class="m-select-mark" aria-hidden="true">{#if phone.selection.has(r.id)}<svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></svg>{/if}</span>{/if}
-        {#if w}<span class="m-w-tag" aria-hidden="true">{workLabel(w)}</span>{#if w.st === 'run'}<span class="m-w-scan" aria-hidden="true"></span>{/if}{/if}
+        {#if w}<span class="m-w-tag" aria-hidden="true">{workLabel(w)}</span>{#if w.st === 'run'}<span class="m-w-scan mo-scan" aria-hidden="true"></span>{/if}{/if}
         <a class="m-cell-a" data-id={r.id} href={`#/item/${r.id}`} role={phone.selection ? 'checkbox' : undefined} aria-checked={phone.selection ? phone.selection.has(r.id) : undefined} aria-label={phone.selection ? t('library.cell.select', { title: r.title || r.url }) : cellLabel(r, w)} onclick={e => select(e, r.id)} onkeydown={e => { if (phone.selection && e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }}>
         {#if list}
           <div class="m-gallery-row">

@@ -26,11 +26,10 @@ class SyncSchedulerTest(unittest.TestCase):
         source = (NATIVE / 'SyncWork.java').read_text(encoding='utf-8')
         source = re.sub(r'^import (?:android|androidx|org\.json)\..*;\n', '', source, flags=re.M)
         source = source.replace('@NonNull ', '')
-        # Only platform capability/network queries are replaced; scheduling/status code is unchanged.
+        # Only platform capability/network queries are replaced; constraint/scheduling/status code is unchanged.
         for signature, body in (
             ('static boolean supported()', 'static boolean supported(){return true;}'),
             ('static String network(', 'static String network(Context c,JSONObject p){return c.network;}'),
-            ('static Constraints constraints(', 'static Constraints constraints(JSONObject p){return new Constraints(p.optBoolean("wifiOnly",true));}'),
         ):
             source = source.replace(method(source, signature), body)
         runner = (NATIVE / 'SyncRunner.java').read_text(encoding='utf-8')
@@ -39,6 +38,7 @@ class SyncSchedulerTest(unittest.TestCase):
             'void checkpoint()', 'void checkpoint(boolean budget)', 'static String reason('))
         checkpoints = checkpoints.replace('android.os.SystemClock.elapsedRealtime()', 'Clock.now')
         harness = (ROOT / 'tests/fixtures/sync_scheduler.java').read_text(encoding='utf-8').replace('/* CHECKPOINTS */', checkpoints)
+        harness = harness.replace('/* DRIVE LIST */', method(runner, 'private JSONArray list('))
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             (root / 'SyncWork.java').write_text(source, encoding='utf-8')

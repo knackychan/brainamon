@@ -162,233 +162,170 @@
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 223,
+    "line": 243,
     "kind": "text",
     "value": "Signed in.",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 225,
+    "line": 245,
     "kind": "text",
     "value": "Reads your saved",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 225,
+    "line": 245,
     "kind": "expression",
     "value": "instagram",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 225,
+    "line": 245,
     "kind": "expression",
     "value": "posts and reels from All posts",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 225,
+    "line": 245,
     "kind": "expression",
     "value": "threads",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 225,
+    "line": 245,
     "kind": "expression",
     "value": "posts",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 225,
+    "line": 245,
     "kind": "expression",
     "value": "reels and videos",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 225,
+    "line": 245,
     "kind": "text",
     "value": ". The first scan reads the full list; after a complete scan, later scans stop after 20 posts already in your library. Review the results before importing.",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 227,
+    "line": 247,
     "kind": "text",
     "value": "Scan needs the phone's own library. Pair with a PC, or start without one in Settings.",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 232,
+    "line": 252,
     "kind": "expression",
     "value": "Tap again to forget login",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 232,
+    "line": 252,
     "kind": "expression",
     "value": "Forget login",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 234,
+    "line": 254,
     "kind": "text",
     "value": "Cancel",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 260,
+    "line": 280,
     "kind": "expression",
     "value": "Scan saved posts, then review and import.",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 265,
+    "line": 285,
     "kind": "text",
     "value": "Continue",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 265,
+    "line": 285,
     "kind": "text",
     "value": "Cancel",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 269,
-    "kind": "text",
-    "value": "post",
-    "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
-  },
-  {
-    "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 269,
-    "kind": "expression",
-    "value": "s",
-    "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
-  },
-  {
-    "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 269,
-    "kind": "text",
-    "value": "ready to import ·",
-    "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
-  },
-  {
-    "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 269,
-    "kind": "expression",
-    "value": "refused",
-    "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
-  },
-  {
-    "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 279,
+    "line": 305,
     "kind": "attribute:summary",
     "value": "Review saved posts",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 280,
+    "line": 306,
     "kind": "text",
     "value": "Other saved items:",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 280,
+    "line": 306,
     "kind": "text",
     "value": ". Already in your library:",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 280,
+    "line": 306,
     "kind": "text",
     "value": ". Only validated",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 280,
+    "line": 306,
     "kind": "text",
     "value": "links enter your library.",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 271,
-    "kind": "text",
-    "value": "Import",
-    "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
-  },
-  {
-    "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 271,
-    "kind": "text",
-    "value": "post",
-    "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
-  },
-  {
-    "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 271,
-    "kind": "expression",
-    "value": "s",
-    "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
-  },
-  {
-    "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 272,
-    "kind": "text",
-    "value": "Later",
-    "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
-  },
-  {
-    "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 298,
+    "line": 324,
     "kind": "text",
     "value": "Read all again",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 28,
+    "line": 31,
     "kind": "display-assignment",
     "value": "Update Android System WebView to read sites.",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 34,
+    "line": 37,
     "kind": "display-assignment",
     "value": "stopped at posts already in the library",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 39,
+    "line": 42,
     "kind": "display-assignment",
     "value": "A site window is already open.",
-    "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
-  },
-  {
-    "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 55,
-    "kind": "display-assignment",
-    "value": "from a read that was cut off",
     "reason": "Debug-only site-reader branch/handler; native siteState is null in release without the reader. Exact gates and release AAB evidence: projects/phone-languages/plans/04-ledger.md."
   },
   {
@@ -456,56 +393,56 @@
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 47,
+    "line": 48,
     "kind": "display-assignment",
     "value": "stopping",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 49,
+    "line": 50,
     "kind": "display-assignment",
     "value": "off",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 50,
+    "line": 51,
     "kind": "display-assignment",
     "value": "needs Drive",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 51,
+    "line": 41,
     "kind": "display-assignment",
     "value": "idle",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 58,
+    "line": 59,
     "kind": "display-assignment",
     "value": "pc",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 58,
+    "line": 52,
     "kind": "display-assignment",
     "value": "idle",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 65,
+    "line": 66,
     "kind": "display-assignment",
     "value": "pics",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 65,
+    "line": 66,
     "kind": "display-assignment",
     "value": "paused",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
@@ -799,14 +736,14 @@
   },
   {
     "file": "web/src/mobile/mirror/pairing.ts",
-    "line": 349,
+    "line": 351,
     "kind": "call:Error",
     "value": "Pairing changed; Google sign-in was cancelled.",
     "reason": "Unchanged validation/security exception message. Known local code maps at the UI boundary; unknown original detail is escaped in translated context, after cancellation classification."
   },
   {
     "file": "web/src/mobile/mirror/pairing.ts",
-    "line": 354,
+    "line": 356,
     "kind": "call:Error",
     "value": "The PC has no Google sign-in app for the phone yet (Settings > Backup & phones).",
     "reason": "Unchanged validation/security exception message. Known local code maps at the UI boundary; unknown original detail is escaped in translated context, after cancellation classification."
@@ -1310,7 +1247,7 @@
   },
   {
     "file": "web/src/mobile/screens/settings/Wiskit.svelte",
-    "line": 120,
+    "line": 122,
     "kind": "expression",
     "value": "sk-…",
     "reason": "Literal input-format example, not translated prose; no credential or pairing value is captured."
@@ -1324,15 +1261,15 @@
   },
   {
     "file": "web/src/mobile/screens/settings/Wiskit.svelte",
-    "line": 124,
+    "line": 122,
     "kind": "expression",
     "value": "sk-ant-…",
     "reason": "Literal input-format example, not translated prose; no credential or pairing value is captured."
   },
   {
     "file": "web/src/mobile/screens/settings/Wiskit.svelte",
-    "line": 126,
-    "kind": "expression",
+    "line": 63,
+    "kind": "display-assignment",
     "value": "anthropic",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
@@ -1415,21 +1352,21 @@
   },
   {
     "file": "web/src/mobile/screens/settings/Wiskit.svelte",
-    "line": 78,
+    "line": 63,
     "kind": "display-assignment",
     "value": "openai",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/screens/settings/Wiskit.svelte",
-    "line": 78,
+    "line": 63,
     "kind": "display-assignment",
     "value": "OpenAI",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
   },
   {
     "file": "web/src/mobile/screens/settings/Wiskit.svelte",
-    "line": 78,
+    "line": 63,
     "kind": "display-assignment",
     "value": "Anthropic",
     "reason": "Exact operation/state/provider/route/CSS/locale ID or product/provider name used by this located branch; displayed labels use catalogs. Not translatable data."
@@ -1520,7 +1457,7 @@
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 263,
+    "line": 262,
     "kind": "display-assignment",
     "value": "google",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
@@ -1583,140 +1520,140 @@
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 364,
+    "line": 369,
     "kind": "display-assignment",
     "value": "Waiting for Google",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 372,
+    "line": 377,
     "kind": "display-assignment",
     "value": "Checking the account",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 382,
+    "line": 387,
     "kind": "display-assignment",
     "value": "google",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 419,
+    "line": 424,
     "kind": "display-assignment",
     "value": "scanner",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 436,
+    "line": 441,
     "kind": "display-assignment",
     "value": "http://127.0.0.1:18766/ai/anthropic",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 436,
+    "line": 441,
     "kind": "display-assignment",
     "value": "http://127.0.0.1:18766/ai/openai",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 520,
+    "line": 525,
     "kind": "display-assignment",
     "value": "mirror",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 549,
+    "line": 554,
     "kind": "display-assignment",
     "value": "run",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 549,
+    "line": 554,
     "kind": "display-assignment",
     "value": "ok",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 586,
+    "line": 591,
     "kind": "display-assignment",
     "value": "wait",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 603,
+    "line": 608,
     "kind": "display-assignment",
     "value": "err",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 611,
+    "line": 616,
     "kind": "display-assignment",
     "value": "err",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 611,
+    "line": 616,
     "kind": "display-assignment",
     "value": "ok",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 647,
+    "line": 652,
     "kind": "display-assignment",
     "value": "idle",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 647,
+    "line": 652,
     "kind": "display-assignment",
     "value": "run",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 647,
+    "line": 652,
     "kind": "display-assignment",
     "value": "wait",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 657,
+    "line": 662,
     "kind": "display-assignment",
     "value": "run",
-    "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
-  },
-  {
-    "file": "web/src/mobile/state.svelte.ts",
-    "line": 667,
-    "kind": "display-assignment",
-    "value": "wait",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
     "line": 672,
     "kind": "display-assignment",
+    "value": "wait",
+    "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
+  },
+  {
+    "file": "web/src/mobile/state.svelte.ts",
+    "line": 677,
+    "kind": "display-assignment",
     "value": "idle",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/state.svelte.ts",
-    "line": 757,
+    "line": 762,
     "kind": "display-assignment",
     "value": "cap",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
@@ -3053,34 +2990,6 @@
   },
   {
     "file": "web/src/mobile/ai/providers.ts",
-    "line": 19,
-    "kind": "display-assignment",
-    "value": "https://api.anthropic.com",
-    "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
-  },
-  {
-    "file": "web/src/mobile/ai/providers.ts",
-    "line": 19,
-    "kind": "display-assignment",
-    "value": "https://api.openai.com",
-    "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
-  },
-  {
-    "file": "web/src/mobile/ai/providers.ts",
-    "line": 33,
-    "kind": "display-assignment",
-    "value": "Anthropic",
-    "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
-  },
-  {
-    "file": "web/src/mobile/ai/providers.ts",
-    "line": 33,
-    "kind": "display-assignment",
-    "value": "OpenAI",
-    "reason": "Untranslated product/provider brand required by the glossary; not a sentence or command."
-  },
-  {
-    "file": "web/src/mobile/ai/providers.ts",
     "line": 114,
     "kind": "display-assignment",
     "value": "anthropic",
@@ -3155,13 +3064,6 @@
     "kind": "display-assignment",
     "value": "input_text",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
-  },
-  {
-    "file": "web/src/mobile/ai/providers.ts",
-    "line": 178,
-    "kind": "display-assignment",
-    "value": "OpenAI",
-    "reason": "Untranslated product/provider brand required by the glossary; not a sentence or command."
   },
   {
     "file": "web/src/mobile/ai/providers.ts",
@@ -3508,70 +3410,70 @@
   },
   {
     "file": "web/src/mobile/Grid.svelte",
-    "line": 177,
+    "line": 191,
     "kind": "text",
     "value": "px",
     "reason": "CSS/SVG geometry, color or transform syntax parsed from an attribute; not visible prose. Translating it would break rendering."
   },
   {
     "file": "web/src/mobile/Grid.svelte",
-    "line": 178,
+    "line": 192,
     "kind": "text",
     "value": "px",
     "reason": "CSS/SVG geometry, color or transform syntax parsed from an attribute; not visible prose. Translating it would break rendering."
   },
   {
     "file": "web/src/mobile/Grid.svelte",
-    "line": 184,
+    "line": 198,
     "kind": "text",
     "value": "px",
     "reason": "CSS/SVG geometry, color or transform syntax parsed from an attribute; not visible prose. Translating it would break rendering."
   },
   {
     "file": "web/src/mobile/Grid.svelte",
-    "line": 196,
+    "line": 210,
     "kind": "text",
     "value": "linear-gradient(160deg,",
     "reason": "CSS/SVG geometry, color or transform syntax parsed from an attribute; not visible prose. Translating it would break rendering."
   },
   {
     "file": "web/src/mobile/Grid.svelte",
-    "line": 196,
+    "line": 210,
     "kind": "text",
     "value": ",color-mix(in srgb,",
     "reason": "CSS/SVG geometry, color or transform syntax parsed from an attribute; not visible prose. Translating it would break rendering."
   },
   {
     "file": "web/src/mobile/Grid.svelte",
-    "line": 196,
+    "line": 210,
     "kind": "expression",
     "value": "No.",
     "reason": "Stable No.<id> item identity explicitly retained by design and English card parity; not prose."
   },
   {
     "file": "web/src/mobile/Grid.svelte",
-    "line": 200,
+    "line": 214,
     "kind": "text",
     "value": "px",
     "reason": "CSS/SVG geometry, color or transform syntax parsed from an attribute; not visible prose. Translating it would break rendering."
   },
   {
     "file": "web/src/mobile/Grid.svelte",
-    "line": 200,
+    "line": 214,
     "kind": "expression",
     "value": "No.",
     "reason": "Stable No.<id> item identity explicitly retained by design and English card parity; not prose."
   },
   {
     "file": "web/src/mobile/Grid.svelte",
-    "line": 205,
+    "line": 219,
     "kind": "text",
     "value": "px",
     "reason": "CSS/SVG geometry, color or transform syntax parsed from an attribute; not visible prose. Translating it would break rendering."
   },
   {
     "file": "web/src/mobile/Grid.svelte",
-    "line": 171,
+    "line": 185,
     "kind": "display-assignment",
     "value": "No.",
     "reason": "Stable No.<id> item identity explicitly retained by design and English card parity; not prose."
@@ -3648,7 +3550,7 @@
   },
   {
     "file": "web/src/mobile/main.ts",
-    "line": 62,
+    "line": 63,
     "kind": "display-assignment",
     "value": "cap",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
@@ -3886,14 +3788,14 @@
   },
   {
     "file": "web/src/mobile/Mobile.svelte",
-    "line": 217,
+    "line": 218,
     "kind": "expression",
     "value": "translateY(",
     "reason": "CSS/SVG geometry, color or transform syntax parsed from an attribute; not visible prose. Translating it would break rendering."
   },
   {
     "file": "web/src/mobile/Mobile.svelte",
-    "line": 217,
+    "line": 218,
     "kind": "expression",
     "value": "px)",
     "reason": "CSS/SVG geometry, color or transform syntax parsed from an attribute; not visible prose. Translating it would break rendering."
@@ -3921,7 +3823,7 @@
   },
   {
     "file": "web/src/mobile/Mobile.svelte",
-    "line": 178,
+    "line": 179,
     "kind": "display-assignment",
     "value": "shared",
     "reason": "Persisted or source-derived title/category/chat text or filename default. It belongs to the library/content contract and must remain verbatim, including existing records and AI history."
@@ -4201,28 +4103,28 @@
   },
   {
     "file": "web/src/mobile/screens/Library.svelte",
-    "line": 23,
+    "line": 51,
     "kind": "display-assignment",
     "value": "all",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
   },
   {
     "file": "web/src/mobile/screens/Library.svelte",
-    "line": 22,
+    "line": 50,
     "kind": "display-assignment",
     "value": "all",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
   },
   {
     "file": "web/src/mobile/screens/Library.svelte",
-    "line": 27,
+    "line": 55,
     "kind": "display-assignment",
     "value": "rows",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
   },
   {
     "file": "web/src/mobile/screens/Library.svelte",
-    "line": 29,
+    "line": 57,
     "kind": "display-assignment",
     "value": "library.order.new",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
@@ -4758,20 +4660,6 @@
     "kind": "display-assignment",
     "value": "note",
     "reason": "Exact route/state/schema/enum/storage/Intl/API/catalog-key token in the source context below. Its displayed label uses the owning catalog; this token controls behavior or identifies data."
-  },
-  {
-    "file": "web/src/mobile/source/mirror.ts",
-    "line": 106,
-    "kind": "display-assignment",
-    "value": "Anthropic",
-    "reason": "Untranslated product/provider brand required by the glossary; not a sentence or command."
-  },
-  {
-    "file": "web/src/mobile/source/mirror.ts",
-    "line": 106,
-    "kind": "display-assignment",
-    "value": "OpenAI",
-    "reason": "Untranslated product/provider brand required by the glossary; not a sentence or command."
   },
   {
     "file": "web/src/mobile/source/mirror.ts",
@@ -5657,20 +5545,6 @@
   },
   {
     "file": "web/src/mobile/tools.ts",
-    "line": 43,
-    "kind": "display-assignment",
-    "value": "Anthropic",
-    "reason": "Import-free tools model default, catalog-key fragment, provider name or icon ID. Actual phone presentation passes toolText into steps/review/busy/next; default-English model tests stay exact."
-  },
-  {
-    "file": "web/src/mobile/tools.ts",
-    "line": 43,
-    "kind": "display-assignment",
-    "value": "OpenAI",
-    "reason": "Import-free tools model default, catalog-key fragment, provider name or icon ID. Actual phone presentation passes toolText into steps/review/busy/next; default-English model tests stay exact."
-  },
-  {
-    "file": "web/src/mobile/tools.ts",
     "line": 112,
     "kind": "display-assignment",
     "value": "processing.review.join",
@@ -6000,14 +5874,14 @@
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 51,
+    "line": 52,
     "kind": "display-assignment",
     "value": "in step",
     "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 51,
+    "line": 52,
     "kind": "display-assignment",
     "value": "not run yet",
     "reason": "Exact status/action identifier used for badge or lane presentation; visible words come from catalogs."
@@ -6322,7 +6196,7 @@
   },
   {
     "file": "web/src/mobile/screens/settings/Wiskit.svelte",
-    "line": 58,
+    "line": 57,
     "kind": "display-assignment",
     "value": "AbortError",
     "reason": "DOM exception name used to distinguish cancellation; visible text is cataloged."
@@ -6406,7 +6280,7 @@
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 41,
+    "line": 42,
     "kind": "display-assignment",
     "value": "waiting",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
@@ -6420,28 +6294,28 @@
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 45,
+    "line": 46,
     "kind": "display-assignment",
     "value": "running",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 47,
+    "line": 48,
     "kind": "display-assignment",
     "value": "running",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 58,
+    "line": 59,
     "kind": "display-assignment",
     "value": "running",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 65,
+    "line": 66,
     "kind": "display-assignment",
     "value": "running",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
@@ -6462,14 +6336,14 @@
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 45,
+    "line": 42,
     "kind": "display-assignment",
     "value": "vault",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 47,
+    "line": 46,
     "kind": "display-assignment",
     "value": "vault",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
@@ -6511,7 +6385,7 @@
   },
   {
     "file": "web/src/mobile/lanes.ts",
-    "line": 48,
+    "line": 49,
     "kind": "display-assignment",
     "value": "queued",
     "reason": "Located English control/default fallback, operation ID or formatter syntax. Phone display uses the lazy catalog path; saved history without facts stays original."
@@ -6672,21 +6546,21 @@
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 52,
+    "line": 59,
     "kind": "display-assignment",
     "value": "tiktok",
     "reason": "Exact internal lane/site/RPC identifier or catalog key; visible status text comes from the phone catalogs."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 144,
+    "line": 164,
     "kind": "display-assignment",
     "value": "facebook",
     "reason": "Exact internal lane/site/RPC identifier or catalog key; visible status text comes from the phone catalogs."
   },
   {
     "file": "web/src/mobile/screens/SiteRead.svelte",
-    "line": 144,
+    "line": 164,
     "kind": "display-assignment",
     "value": "instagram",
     "reason": "Exact internal lane/site/RPC identifier or catalog key; visible status text comes from the phone catalogs."
@@ -6763,35 +6637,35 @@
   },
   {
     "file": "web/src/mobile/sync/worker.ts",
-    "line": 148,
+    "line": 152,
     "kind": "call:Error",
     "value": "library",
     "reason": "Headless worker protocol error code or binary diagnostic; native status maps it to localized nativeSyncText, with attention for unknown failures."
   },
   {
     "file": "web/src/mobile/sync/worker.ts",
-    "line": 150,
+    "line": 155,
     "kind": "call:Error",
     "value": "update",
     "reason": "Headless worker protocol error code or binary diagnostic; native status maps it to localized nativeSyncText, with attention for unknown failures."
   },
   {
     "file": "web/src/mobile/sync/worker.ts",
-    "line": 160,
+    "line": 166,
     "kind": "call:Error",
     "value": "library",
     "reason": "Headless worker protocol error code or binary diagnostic; native status maps it to localized nativeSyncText, with attention for unknown failures."
   },
   {
     "file": "web/src/mobile/sync/worker.ts",
-    "line": 174,
+    "line": 180,
     "kind": "display-assignment",
     "value": "fsRead",
     "reason": "Exact internal lane/site/RPC identifier or catalog key; visible status text comes from the phone catalogs."
   },
   {
     "file": "web/src/mobile/sync/worker.ts",
-    "line": 182,
+    "line": 188,
     "kind": "display-assignment",
     "value": "vault-state",
     "reason": "Exact internal lane/site/RPC identifier or catalog key; visible status text comes from the phone catalogs."
@@ -6832,13 +6706,6 @@
     "reason": "Internal native sync state used to stop the progress animation while Android is waiting; visible labels use catalogs."
   },
   {
-    "file": "web/src/mobile/state.svelte.ts",
-    "line": 567,
-    "kind": "display-assignment",
-    "value": "send",
-    "reason": "Internal native phase identifier; the visible sending label comes from shell.sync.sendStep."
-  },
-  {
     "file": "web/src/mobile/lanes.ts",
     "line": 40,
     "kind": "display-assignment",
@@ -6851,5 +6718,89 @@
     "kind": "display-assignment",
     "value": "waiting",
     "reason": "Internal lane/status identifier; the displayed wait message comes from backup.lane.queued."
+  },
+  {
+    "file": "web/src/mobile/state.svelte.ts",
+    "line": 355,
+    "kind": "display-assignment",
+    "value": "syncing",
+    "reason": "Internal sync state or catalog key; visible status text is rendered through the translated phone catalogs."
+  },
+  {
+    "file": "web/src/mobile/state.svelte.ts",
+    "line": 355,
+    "kind": "display-assignment",
+    "value": "vault",
+    "reason": "Internal sync state or catalog key; visible status text is rendered through the translated phone catalogs."
+  },
+  {
+    "file": "web/src/mobile/sync/native.svelte.ts",
+    "line": 145,
+    "kind": "display-assignment",
+    "value": "attention",
+    "reason": "Internal sync state or catalog key; visible status text is rendered through the translated phone catalogs."
+  },
+  {
+    "file": "web/src/mobile/sync/worker.ts",
+    "line": 132,
+    "kind": "display-assignment",
+    "value": "shell.sync.readingIndex",
+    "reason": "Internal sync state or catalog key; visible status text is rendered through the translated phone catalogs."
+  },
+  {
+    "file": "web/src/mobile/sync/worker.ts",
+    "line": 139,
+    "kind": "display-assignment",
+    "value": "shell.sync.readingFiles",
+    "reason": "Internal sync state or catalog key; visible status text is rendered through the translated phone catalogs."
+  },
+  {
+    "file": "web/src/mobile/sync/worker.ts",
+    "line": 147,
+    "kind": "display-assignment",
+    "value": "shell.sync.readingFiles",
+    "reason": "Internal sync state or catalog key; visible status text is rendered through the translated phone catalogs."
+  },
+  {
+    "file": "web/src/mobile/sync/worker.ts",
+    "line": 159,
+    "kind": "display-assignment",
+    "value": "shell.sync.readingFiles",
+    "reason": "Internal sync state or catalog key; visible status text is rendered through the translated phone catalogs."
+  },
+  {
+    "file": "web/src/mobile/sync/worker.ts",
+    "line": 171,
+    "kind": "display-assignment",
+    "value": "shell.sync.readingFiles",
+    "reason": "Internal sync state or catalog key; visible status text is rendered through the translated phone catalogs."
+  },
+  {
+    "file": "web/src/mobile/sync/worker.ts",
+    "line": 153,
+    "kind": "display-assignment",
+    "value": "shell.sync.downloadingIndex",
+    "reason": "Internal sync state or catalog key; visible status text is rendered through the translated phone catalogs."
+  },
+  {
+    "file": "web/src/mobile/lanes.ts",
+    "line": 41,
+    "kind": "display-assignment",
+    "value": "error",
+    "reason": "Internal sync lane or status identifier; visible labels are rendered through the translated phone catalogs."
+  },
+  {
+    "file": "web/src/mobile/lanes.ts",
+    "line": 59,
+    "kind": "display-assignment",
+    "value": "idle",
+    "reason": "Internal sync lane or status identifier; visible labels are rendered through the translated phone catalogs."
+  },
+  {
+    "file": "web/src/mobile/lanes.ts",
+    "line": 52,
+    "kind": "display-assignment",
+    "value": "vault",
+    "reason": "Internal sync lane or status identifier; visible labels are rendered through the translated phone catalogs."
   }
 ]

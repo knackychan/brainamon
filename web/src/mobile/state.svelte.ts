@@ -114,7 +114,7 @@ class Phone {
   noLibrary = $state(false)                 // Drive has no manifest for this pairing (the PC has not finished its first upload)
   noLibraryWhy = $state.raw<NoLibraryWhy | null>(null)   // which cause the phone could tell, and what to offer (mirror/diagnose.ts)
   tooOld = $state(false)                    // the PC's copy needs a newer phone app (source/mirror.ts READER)
-  online = $state(typeof navigator === 'undefined' ? true : navigator.onLine)
+  get online() { return network.online }
   refreshing = $state(false)
   error = $state('')
   signIn = $state(false)                    // the mirror needs Google Drive connected (again)
@@ -208,7 +208,6 @@ export async function boot() {
     if (location.hash.startsWith('#pair=')) { location.reload(); return }
     if (acceptHash(location.hash)) phone.route = parseRoute(location.hash)
   })
-  window.addEventListener('offline', () => { phone.online = false })
   let resumeTimer = 0
   const resume = () => {
     if (!mirrorSource || syncPaused() || resumeTimer) return
@@ -220,7 +219,7 @@ export async function boot() {
       void syncNow()
     }, 250)
   }
-  window.addEventListener('online', () => { phone.online = true; if (mirrorSource) resume(); else void refresh() })
+  window.addEventListener('online', () => { if (mirrorSource) resume(); else void refresh() })
   window.addEventListener('brainamon-sync-resume', resume)
   // the phone's setting decides; the engine keeps its own copy (cm-card-motion), so set both ways
   if (phone.motionOff !== MOTION.off) setMotion(!phone.motionOff)
@@ -350,7 +349,12 @@ export function phoneFacts(words?: PhoneWords): PhoneFacts | null {
 }
 export function phoneStatus(): PhoneState | null {
   const f = phoneFacts(phoneWords)
-  return f && phoneState(f, phoneWords)
+  const st = f && phoneState(f, phoneWords)
+  if (st?.id === 'connecting' && nativeSync.supported && nativeSync.state) {
+    return { ...st, tone: nativeSync.state === 'syncing' ? 'busy' : 'todo',
+      text: nativeSync.state === 'syncing' && nativeSync.phase !== 'vault' ? nativeDriveText() : nativeSyncText(), detail: '' }
+  }
+  return st
 }
 
 // Connect (Backup & phones, the card): Google's sheet (app) or page (browser), then the account check. Every outcome
@@ -566,7 +570,7 @@ export function syncFill(run: SyncRun): number {
 export function driveWork(): { text: string; pct: number | null } | null {
   if (backup.busy) return { text: backup.task?.paused ? t('shell.sync.pausingTask') : backup.step, pct: null }
   if (nativeSync.supported && nativeSync.state === 'syncing') return nativeSync.phase === 'vault' ? null : { text: nativeDriveText(), pct: nativePhasePct() }
-  if (nativeSync.supported && nativeSync.state && nativeSync.state !== 'idle') return null
+  if (nativeSync.supported && nativeSync.state) return null
   const run = phone.sync && !phone.sync.end ? phone.sync : null
   if (!run && !phone.refreshing) return null
   const s = run?.steps.find(x => x.state === 'run')

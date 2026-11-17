@@ -150,6 +150,7 @@ async function round(config: Config) {
   } else {
     const found = await rpc<{ id: string }[]>('find', await key.name('manifest.json'))
     if (found.length !== 1) throw new Error('library')
+    await rpc('progress', 'drive', 0, { key: 'shell.sync.downloadingIndex' })
     const manifest = JSON.parse(await key.openText('manifest.json', await drive.get(found[0].id)))
     if (manifest.format !== 1 || (manifest.reader ?? 1) > 1 || !manifest.files || typeof manifest.files !== 'object') throw new Error('update')
     const want = Object.entries(manifest.files).filter(([p]) => /^(library\/|notes\/|chats\/|search\/text-)/.test(p) || ['canvases/index.json', 'canvas-results.json'].includes(p))

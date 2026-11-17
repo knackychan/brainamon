@@ -116,6 +116,36 @@ def reader_test(page, *, pending=False, site='facebook', posts=None):
 
 
 class PhoneImportBrowser(unittest.TestCase):
+    def test_new_scan_replaces_completed_and_duplicate_only_imports(self):
+        with mobile_browser() as (browser, base):
+            for site, first, second in (
+                ('facebook', 'https://www.facebook.com/reel/1234567890/', 'https://www.facebook.com/reel/1234567891/'),
+                ('instagram', 'https://www.instagram.com/p/Repeat1/', 'https://www.instagram.com/p/Repeat2/'),
+                ('threads', 'https://www.threads.com/@sam/post/Repeat1', 'https://www.threads.com/@sam/post/Repeat2'),
+            ):
+                with self.subTest(site=site), synthetic_phone(browser, base, 390, 844, 'light') as (page, errors):
+                    reader_test(page, site=site, posts=[dict(url=first, kind='Post')])
+                    page.goto(base + '/mobile.html#/import')
+                    block = show(page, site.title())
+                    scan = block.get_by_role('button', name='Scan saved posts', exact=True)
+                    scan.click()
+                    block.get_by_role('button', name='Continue', exact=True).click()
+                    imp = block.get_by_role('button', name='Import 1 post', exact=True)
+                    imp.click()
+                    expect(block.locator('.m-ir')).to_have_attribute('data-step', 'done')
+                    expect(block.get_by_role('status')).to_have_text('1 post in your library')
+                    # Stay on the import screen: neither completion may strand the next scan.
+                    for url, finish in ((first, '1 was already there'), (second, '1 post in your library')):
+                        page.evaluate("url => { window.__sites.items=[{url,kind:'Post'}] }", url)
+                        scan.click()
+                        expect(block.locator('.m-ir')).to_have_attribute('data-step', 'ready')
+                        imp.click()
+                        expect(block.locator('.m-ir')).to_have_attribute('data-step', 'done')
+                        expect(block.get_by_role('status')).to_have_text(finish)
+                    self.assertEqual(page.evaluate("async()=> (await import('/src/mobile/state.svelte.ts')).phone.rows.length"), 2)
+                    self.assertEqual(page.evaluate('window.__sites.clears'), [site, site, site])
+                    self.assertEqual(errors, [])
+
     def test_cancelled_unsave_scan_can_be_discarded_on_both_sites(self):
         with mobile_browser() as (browser, base):
             for site in ('facebook', 'instagram'):
@@ -130,8 +160,8 @@ class PhoneImportBrowser(unittest.TestCase):
                     page.wait_for_function('!!window.__sites.finish')
                     page.evaluate('window.__sites.finish()')
                     expect(block.get_by_role('button', name='Import 1 post', exact=True)).to_be_visible()
-                    expect(block.get_by_role('status')).to_contain_text('stopped')
-                    expect(block.get_by_role('status')).to_contain_text('Unsave could not be confirmed')
+                    expect(block.locator('.m-ir')).to_contain_text('Stopped')
+                    expect(block.locator('.m-ir')).to_contain_text('Unsave could not be confirmed')
                     block.get_by_role('button', name='Discard', exact=True).click()
                     block.get_by_role('button', name='Confirm discard', exact=True).click()
                     expect(block.get_by_role('status')).to_contain_text('Collected results discarded')
@@ -289,7 +319,7 @@ class PhoneImportBrowser(unittest.TestCase):
             self.assertEqual(page.evaluate("async()=> (await import('/src/mobile/store.ts')).changes.all()"), [])
             self.assertEqual(page.evaluate('window.__sites.clears'), [])
             imp.click()
-            expect(block.get_by_role('status')).to_contain_text('1 added')
+            expect(block.get_by_role('status')).to_contain_text('1 post in your library')
             self.assertFalse(page.evaluate("async()=> (await import('/src/mobile/store.ts')).kv.get('site-runs').then(x=>x.threads.complete)"))
             stored = page.evaluate("async()=> (await import('/src/mobile/store.ts')).changes.all()")
             self.assertEqual([x['op'] for x in stored], ['link', 'details'])
@@ -320,7 +350,7 @@ class PhoneImportBrowser(unittest.TestCase):
             block = show(page, 'Threads')
             imp = block.get_by_role('button', name='Import 1 post', exact=True)
             expect(imp).to_be_enabled()
-            expect(block.get_by_role('status')).to_contain_text('cut off')
+            expect(block.locator('.m-ir')).to_contain_text('cut off')
             block.get_by_role('button', name='Later', exact=True).click()
             block.get_by_role('button', name='Scan saved posts', exact=True).click()
             expect(imp).to_be_enabled()
@@ -497,7 +527,7 @@ export async function linkGet(url){return {status:200,text:'<meta property="og:i
             self.assertEqual(page.evaluate("async()=> (await import('/src/mobile/store.ts')).changes.all()"), [])
             self.assertEqual(page.evaluate('window.__sites.clears'), [])
             imp.click()
-            expect(block.get_by_role('status')).to_contain_text('1 added')
+            expect(block.get_by_role('status')).to_contain_text('1 post in your library')
             stored = page.evaluate("async()=> (await import('/src/mobile/store.ts')).changes.all()")
             self.assertEqual([x['op'] for x in stored], ['link', 'details'])
             self.assertNotIn('cdninstagram.com', json.dumps(stored))
@@ -533,7 +563,7 @@ export async function linkGet(url){return {status:200,text:'<meta property="og:i
             block = show(page, 'Instagram')
             imp = block.get_by_role('button', name='Import 1 post', exact=True)
             expect(imp).to_be_enabled()
-            expect(block.get_by_role('status')).to_contain_text('cut off')
+            expect(block.locator('.m-ir')).to_contain_text('cut off')
             block.get_by_role('button', name='Later', exact=True).click()
             scan = block.get_by_role('button', name='Scan saved posts', exact=True)
             scan.click()
@@ -628,7 +658,7 @@ export async function linkImage(url){
             self.assertEqual(page.evaluate('window.__sites.calls'), [])
             self.assertEqual(page.evaluate('window.__sites.clears'), [])
             show(page, 'Instagram').get_by_role('button', name='Import 1 post', exact=True).click()
-            expect(instagram.get_by_role('status')).to_contain_text('1 added')
+            expect(instagram.get_by_role('status')).to_contain_text('1 post in your library')
             self.assertEqual(page.evaluate('window.__sites.clears'), ['instagram'])
             self.assertEqual(errors, [])
 
@@ -763,7 +793,7 @@ export async function linkGet(url) {
             self.assertEqual(page.evaluate("async()=> (await import('/src/mobile/store.ts')).changes.all()"), [])
             self.assertEqual(page.evaluate('window.__sites.clears'), [])
             block.get_by_role('button', name='Import 1 post', exact=True).click()
-            expect(block.get_by_role('status')).to_contain_text('1 added')
+            expect(block.get_by_role('status')).to_contain_text('1 post in your library')
             self.assertEqual(page.evaluate('window.__sites.clears'), ['facebook'])
             stored = page.evaluate("async()=> (await import('/src/mobile/store.ts')).changes.all()")
             self.assertEqual([x['op'] for x in stored], ['link', 'details'])
@@ -808,7 +838,7 @@ export async function linkGet(url) {
             page.evaluate("window.__sites.items=[{url:'https://www.facebook.com/reel/1234567899/',kind:'Reel'}];window.__sites.reason='failure'")
             block.get_by_role('button', name='Scan saved posts', exact=True).click()
             block.get_by_role('button', name='Continue', exact=True).click()
-            expect(block.get_by_role('status')).to_contain_text('could not finish')
+            expect(block.locator('.m-ir')).to_contain_text('could not finish')
             block.get_by_role('button', name='Import 1 post', exact=True).click()
             expect(block.get_by_role('alert')).to_contain_text('could not finish')
             self.assertFalse(page.evaluate("async()=> (await import('/src/mobile/store.ts')).kv.get('site-runs').then(x=>x.facebook.complete)"))

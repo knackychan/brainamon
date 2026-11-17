@@ -20,6 +20,99 @@ return {}}}})()"""
 
 
 class PhoneSettingsRemediation(unittest.TestCase):
+    def test_phone_keys_provider_switching_and_model_picker_survive_changes(self):
+        from playwright.sync_api import expect
+        from tests.test_mobile_info_browser import ROOT
+
+        art = ROOT / 'build/mobile-key-controls'
+        art.mkdir(parents=True, exist_ok=True)
+        with mobile_browser() as (browser, base):
+            for solo, theme in ((True, 'light'), (False, 'dark')):
+                pair = dict(PAIR, solo=solo, ai={'openai': 'synthetic-openai'})
+                if not solo:
+                    pair['l'] = 'A' * 122
+                with self.subTest(solo=solo), synthetic_phone(browser, base, 320, 780, theme, pair=pair) as (p, errors):
+                    p.add_init_script(NATIVE)
+                    scenes.PhoneSettingsBackupRecoveryScenes().boot(p, base)
+                    p.evaluate('(theme)=>document.documentElement.dataset.theme=theme', theme)
+                    p.locator('a[href="#/more/wiskit"]').click()
+                    provider = p.get_by_role('group', name='Provider', exact=True)
+                    expect(provider.get_by_role('button', name='OpenAI', exact=True)).to_be_enabled()
+                    expect(provider.get_by_role('button', name='Anthropic', exact=True)).to_be_disabled()
+                    for label, url in (('OpenAI', 'https://platform.openai.com/api-keys'), ('Anthropic', 'https://console.anthropic.com/settings/keys')):
+                        expect(p.get_by_label(f'{label} API key', exact=True)).to_be_enabled()
+                        expect(p.get_by_role('button', name=f'Save {label} key', exact=True)).to_be_visible()
+                        expect(p.get_by_role('button', name=f'Clear {label} API key', exact=True)).to_be_visible()
+                        expect(p.get_by_role('link', name=f'Get a {label} API key', exact=True)).to_have_attribute('href', url)
+
+                    # Paired phones still need models before cached PC metadata arrives.
+                    p.evaluate("""async()=>{const {mirrorSource:m,phone}=await import('/src/mobile/state.svelte.ts');m.meta=null;phone.synced++}""")
+                    picker = p.get_by_role('button', name='Choose model:')
+                    expect(picker).to_be_enabled()
+                    self.assertTrue(picker.inner_text().strip())
+                    p.route('**/v1/models*', lambda route: route.fulfill(status=503, content_type='application/json', body='{"error":{"message":"synthetic provider unavailable"}}'))
+                    p.get_by_role('button', name='Refresh', exact=True).click()
+                    expect(p.get_by_text('synthetic provider unavailable', exact=False)).to_be_visible()
+                    expect(picker).to_be_enabled()
+
+                    field = p.get_by_label('Anthropic API key', exact=True)
+                    save = p.get_by_role('button', name='Save Anthropic key', exact=True)
+                    field.fill('synthetic-anthropic')
+                    save.click()
+                    expect(field).to_have_value('')
+                    provider.get_by_role('button', name='Anthropic', exact=True).click()
+                    expect(provider.get_by_role('button', name='Anthropic', exact=True)).to_have_attribute('aria-pressed', 'true')
+                    expect(p.get_by_text('Using your Anthropic API key', exact=True)).to_be_visible()
+                    picker.click()
+                    options = p.locator('dialog[open] .m-picker-options button')
+                    model = options.nth(1).inner_text().strip()
+                    options.nth(1).click()
+                    expect(picker).to_have_text(model)
+                    p.get_by_role('button', name='Back', exact=True).click()
+                    p.locator('a[href="#/more/wiskit"]').click()
+                    expect(picker).to_have_text(model)
+
+                    # Failed writes keep the old live key and the replacement draft.
+                    field.fill('synthetic-replacement')
+                    p.evaluate('window.__failSecret=true')
+                    save.click()
+                    expect(p.get_by_text('Key could not be saved securely.', exact=False)).to_be_visible()
+                    expect(field).to_have_value('synthetic-replacement')
+                    self.assertEqual(p.evaluate("async()=>(await import('/src/mobile/state.svelte.ts')).mirrorSource.pair.ai.anthropic"), 'synthetic-anthropic')
+                    p.evaluate('window.__failSecret=false')
+                    save.click()
+                    expect(field).to_have_value('')
+                    self.assertEqual(p.evaluate("JSON.parse(localStorage.getItem('bp-pair')).ai"), dict(openai='synthetic-openai', anthropic='synthetic-replacement'))
+                    expect(picker).to_have_text(model)
+                    p.screenshot(path=str(art / f'keys-{theme}.png'), full_page=True)
+                    self.assertTrue(p.evaluate('document.documentElement.scrollWidth<=document.documentElement.clientWidth'))
+
+                    clear = p.get_by_role('button', name='Clear OpenAI API key', exact=True)
+                    clear.click()
+                    p.evaluate('window.__failSecret=true')
+                    clear.click()
+                    expect(p.get_by_text('Key could not be cleared securely.', exact=False)).to_be_visible()
+                    self.assertTrue(p.evaluate("async()=>(await import('/src/mobile/state.svelte.ts')).mirrorSource.pair.ai.openai==='synthetic-openai'"))
+                    expect(field).to_be_disabled()
+                    p.evaluate('window.__failSecret=false')
+                    clear.click()
+                    expect(provider.get_by_role('button', name='OpenAI', exact=True)).to_be_disabled()
+                    self.assertEqual(p.evaluate("JSON.parse(localStorage.getItem('bp-pair')).ai"), dict(anthropic='synthetic-replacement'))
+                    expect(picker).to_have_text(model)
+                    clear = p.get_by_role('button', name='Clear Anthropic API key', exact=True)
+                    clear.click()
+                    clear.click()
+                    expect(picker).to_be_visible()
+                    expect(picker).to_be_disabled()
+                    expect(p.get_by_text('No AI key yet', exact=True)).to_be_visible()
+                    expect(p.get_by_role('button', name='Refresh', exact=True)).to_be_disabled()
+                    self.assertEqual(p.evaluate("JSON.parse(localStorage.getItem('bp-pair')).ai"), {})
+                    p.get_by_label('OpenAI API key', exact=True).fill('synthetic-new-openai')
+                    p.get_by_role('button', name='Save OpenAI key', exact=True).click()
+                    expect(picker).to_be_enabled()
+                    self.assertTrue(picker.inner_text().strip())
+                    self.assertEqual(errors, [])
+
     def test_native_export_checks_identity_and_drains_started_write(self):
         with mobile_browser() as (browser, base):
             with synthetic_phone(browser, base, 360, 780, 'light') as (p, errors):

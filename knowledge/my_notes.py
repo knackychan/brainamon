@@ -121,7 +121,7 @@ def rename_category(db, notes_dir, old, new, before=None) -> list:
 
 
 def _write(path: Path, meta: dict, body: str) -> None:
-    front = '---\n' + ''.join(f'{k}: {v}\n' for k, v in meta.items()) + '---\n\n'
+    front = '---\n' + ''.join(f'{k}: {" ".join(str(v).splitlines())}\n' for k, v in meta.items()) + '---\n\n'
     path.write_text(front + body, encoding='utf-8')
 
 

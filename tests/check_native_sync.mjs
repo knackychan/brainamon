@@ -94,7 +94,7 @@ assert.equal((await run(ordered)).ok, true)
 assert.deepEqual(ordered.fetched.filter(id => parts.some(p => ordered.manifest.files[p].id === id)),
   await Promise.all(['library/part-002.json', 'library/part-001.json', 'library/part-000.json'].map(p => key.name(p))))
 assert.equal(ordered.readSteps[0], undefined, 'access checks must not enable Drive-read preemption before pending uploads drain')
-assert.equal(ordered.readSteps[1][2].key, 'shell.sync.readingIndex', 'the manifest read has a visible step before I/O')
+assert.equal(ordered.readSteps[1][2].key, 'shell.sync.downloadingIndex', 'manifest downloading is distinct from listing files')
 assert.deepEqual(ordered.readSteps[2], ['drive', 0, { key: 'shell.sync.readingFiles', done: 0, total: 4 }])
 assert.deepEqual(ordered.progress.at(-1), ['drive', 1, { key: 'shell.sync.readingFiles', done: 4, total: 4 }])
 
@@ -155,8 +155,11 @@ let requests = 0, finish
 const bridge = { status: async ({ id }) => id ? new Promise(resolve => { finish = () => resolve({ supported: true, state: 'idle', finished: true }) }) : { supported: true, state: 'idle' },
   request: async () => ({ id: String(++requests) }), retry: async () => ({ id: 'explicit' }), configure: async () => ({ supported: true, state: 'idle' }) }
 const exports = {}
+const visibility = { hidden: false }
+let statusTick, clearedStatusTimer
 const code = ts.transpileModule(readFileSync('web/src/mobile/sync/native.svelte.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
-vm.runInNewContext(code, { exports, $state: x => x, setTimeout, clearTimeout, Event, window: { dispatchEvent() {} }, require: name => ({
+vm.runInNewContext(code, { exports, $state: x => x, setTimeout, clearTimeout, Event, document: visibility,
+  window: { dispatchEvent() {}, setInterval(fn) { statusTick = fn; return 7 }, clearInterval(id) { clearedStatusTimer = id } }, require: name => ({
   '@capacitor/core': { Capacitor: { isNativePlatform: () => true, getPlatform: () => 'android' }, registerPlugin: () => bridge },
   '../wait': { withTimeout: p => p }, '../../lib/i18n/index': { t: key => key }, '../../lib/i18n/format': { fmtTime: () => '18:30' },
 }[name]) })
@@ -242,6 +245,32 @@ assert.equal(exports.nativePhasePct(), null, 'startup has no measurable percenta
 assert.equal(exports.nativeDriveText(), 'shell.sync.readingIndex')
 exports.nativeSync.progress = .2
 assert.equal(exports.nativePhasePct(), 50)
+// Background work updates the visible app even without a foreground round observing it.
+bridge.status = async () => ({ supported: true, state: 'syncing', phase: 'drive', progress: .2 })
+const stopStatus = exports.watchNativeSync()
+await new Promise(resolve => setImmediate(resolve))
+assert.equal(exports.nativeSync.state, 'syncing')
+bridge.status = async () => ({ supported: true, state: 'idle', finished: true })
+await statusTick()
+assert.equal(exports.nativeSync.state, 'idle', 'completed work cannot leave the old reading label spinning')
+visibility.hidden = true
+bridge.status = async () => { throw Error('status unavailable') }
+await statusTick()
+assert.equal(exports.nativeSync.state, 'idle', 'hidden pages do not poll')
+visibility.hidden = false
+await statusTick()
+assert.equal(exports.nativeSync.state, 'attention', 'a failed status read cannot masquerade as active progress')
+let statusReads = 0
+const heldStatus = Promise.withResolvers()
+bridge.status = async () => { statusReads++; return heldStatus.promise }
+const pendingStatus = statusTick()
+await new Promise(resolve => setImmediate(resolve))
+await statusTick()
+assert.equal(statusReads, 1, 'a slow bridge must not accumulate status requests')
+heldStatus.resolve({ supported: true, state: 'idle' })
+await pendingStatus
+stopStatus()
+assert.equal(clearedStatusTimer, 7)
 // Confirm each requested upload independently, even while the vault round is still unfinished.
 const longVault = Promise.withResolvers()
 let delivery = false, delivered = false

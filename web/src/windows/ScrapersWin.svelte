@@ -10,7 +10,10 @@
   import ImportSetup from '../components/ImportSetup.svelte'
   import { isSite, scrapeGuide, SITE_NAME, type Site } from '../lib/onboarding'
   import { SRC_MARK } from '../lib/cards/card'
-  import { toast } from '../lib/ui.svelte'
+  import { toast, setWS } from '../lib/ui.svelte'
+  import { clearFilters, setFilter, clearSel, toggleSel } from '../lib/library.svelte'
+  import { idleTray, startScan, readCount, scanEnded, imported, played, type Tray, type ImportResult } from '../lib/scrape-tray'
+  import ScrapeTray from '../components/ScrapeTray.svelte'
   import { confirmWin } from '../lib/windows.svelte'
   import ToggleRow from '../components/ui/ToggleRow.svelte'
   import Hint from '../components/ui/Hint.svelte'
@@ -68,6 +71,15 @@
   let box: HTMLPreElement | undefined = $state()
   let errorMessage = $state('')
   const pwRunning = $derived(live.jobs.current?.kind === 'scrape')
+  let tray: Tray | null = $state(null)
+  let wasPwRunning = false
+  $effect(() => {
+    const running = pwRunning
+    if (wasPwRunning && !running) untrack(() => {
+      if (tray) tray = scanEnded(tray, live.jobs.last)
+    })
+    wasPwRunning = running
+  })
   const auto = $derived(mode === 'automatic')
   const guide = $derived(site && ['manual', 'automatic'].includes(mode) ? scrapeGuide(site, auto) : null)
   const preparingAny = $derived(preparing || starting || playlistStarting)
@@ -86,7 +98,11 @@
       .then(r => { platforms = r.platforms; playwright = r.playwright; watching = r.watching; dir = r.dir })
       .catch(e => out(String((e as Error).message), 'r'))
     const offs = [
-      on('scrape', (d: { line: string; c?: string }) => out(d.line, d.c ?? '')),
+      on('scrape', (d: { line?: string; c?: string; read?: number; imported?: ImportResult }) => {
+        if (typeof d.read === 'number' && tray) tray = readCount(tray, d.read)
+        if (d.imported) tray = imported(tray ?? idleTray(site || 'instagram'), d.imported)
+        if (typeof d.line === 'string') out(d.line, d.c ?? '')
+      }),
       on('job_item', (d: { state: string; error?: string; step?: string }) => {
         if (playlistRunning && d.step) playlistStep = d.step
         if (['scrape', 'youtube_playlist'].includes(live.jobs.current?.kind ?? '') && d.state === 'error' && d.error && d.error !== 'Stopped.') out(d.error, 'r')
@@ -113,6 +129,7 @@
     copyMessage = ''; errorMessage = ''
     try {
       if (!(await confirmUnsave(removing, p.key)) || disposed) return
+      tray = idleTray(p.key)
       const q = new URLSearchParams({ stop_at: stop, unsave: String(removing) })
       const r = await fetch(`/api/scrapers/${p.key}.js?${q}`)
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText)
@@ -141,11 +158,22 @@
     starting = true; errorMessage = ''
     try {
       if (!(await confirmUnsave(removing, platform)) || disposed) return
+      tray = startScan(platform)
       await api.post('/api/scrapers/playwright', { platform, stop_at: stop, unsave: removing, remember: keep, unsave_confirmed: removing, username: platform === 'instagram' ? username : '' })
       if (disposed) { await api.post('/api/jobs/stop'); await api.post('/api/scrapers/watch', { on: false }); return }
       await watch()
-    } catch (e) { out((e as Error).message, 'r'); toast((e as Error).message, 'w') }
+    } catch (e) { tray = null; out((e as Error).message, 'r'); toast((e as Error).message, 'w') }
     finally { starting = false }
+  }
+  async function showImported() {
+    const result = tray?.result
+    if (!result?.added) return
+    clearFilters(); setFilter('sort', 'new'); clearSel()
+    for (const id of result.ids) toggleSel(id, true)
+    setWS('lib'); close()
+    await tick()
+    document.getElementById('board')?.scrollTo({ top: 0 })
+    toast(`Selected the ${result.added} new items`)
   }
   async function stopPw() {
     if (!pwRunning) return
@@ -246,6 +274,10 @@
                   <div class="scraper-tools" hidden={runtimeReady}>
                     <ImportSetup section="browser" onready={ready => runtimeReady = ready} />
                   </div>
+                {/if}
+
+                {#if auto || (mode === 'manual' && tray?.site === key && tray.result)}
+                  <ScrapeTray tray={tray?.site === key ? tray : idleTray(key)} onplayed={() => { if (tray?.site === key) tray = played(tray) }} onshow={showImported} />
                 {/if}
 
                 <div class="scraper-actions">

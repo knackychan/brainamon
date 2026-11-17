@@ -1,0 +1,62 @@
+/* The motion language (projects/motion-language; spec docs/superpowers/specs/2026-11-14-motion-language-design.md):
+   the shared moves of the desktop and the phone, loaded by both entries (main.ts, mobile/main.ts) after type.css.
+   COUNT ticks (Count.svelte), BAR fills or sweeps (.mo-bar, Bar.svelte), ARRIVE slides rows in (arrive.ts), SCAN
+   sweeps the card being worked on (.mo-scan), READ fills a row being read (.mo-read), LAND sets a picture down
+   (mo-land), POP and NUDGE mark a finish (.mo-pop, .mo-nudge), DELTA shows what a step changed (.mo-delta), and
+   the finish that holds is green (--ok, --mo-ok-ink). Durations are motion.ts's constants (tests/test_motion_js.py).
+   Class names start with mo- and never reuse the card CSS's names. Every move stops with motion off
+   (html.motion-off), at rest (html.cm-rest) and with reduced motion. */
+:root{--mo-ok-ink:#12804a;--mo-mint:#9df6d2;--mo-mint-ink:#0b2a20;--mo-tint:rgba(255,90,31,.13);--mo-glow:rgba(255,90,31,.45);
+  --mo-toast-bg:#17181b;--mo-on-ok:#fff;--mo-toast-shadow:0 6px 18px rgba(0,0,0,.35);
+  --mo-ease:cubic-bezier(.215,.61,.355,1);--mo-arrive:.32s;--mo-sweep:.85s;--mo-read:.8s;--mo-land:.32s;--mo-pop:.25s;--mo-busy:1.18s}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--mo-ok-ink:#3cc98a}}
+:root[data-theme="dark"]{--mo-ok-ink:#3cc98a}
+
+.mo-okc{color:var(--mo-ok-ink)}
+.mo-delta{display:inline-block;margin-left:6px;padding:2px 4px;border-radius:4px;background:var(--mo-mint);color:var(--mo-mint-ink);font:var(--type-tag);font-style:normal;font-variant-numeric:tabular-nums;vertical-align:1px;animation:mo-pop var(--mo-pop) var(--mo-ease) both}
+
+.mo-bar{position:relative;height:6px;border-radius:6px;background:var(--seg-off);overflow:hidden}
+.mo-bar>i{position:absolute;left:0;top:0;bottom:0;border-radius:inherit;background:var(--accent);transition:width var(--mo-arrive) var(--mo-ease)}
+.mo-bar.mo-ok>i{background:var(--ok)}
+.mo-bar.mo-busy>i{width:40%;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:mo-busy var(--mo-busy) linear infinite}
+@keyframes mo-busy{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+
+/* the screen positions .mo-scan (absolute, over the card face); its line runs top to bottom over a light tint */
+.mo-scan{overflow:hidden;background:var(--mo-tint)}
+.mo-scan::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent,var(--mo-glow) 6px,var(--accent) 6px,var(--accent) 8px,var(--mo-glow) 8px,transparent) 0 100%/100% 14px no-repeat;animation:mo-sweep var(--mo-sweep) linear infinite}
+@keyframes mo-sweep{from{transform:translateY(-100%)}to{transform:translateY(14px)}}
+
+/* a row being read: the fill grows behind its content from the left, 200 ms after the row arrived (--mo-d: its
+   arrival delay) */
+.mo-read{position:relative;overflow:hidden;isolation:isolate}
+.mo-read::after{content:"";position:absolute;left:0;top:0;bottom:0;z-index:-1;width:0;background:var(--mo-tint);box-shadow:inset -2px 0 0 var(--accent);pointer-events:none;animation:mo-readfill var(--mo-read) var(--mo-ease) calc(var(--mo-d,0ms) + .2s) forwards}
+@keyframes mo-readfill{to{width:100%}}
+
+.mo-pop{animation:mo-pop var(--mo-pop) var(--mo-ease) both}
+.mo-nudge{animation:mo-nudge .5s var(--mo-ease) .5s}
+/* a card of a group that arrives together (the phone Library after an import: Grid.svelte sets data-mo and --mo-d,
+   the delay less the time elapsed) */
+[data-mo="arrive"]{animation:mo-arrive var(--mo-arrive) var(--mo-ease) var(--mo-d,0ms) both}
+@keyframes mo-arrive{from{transform:translateY(16px);opacity:0}}
+@keyframes mo-pop{from{transform:scale(.5);opacity:0}}
+@keyframes mo-land{from{transform:scale(1.08);opacity:0}}
+@keyframes mo-drop{from{transform:translateY(-12px);opacity:0}}
+@keyframes mo-nudge{50%{transform:scale(1.05)}}
+
+/* a finished job's bar (components/ui/Progress.svelte `done`) */
+.prog.mo-done i.lit{background:var(--ok)}
+
+:is(.motion-off,.cm-rest) .mo-bar>i{transition:none}
+:is(.motion-off,.cm-rest) .mo-bar.mo-busy>i{width:100%;transform:none;animation:none;background:var(--accent);opacity:.3}
+:is(.motion-off,.cm-rest) :is(.mo-delta,.mo-pop,.mo-nudge){animation:none}
+:is(.motion-off,.cm-rest) [data-mo="arrive"]{animation:none}
+:is(.motion-off,.cm-rest) .mo-scan::after{display:none;animation:none}
+:is(.motion-off,.cm-rest) .mo-read::after{width:100%;animation:none}
+@media (prefers-reduced-motion:reduce){
+  .mo-bar>i{transition:none}
+  .mo-bar.mo-busy>i{width:100%;transform:none;animation:none;background:var(--accent);opacity:.3}
+  .mo-delta,.mo-pop,.mo-nudge{animation:none}
+  [data-mo="arrive"]{animation:none}
+  .mo-scan::after{display:none;animation:none}
+  .mo-read::after{width:100%;animation:none}
+}

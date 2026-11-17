@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { thumbSrc } from '../lib/library.svelte'
+  import { lib, thumbSrc } from '../lib/library.svelte'
+  import Count from '../lib/motion/Count.svelte'
+  import { arrive } from '../lib/motion/arrive.ts'
+  import { POP_MS, motionOn } from '../lib/motion/motion.ts'
   // One Wiskit answer (V6 addWiskit / finalize / sourcesHTML): header, the retrieval line, the
   // Deep tool trace, the answer with citation chips, the Sources list, Save as note / Add to canvas.
   import Px from '../lib/Px.svelte'
@@ -19,13 +22,64 @@
     const text = `Wiskit · ${m.q}\n${plainCites(m.text).replace(/\[note:\s*([^\]]+)\]/g, '($1)')}`
     if (askHooks.attachText) askHooks.attachText(text, e.currentTarget as HTMLElement); else toast(soonText('09'), 'w')
   }
+
+  // Deep research (motion language D4): the steps and source rows of lib/research.ts. While the answer streams,
+  // each citation chip pops once; the negative delay keeps its pop going when the next chunk redraws the answer.
+  const BADGE = { reading: 'READING', read: '✓ READ', unused: 'NOT USED' } as const
+  const res = $derived(m.research)
+  const rowsOf = (n: number) => res?.rows.filter(x => x.n === n) ?? []
+  let ans: HTMLElement | undefined = $state()
+  const seenAt = new Map<string, number>()
+  $effect(() => {
+    void body
+    if (!ans || !m.streaming || !motionOn()) return
+    const now = performance.now(), count = new Map<string, number>()
+    for (const el of ans.querySelectorAll<HTMLElement>('.cite')) {
+      const id = el.dataset.cid ?? el.dataset.note ?? el.textContent ?? ''
+      const k = (count.get(id) ?? 0) + 1
+      count.set(id, k)
+      const t0 = seenAt.get(`${id}#${k}`) ?? now
+      seenAt.set(`${id}#${k}`, t0)
+      if (now - t0 >= POP_MS) continue
+      el.classList.add('mo-pop')
+      el.style.animationDelay = `${t0 - now}ms`
+    }
+  })
 </script>
 
 <article class="m-j dlg">
   <header class="m-hd"><Px name="core" /><span>Wiskit</span><em>{m.tag}</em><time>{m.t}</time></header>
   {#if m.ctx}<p class="ctx">{m.ctx}</p>{/if}
   {#if m.trace.length}<ol class="trace">{#each m.trace as line, i (i)}<li>{line}</li>{/each}</ol>{/if}
-  <div class="ans">
+  {#if res}
+    <section class="mo-res" aria-label="Research" hidden={!res.steps.length}>
+      <ol class="mo-steps">
+        {#each res.steps as s (s.n)}
+          {@const rows = rowsOf(s.n)}
+          <li class="mo-step" data-st={s.state} in:arrive>
+            <i class="mo-sdot" aria-hidden="true">{s.state === 'ok' ? '✓' : s.state === 'err' ? '!' : ''}</i>
+            <span>{s.label}</span>{#if s.q}<q>{s.q}</q>{/if}
+            {#if s.name === 'read_items'}
+              {#if rows.length}<Count as="b" value={rows.filter(x => x.got && x.state !== 'reading').length} /><span>/ {rows.length}</span>{/if}
+            {:else if s.hits !== null}<Count as="b" value={s.hits} from={0} /><span>{s.hits === 1 ? 'hit' : 'hits'}</span>{/if}
+          </li>
+        {/each}
+      </ol>
+      <ol class="mo-srcs">
+        {#each res.rows as row (row.id)}
+          {@const r = lib.byId.get(row.id)}
+          <li class="mo-src" class:mo-read={row.state === 'reading'} data-st={row.state} data-id={row.id} style:--mo-d={`${row.d}ms`} in:arrive={{ x: 24, delay: row.d }}>
+            <span class="mo-sbx">{#if r?.thumb}<img src={thumbSrc(row.id, 64)} alt="" />{/if}</span>
+            <span class="mo-sid">[id {row.id}]</span>
+            <span class="mo-stl">{r ? titleOf(r) : ''}</span>
+            <b class="mo-sbd">{BADGE[row.state]}</b>
+          </li>
+        {/each}
+      </ol>
+      {#if !m.streaming && res.read !== null}<p class="mo-rsum">✓ {m.cited.length} cited · {res.read} read</p>{/if}
+    </section>
+  {/if}
+  <div class="ans" bind:this={ans}>
     {#if m.text}{@html body}{#if m.streaming}<span class="cur"></span>{/if}
     {:else if m.streaming}<p class="think">Thinking<span class="cur"></span></p>{/if}
     {#if m.error}<p class="note">{m.error}</p>{/if}

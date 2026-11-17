@@ -210,6 +210,54 @@ class AskTest(unittest.TestCase):
         self.assertEqual(ev[-1][0], 'done')
         self.assertEqual(ev[-1][1]['cited'], [b])
 
+    def test_deep_mode_reports_each_tool_call(self):
+        import re
+        from knowledge import librarian
+        a, b, outs = self.a, self.b, {}
+        long_query = '  knee\n  prehab ' + 'x' * 200
+        read = {'ids': [b, a, -1] + list(range(1000, 1060)), 'query': long_query}
+
+        def agent(messages, provider, model, *, system_prompt, tools, run_tool, on_tool=None, **kw):
+            on_tool('search_library', {'query': ' glass  '})
+            outs['search'] = run_tool('search_library', {'query': ' glass  '})
+            outs['read'] = run_tool('read_items', read)       # no announcement: the wrapper starts it
+            on_tool('topic_items', {'topic_id': 'nope'})
+            outs['topic'] = run_tool('topic_items', {'topic_id': 'nope'})
+            on_tool('propose_reformat', {'file': 'missing.md'})
+            outs['propose'] = run_tool('propose_reformat', {'file': 'missing.md'})
+            return f'Glass [id {b}].'
+        with mock.patch.object(ai_client, 'ask_agent', agent):
+            ev = self.ask(question='blender glass', provider='openai', model='gpt-6-luna', mode='deep')
+        self.assertEqual(ev[-1][0], 'done')
+        self.assertEqual(ev[-1][1]['cited'], [b])
+        tools = [d for k, d in ev if k == 'tool']
+        self.assertEqual([(d['phase'], d['n'], d['name']) for d in tools], [
+            ('start', 1, 'search_library'), ('done', 1, 'search_library'),
+            ('start', 2, 'read_items'), ('done', 2, 'read_items'),
+            ('start', 3, 'topic_items'), ('done', 3, 'topic_items')])
+        heads = lambda out: list(dict.fromkeys(int(i) for i in re.findall(r'^\[id (\d+)\]', out, re.M)))
+        start, done = tools[0], tools[1]
+        self.assertEqual(start, {'phase': 'start', 'n': 1, 'name': 'search_library', 'q': 'glass', 'ids': [],
+                                 'line': librarian.describe_call('search_library', {'query': ' glass  '})})
+        self.assertIn(b, heads(outs['search']))
+        self.assertEqual(done, {'phase': 'done', 'n': 1, 'name': 'search_library', 'ok': True,
+                                'ids': heads(outs['search'])})
+        self.assertEqual(tools[2]['ids'], [b, a] + list(range(1000, 1048)))
+        self.assertEqual(tools[2]['q'], ('knee prehab ' + 'x' * 200)[:80])
+        self.assertEqual(tools[3]['ok'], True)
+        self.assertEqual(sorted(tools[3]['ids']), sorted([a, b]))
+        self.assertEqual(sorted(tools[3]['ids']), sorted(heads(outs['read'])))
+        self.assertTrue(outs['topic'].startswith('Error:'))
+        self.assertEqual((tools[5]['ok'], tools[5]['ids']), (False, []))
+        progress = [d for k, d in ev if k == 'progress']
+        self.assertEqual([d for d in progress if 'tool' in d], [{'line': d['line'], 'tool': d['n']} for d in tools if d['phase'] == 'start'])
+        self.assertIn({'line': librarian.describe_call('propose_reformat', {'file': 'missing.md'})}, progress)
+        self.assertFalse(any(d['name'].startswith('propose_') for d in tools))
+        self.assertTrue(outs['propose'].startswith('Error:'))
+        for d in tools:
+            self.assertLessEqual(len(d['ids']), 200)
+            self.assertLessEqual(len(d.get('q', '')), 80)
+
     def test_deep_needs_agent_provider(self):
         with mock.patch.object(ai_client, 'ask_chat_stream', lambda *a, **k: iter(['ok'])), \
              mock.patch('core.config.freellmapi_api_key', lambda: 'k'):

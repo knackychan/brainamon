@@ -11,6 +11,7 @@ root CLAUDE.md).
 """
 import re
 import time
+import types
 from datetime import datetime
 
 from core import ai_client
@@ -47,6 +48,10 @@ LIST_MAX_TOKENS = _L['list_max_tokens']
 CARRY_MAX = _L['carry_max']
 FOLLOWUP_WORDS = frozenset(P['followup_words'].split())
 SYSTEM = P['system']
+# Deep tool events (deep_answer on_tool_event; projects/motion-language plans/05-d4-wiskit.md): the ids a
+# read_items call asks for, and the [id N] heads a tool result delivers (the units the librarian admits).
+_TOOL_ID = re.compile(r'[0-9]{1,9}')
+_TOOL_HEADS = re.compile(r'^\[id ([0-9]{1,9})\]', re.M)
 
 
 def is_list(question: str) -> bool:
@@ -368,11 +373,15 @@ def deep_answer(db_path, provider, model_id, system_prompt, history, question, *
                 item_index, aux_rows, aux_jobs, embed_key, embed_base,
                 on_progress=None, on_aux=None, should_stop=None, propose=None, propose_category=None,
                 propose_categories=None, propose_canvas=None, mode='deep', starting_turn=None,
-                on_text=None, on_reset=None, on_stream=None, research_deadline=None, evidence=None):
+                on_text=None, on_reset=None, on_stream=None, research_deadline=None, evidence=None,
+                on_tool_event=None):
     """One Deep-mode answer: the librarian agent researches with tools. Opens its own
     READ-ONLY connection (closed at the end) so the tools can query while the model works;
     freshly embedded aux vectors go to `on_aux(rows)` for the caller to persist.
-    Returns (answer markdown, consulted item ids). Moved from AskAgentWorker.run."""
+    Returns (answer markdown, consulted item ids). Moved from AskAgentWorker.run.
+    `on_tool_event(e)`: each research tool call (not propose_*) as {'phase': 'start', 'n', 'name', 'line', 'q',
+    'ids'}, then {'phase': 'done', 'n', 'name', 'ok', 'ids'} (the Deep research steps, web/src/lib/research.ts);
+    its start replaces the call's on_progress line. Without it nothing changes."""
     from core.db import ReadOnlyDatabase
     on_progress = on_progress or (lambda _m: None)
     budget = agent_budget(mode)
@@ -391,10 +400,37 @@ def deep_answer(db_path, provider, model_id, system_prompt, history, question, *
             return None
         return embed([text])[0]
 
+    calls = {'n': 0, 'open': None}      # the tool events' call numbers, and the call on_tool announced
+
+    def tool_start(name, args):
+        calls['n'] += 1
+        calls['open'] = (name, args)
+        args = args if isinstance(args, dict) else {}
+        ids = args.get('ids') if name == 'read_items' and isinstance(args.get('ids'), list) else []
+        on_tool_event({'phase': 'start', 'n': calls['n'], 'name': name,
+                       'line': librarian.describe_call(name, args),
+                       'q': ' '.join(str(args.get('query') or '').split())[:80],
+                       'ids': list(dict.fromkeys(int(i) for i in ids if _TOOL_ID.fullmatch(str(i))))[:50]})
+
     def on_tool(name, args):
         if should_stop and should_stop():
             raise RuntimeError('Stopped.')
-        on_progress(librarian.describe_call(name, args))
+        if on_tool_event and not str(name).startswith('propose_'):
+            tool_start(name, args)
+        else:
+            on_progress(librarian.describe_call(name, args))
+
+    def traced_tool(agent_lib, name, args):   # bound to the Librarian like lib.run_tool (run_tool.__self__)
+        if str(name).startswith('propose_'):
+            return agent_lib.run_tool(name, args)
+        if calls['open'] != (name, args):
+            tool_start(name, args)
+        n, calls['open'] = calls['n'], None
+        out = agent_lib.run_tool(name, args)
+        ok = not out.startswith('Error:')
+        on_tool_event({'phase': 'done', 'n': n, 'name': name, 'ok': ok,
+                       'ids': list(dict.fromkeys(int(i) for i in _TOOL_HEADS.findall(out)))[:200] if ok else []})
+        return out
 
     ro = None
     try:
@@ -450,7 +486,7 @@ def deep_answer(db_path, provider, model_id, system_prompt, history, question, *
         text = ai_client.ask_agent(
             messages,
             provider, model_id, system_prompt=system_prompt,
-            tools=tools, run_tool=lib.run_tool, on_tool=on_tool,
+            tools=tools, run_tool=types.MethodType(traced_tool, lib) if on_tool_event else lib.run_tool, on_tool=on_tool,
             max_rounds=budget['max_rounds'], max_tokens=budget['max_tokens'],
             max_tool_calls=budget['max_tool_calls'], research_deadline=research_deadline,
             on_text=on_text, on_reset=on_reset, on_stream=on_stream, should_stop=should_stop)

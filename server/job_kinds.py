@@ -939,6 +939,7 @@ def _scrape_process(job, args, env, say, name):
                             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
 
     credential = Path(args[args.index('--session-state') + 1])
+    emit, read = getattr(job, 'emit', None), 0
     statuses = {
         '[status] login': 'Finish signing in, including 2FA or CAPTCHA, in the browser. The helper waits without refreshing. Use Stop Playwright to cancel.',
         '[status] saved': 'Signed in. Opening Saved; if it does not open, choose Saved in the browser.',
@@ -949,6 +950,11 @@ def _scrape_process(job, args, env, say, name):
         for line in proc.stdout:
             # Page logs and tracebacks can contain secrets; publish only fixed statuses and counts.
             import re
+            item = re.match(r'\[item ([0-9]{1,7})\]', line)
+            if item and int(item[1]) > read:
+                read = int(item[1])
+                if emit:
+                    emit('scrape', {'read': read})
             status = statuses.get(line.strip())
             if status:
                 say(status)

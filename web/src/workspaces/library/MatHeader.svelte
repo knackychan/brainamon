@@ -3,8 +3,10 @@
   // removes its filter), Grid / List, the zoom pill.
   import { clearFilters, lib, NEED, NEED_LABEL, setFilter, Z, type NeedKey } from '../../lib/library.svelte'
   import { fitAll, setZoom } from '../../lib/map'
+  import Count from '../../lib/motion/Count.svelte'
 
   const L = $derived(lib.visible)
+  const jumpKey = $derived([lib.loaded, lib.cat, lib.tag, lib.type, lib.creator, lib.src, lib.fav, lib.status, lib.q, lib.searchIds?.size ?? -1, lib.rank?.size ?? -1, lib.showHidden].join('|'))
   const pills = $derived.by(() => {
     let reels = 0, described = 0, thumbs = 0
     for (const r of L) { if (r.type === 'Reel') reels++; if (r.ai) described++; if (r.thumb) thumbs++ }
@@ -31,7 +33,7 @@
 <div class="mat-hd">
   <p class="brand"><i></i><span class="lib-t" id="lib-t">{lib.cat === 'all' ? 'All items' : lib.cat}</span><span class="jp" aria-hidden="true">ライブラリ</span></p>
   <div class="spills" id="spills">
-    {#each pills as [l, v, k, c] (l)}<span class={'spill' + c} style:--k={k}><i></i><b>{v}</b>{l}</span>{/each}
+    {#each pills as [l, v, k, c] (l)}<span class={'spill' + c} style:--k={k}><i></i><Count as="b" value={v} jump={jumpKey} />{l}</span>{/each}
   </div>
   <div class="fchips" id="fchips">
     {#each chips as [k, l, w] (k)}<button type="button" class="fchip" aria-label={`Remove ${w} filter ${l}`} onclick={() => clearFilters(k)}>{l}<span aria-hidden="true">×</span></button>{/each}

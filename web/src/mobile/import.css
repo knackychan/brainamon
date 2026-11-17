@@ -45,3 +45,18 @@
 @media(prefers-reduced-motion:reduce){.m-import-screen .m-import-reveal,.m-import-screen .m-import-chevron svg,.m-import-screen .m-import-glyph{transition:none}}
 .m-import-screen>.m-more{margin-top:4px}
 .m-import-screen>.m-more .m-hint{color:var(--case-ink);font:var(--type-m-bar)}
+/* The import run (ImportRun.svelte, projects/motion-language plan 07): count, bar, a grid of the first 24 pictures, the finish */
+.m-ir{display:flex;flex-direction:column;gap:8px;padding:2px 0}
+.m-ir-t{display:block;font:var(--type-m-import-title);color:var(--wg-ink)}
+.m-ir-ok{color:var(--m-ok)}
+.m-ir-n{font:var(--type-m-import-count);font-variant-numeric:tabular-nums;color:var(--wg-dim)}
+.m-ir-row{display:flex;align-items:center;gap:10px}
+.m-ir-tick{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--m-ok)}
+.m-ir-tick svg{width:16px;height:16px;fill:none;stroke:var(--mo-on-ok);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.m-ir-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.m-ir-sq{position:relative;animation-delay:calc(var(--i,0) * 65ms);aspect-ratio:1;border-radius:8px;overflow:hidden;background:color-mix(in srgb,var(--wg-dim) 22%,transparent)}
+.m-ir-sq .mo-scan{position:absolute;inset:0}
+.m-ir-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;animation:mo-land var(--mo-land) var(--mo-ease) both}
+:is(.motion-off,.cm-rest) .m-ir-img,:is(.motion-off,.cm-rest) .m-ir-sq{animation:none}
+@media (prefers-reduced-motion:reduce){.m-ir-img,.m-ir-sq{animation:none}}
+

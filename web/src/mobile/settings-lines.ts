@@ -33,7 +33,7 @@ export function syncLine(o: { signedIn: boolean; lamp: string; wifiOnly: boolean
 export const phoneLine = (solo: boolean, fingerprint: string, words?: LineWords): string => solo ? (words?.('settings.phone.solo') ?? 'Saving here · a PC is optional') : (words?.('settings.phone.paired', { fingerprint }) ?? `Paired · key ${fingerprint}`)
 
 // Wiskit on this phone: `provider` is the key's provider label (Anthropic, OpenAI), '' without a key
-export const aiLine = (provider: string, solo: boolean, words?: LineWords): string => provider ? (words?.('settings.keys.providerLine', { provider }) ?? `${provider} on your key`) : solo ? (words?.('settings.keys.noKey') ?? 'No AI key yet') : (words?.('settings.keys.pairKey') ?? 'No AI key · pair again')
+export const aiLine = (provider: string, solo: boolean, words?: LineWords): string => provider ? (words?.('settings.keys.providerLine', { provider }) ?? `Using your ${provider} API key`) : (words?.('settings.keys.noKey') ?? 'No AI key yet')
 
 // Obsidian: the vault name, then the vault lamp while the vault syncs with the PC (Android app, paired)
 export function vaultLine(o: { name: string; syncing: boolean; lamp: string }, words?: LineWords): string {

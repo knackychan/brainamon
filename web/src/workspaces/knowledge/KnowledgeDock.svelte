@@ -14,7 +14,6 @@
   import { confirmWin, promptWin } from '../../lib/windows.svelte'
   import Button from '../../components/ui/Button.svelte'
 
-  let q = $state('')
   let cat = $state('')
   $effect(() => { if (!cat && lib.cats.length) cat = lib.cats[0].name })
 
@@ -29,18 +28,18 @@
   const SORTS: [typeof ks.sort, string][] = [['updated', 'Updated'], ['created', 'Created'], ['az', 'A to Z']]
   const kindShort = (k: string) => (k === 'Personal' ? 'mine' : k === 'Topic digest' ? 'topic' : 'wiki')
 
-  function find(e: SubmitEvent) { e.preventDefault(); if (!q.trim()) return; ks.topicId = null; searchSources(q) }
+  function find(e: SubmitEvent) { e.preventDefault(); if (!ks.sourceQuery.trim()) return; ks.topicId = null; searchSources(ks.sourceQuery) }
   function pickTopic(id: number) {
     const t = ks.topics.find(x => x.id === id)
     if (!t) return
     ks.topicId = id
-    q = t.query
+    ks.sourceQuery = t.query
     searchSources(t.query)
     if (t.note_path) openNote(t.note_path)
   }
   async function add() {
     const v = await promptWin({
-      title: 'Follow a topic', code: 'TOP-24', label: 'Topic', value: q || ks.q, ok: 'Follow',
+      title: 'Follow a topic', code: 'TOP-24', label: 'Topic', value: ks.sourceQuery || ks.q, ok: 'Follow',
       hint: 'Refresh digest writes a standing note, data/notes/topic-<name>.md, and only reads items it has not digested yet.',
       check: v => (!v ? 'Enter a topic.' : ks.topics.some(t => t.name.toLowerCase() === v.toLowerCase()) ? 'You already follow that topic.' : null),
     })
@@ -68,7 +67,7 @@
     onclick={() => (missing ? startJob('index', { ids: lib.rows.filter(r => r.nd & NEED.index).map(r => r.id) }) : null)}>{missing ? `Index ${missing} missing` : 'All indexed'}</Button></div>
 </Wg>
 <Wg cls="s6" id="kfind" title="Find sources" jp="検索">
-  <form class="kq" onsubmit={find}><label class="sr" for="kq">Topic</label><input class="tin" id="kq" placeholder="a topic, e.g. knee" autocomplete="off" spellcheck="false" enterkeyhint="search" bind:value={q} /><Button kind="tool" variant="pri" type="submit">Search</Button></form>
+  <form class="kq" onsubmit={find}><label class="sr" for="kq">Topic</label><input class="tin" id="kq" placeholder="a topic, e.g. knee" autocomplete="off" spellcheck="false" enterkeyhint="search" bind:value={ks.sourceQuery} /><Button kind="tool" variant="pri" type="submit">Search</Button></form>
   <div class="krow"><span class="wg-l">Cap</span><div class="wseg" role="group" aria-label="Most sources to load">{#each CAPS as c (c)}<button type="button" aria-pressed={ks.cap === c} onclick={() => setCap(c)}>{c}</button>{/each}</div></div>
   <div class="krow"><label class="wg-l" for="kcat">Or a collection</label><select class="tsel" id="kcat" bind:value={cat}>{#each lib.cats as c (c.name)}<option>{c.name}</option>{/each}</select><Button kind="tool" onclick={() => loadCategory(cat)}>Load</Button></div>
 </Wg>
@@ -87,7 +86,7 @@
     <Button kind="tool" onclick={remove}><Px name="trash" />Remove</Button>
   </div>
 </Wg>
-<Wg cls="s6" id="knotes" title="Saved notes" jp="ノート" n={ks.notes.length}>
+<Wg cls="s6 knowledge-list" id="knotes" title="Saved notes" jp="ノート" n={ks.notes.length}>
   <div class="wseg" role="group" aria-label="Sort the notes">{#each SORTS as [v, l] (v)}<button type="button" aria-pressed={ks.sort === v} onclick={() => sortBy(v)}>{l}</button>{/each}</div>
   <div class="tlist" role="list">
     {#each ks.notes as n (n.file)}

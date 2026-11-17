@@ -17,11 +17,15 @@
   import { requestLabel, reviewRequest } from '../lib/job-requests'
   import { progress } from '../lib/progress'
   import { toast } from '../lib/ui.svelte'
+  import Count from '../lib/motion/Count.svelte'
+  import Progress from './ui/Progress.svelte'
   import Button from './ui/Button.svelte'
   import KeyIcon from './ui/KeyIcon.svelte'
 
   const job = $derived(live.jobs.current)
   const last = $derived(live.jobs.last)
+  const held = $derived(live.finished)
+  const finishText = $derived(held ? [held.done ? `${held.done} done` : '', held.err ? `${held.err} failed` : '', held.skipped ? `${held.skipped} skipped` : ''].filter(Boolean).join(' · ') : '')
   const request = $derived(live.jobs.request?.state === 'pending' ? live.jobs.request : null)
   const n = $derived(job ? job.done + (job.skipped ?? 0) + job.err : 0)
   const lit = $derived(job && job.total ? Math.min(12, Math.floor(12 * n / job.total)) : 0)
@@ -73,15 +77,20 @@
   </div>
 {/snippet}
 
-<section class="wg rjobs" class:on={!!job || uploading || !!request} aria-labelledby="h-rjobs">
-  <header class="wg-hd"><h2 id="h-rjobs">Jobs</h2><span class="n" role="status">{job ? (paused ? 'Paused' : 'Running') : request ? 'Pending approval' : drive?.kind === 'paused' ? 'Paused' : drive?.kind === 'busy' || vaultBusy ? 'Uploading' : drive || mirrorMove || vaultMove ? 'Drive' : 'Idle'}</span></header>
+<section class="wg rjobs" class:on={!!job || uploading || !!request || !!held} class:fin={!job && !request && !!held} aria-labelledby="h-rjobs">
+  <header class="wg-hd"><h2 id="h-rjobs">Jobs</h2><span class="n" role="status">{job ? (paused ? 'Paused' : 'Running') : request ? 'Pending approval' : held ? 'Done' : drive?.kind === 'paused' ? 'Paused' : drive?.kind === 'busy' || vaultBusy ? 'Uploading' : drive || mirrorMove || vaultMove ? 'Drive' : 'Idle'}</span></header>
   {#if request}
     <p class="rj-row"><b class="rj-k">PENDING</b><span class="l" title={`${request.source}: ${requestLabel(request)}`}>{requestLabel(request)}</span></p>
     <p class="rj-step">{request.source} · awaiting your approval</p>
     <div class="rj-keys"><Button onclick={reviewRequest}>Review request</Button></div>
   {/if}
+  {#if held}
+    <p class="rj-row rj-done"><b class="rj-k">{short(held.kind)}</b><span class="l">{held.label}</span><span class="rj-ok mo-pop">✓ {held.done + held.skipped + held.err}/{held.total}</span></p>
+    <Progress label={`${held.label} finished`} done />
+    <p class="rj-row rj-fin"><span class="l">{finishText}</span>{#if !job}<Button onclick={() => runCmd('progress')}>Progress</Button>{/if}</p>
+  {/if}
   {#if job}
-    <p class="rj-row"><b class="rj-k">{short(job.kind)}</b><span class="l">{job.label}{job.auto ? ' · auto' : ''}</span><span class="c">{n}/{job.total}</span></p>
+    <p class="rj-row"><b class="rj-k">{short(job.kind)}</b><span class="l">{job.label}{job.auto ? ' · auto' : ''}</span><Count class="c" value={n} fmt={v => `${v}/${job.total}`} jump={job.id} /></p>
     {#if job.total > 1}
       <div class="prog" role="progressbar" aria-label={`${job.label} progress`} aria-valuemin="0" aria-valuemax={job.total} aria-valuenow={n}>
         {#each { length: 12 } as _, i (i)}<i class:lit={i < lit} class:lead={i === lead}></i>{/each}
@@ -98,7 +107,7 @@
     </div>
     {#if job.err}<p class="rj-err">{job.err} failed</p>{/if}
     {#if job.skipped}<p class="rj-step">{job.skipped} skipped · Nothing to describe yet: open it online once or add a note.</p>{/if}
-  {:else if !request}
+  {:else if !request && !held}
     <p class="rj-row rj-idle"><span class="l">idle{last ? ` · last: ${short(last.kind)} ${last.done}/${last.total}${last.skipped ? `, ${last.skipped} skipped` : ''}${last.err ? `, ${last.err} failed` : ''}${last.state === 'stopped' ? ', stopped' : ''}` : ''}</span>
       {#if last}<Button onclick={() => runCmd('progress')}>Progress</Button>{/if}</p>
   {/if}

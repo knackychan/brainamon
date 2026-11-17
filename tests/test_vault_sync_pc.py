@@ -94,6 +94,33 @@ class VaultSyncPcTest(unittest.TestCase):
         self.svc._vault_force = force
         self.svc._vault_round(self.drive, self.key, self.pc, owner=owner)
 
+    def test_automatic_rounds_wait_after_slow_success_brake_and_failure(self):
+        for outcome in ('idle', 'brake', 'error'):
+            with self.subTest(outcome=outcome):
+                stop, now, starts, ends = threading.Event(), [0.0], [], []
+
+                def tick():
+                    starts.append(now[0])
+                    now[0] += S.VAULT_EVERY + 15
+                    ends.append(now[0])
+                    self.svc.st['vault_state'] = outcome
+                    if len(starts) == 2:
+                        stop.set()
+                    if outcome == 'error':
+                        raise RuntimeError('synthetic failed round')
+
+                def wait(seconds):
+                    now[0] += seconds
+                    self.assertLess(now[0], 300, 'automatic round never resumed')
+
+                with mock.patch.object(S.time, 'monotonic', side_effect=lambda: now[0]), \
+                     mock.patch.object(self.svc, '_vault_tick', side_effect=tick), \
+                     mock.patch.object(self.svc, '_vault_announce'), \
+                     mock.patch.object(self.svc._vault_wake, 'wait', side_effect=wait):
+                    self.svc._vault_loop(stop)
+                self.assertEqual(len(starts), 2)
+                self.assertGreaterEqual(starts[1] - ends[0], S.VAULT_EVERY)
+
     def owner_vault(self, root=None, **pages):
         """Make `root` (self.pc) a Brainamon-owned vault: a manifest and exactly these generated pages, tracking
         removals as the render does with vault sync on. Returns the manifest."""

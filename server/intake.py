@@ -43,6 +43,8 @@ applied, so the phone drops its pending copy and a file seen twice is skipped. R
 - Notes land in data/notes/ as personal notes under the phone's file name. When the PC edited the
   note after the phone read it and the PC's edit is newer, or the file is not a personal note,
   the phone's text is kept beside it as "<title> (from phone)" instead of overwriting.
+  Successive autosaves from the same phone and mirror revision update its unchanged saved copy;
+  `phone_edit` records that origin and a digest so actual PC edits still keep both versions.
 - An addition (note_append) is one "## From <name> - <when>" section at the end of the PC's current
   note (knowledge/filing.py add_section): only the new text travels, so nothing the PC wrote is touched.
   A note gone on the PC (or not a My Note) keeps the text in a new "<title> (from phone)" note.
@@ -188,7 +190,7 @@ def apply(db, doc: dict, out: Applied | None = None) -> Applied:
                                                          'state': 'refused', 'reason': _canvas_reason(e),
                                                          'hash': digest}
             elif op == 'note':
-                wrote_notes |= _note(db, ch, at, out)
+                wrote_notes |= _note(db, ch, at, out, device)
             elif op == 'note_append':
                 wrote_notes |= _note_append(db, ch, out)
             elif op == 'note_delete':
@@ -490,7 +492,12 @@ def _category_batch(db, ch: dict, alias: dict, out: Applied) -> None:
     out.item_ids.extend(id for _, id in put if id not in out.item_ids)
 
 
-def _note(db, ch: dict, at: int, out: Applied) -> bool:
+def _note_digest(meta: dict, body: str) -> str:
+    state = {k: v for k, v in meta.items() if k != 'phone_edit'}
+    return hashlib.sha256(json.dumps([state, body], sort_keys=True).encode('utf-8')).hexdigest()
+
+
+def _note(db, ch: dict, at: int, out: Applied, device: str) -> bool:
     notes_dir = Path(db.notes_dir)
     notes_dir.mkdir(parents=True, exist_ok=True)
     title = str(ch.get('title') or '').strip() or 'Phone note'
@@ -500,21 +507,28 @@ def _note(db, ch: dict, at: int, out: Applied) -> bool:
     file = str(ch.get('file') or '')
     path = notes_dir / file if _NOTE_FILE.match(file) else None
     if path is not None and path.exists():
-        meta, _ = knowledge.split_frontmatter(path.read_text(encoding='utf-8'))
+        meta, old_body = knowledge.split_frontmatter(path.read_text(encoding='utf-8'))
         pc_edit = meta.get('updated') or meta.get('created') or ''
         mine = meta.get('kind') == 'personal'
-        if mine and (pc_edit == str(ch.get('was') or '') or _ts(pc_edit) <= at - SKEW):
-            _before(db, path)
-            my_notes.save_note(path, title, category or meta.get('category') or '', body, stamps)
-            out.notes.append(path.name)
-            return True
-        path = None                        # the PC's note is newer (or not a My Note): keep both
-        title = f'{title} (from phone)'
-        out.kept_pc += 1
+        try:
+            previous = json.loads(meta.get('phone_edit', 'null'))
+        except ValueError:
+            previous = None
+        # Autosaves can share a stale mirror revision; only continue if nobody changed the saved phone copy.
+        continuation = previous == [device, str(ch.get('was') or ''), _note_digest(meta, old_body)]
+        if mine and (continuation or pc_edit == str(ch.get('was') or '') or _ts(pc_edit) <= at - SKEW):
+            category = category or meta.get('category') or ''
+        else:
+            path = None                    # the PC's note is newer (or not a My Note): keep both
+            title = f'{title} (from phone)'
+            out.kept_pc += 1
     if path is None:
         path = _made(db, lambda: my_notes.create_note(notes_dir, title, category))
     _before(db, path)                      # a phone file name new on this PC (one made here is listed already)
     my_notes.save_note(path, title, category, body, stamps)
+    meta, saved_body = knowledge.split_frontmatter(path.read_text(encoding='utf-8'))
+    meta['phone_edit'] = json.dumps([device, str(ch.get('was') or ''), _note_digest(meta, saved_body)])
+    my_notes._write(path, meta, saved_body)
     out.notes.append(path.name)
     return True
 

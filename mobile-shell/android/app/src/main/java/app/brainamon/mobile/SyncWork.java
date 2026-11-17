@@ -35,6 +35,7 @@ public final class SyncWork extends Worker {
     static Constraints constraints(JSONObject p) {
         Constraints.Builder b=new Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED);
         if(p.optBoolean("wifiOnly",true))b.setRequiredNetworkRequest(new NetworkRequest.Builder()
+            .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI).addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET).build(),NetworkType.CONNECTED);
         return b.build();

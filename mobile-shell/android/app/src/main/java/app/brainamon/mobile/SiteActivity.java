@@ -9,7 +9,6 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.TypedValue;
-import android.view.Gravity;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.GeolocationPermissions;
@@ -20,9 +19,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.Button;
-import android.widget.LinearLayout;
-import android.widget.TextView;
+import android.widget.FrameLayout;
 import androidx.activity.EdgeToEdge;
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
@@ -66,24 +63,27 @@ import org.json.JSONObject;
  * never kept, logged or sent.
  */
 public class SiteActivity extends AppCompatActivity {
-    static final String EXTRA_SITE = "site", EXTRA_FULL = "full", EXTRA_COMPLETE = "complete";
+    static final String EXTRA_SITE = "site", EXTRA_FULL = "full", EXTRA_COMPLETE = "complete",
+        EXTRA_LABELS = "labels", EXTRA_MOTION = "motion";
     static volatile boolean open = false;
 
     private static final int MAX_MESSAGE = 256 * 1024, MAX_BATCH = 25, MAX_COUNT = 1000000;
     private static final List<String> PHASES = Arrays.asList("signin", "check", "open", "read", "wait");
     private static final List<String> ENDS = Arrays.asList("end", "known", "empty", "cap", "failure", "unsave-failed", "stop");
+    // the ends the tray shows as a finish (motion language plan 06); every other end closes the window at once
+    private static final List<String> NATURAL = Arrays.asList("end", "known", "empty", "cap");
     private static final Pattern CHROME = Pattern.compile("Chrome/(\\d+)\\.");
     private static final Pattern MAJOR = Pattern.compile("^(\\d+)\\.");
 
     private SiteConfig site;
     private Profile profile;
     private WebView web;
-    private TextView bar;
+    private SiteTray tray;
     private SiteRunFile run;
     private JSONArray knownHashes = new JSONArray();
     private final Set<String> stored = new HashSet<>();
     private final String runId = Long.toHexString(System.currentTimeMillis()) + Long.toHexString(System.nanoTime());
-    private boolean reader, signed, finished, active, unsave, unsaveFailed;
+    private boolean reader, signed, finished, ended, active, unsave, unsaveFailed;
     private String phase = "signin";
     private int added, known, other, dropped;
 
@@ -129,7 +129,8 @@ public class SiteActivity extends AppCompatActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                if (web != null && !"read".equals(phase) && web.canGoBack()) web.goBack();
+                if (tray != null && tray.ended()) tray.press();
+                else if (web != null && !"read".equals(phase) && web.canGoBack()) web.goBack();
                 else finishWith("stop");
             }
         });
@@ -147,26 +148,16 @@ public class SiteActivity extends AppCompatActivity {
         } else web.loadUrl(site.start);
     }
 
-    private LinearLayout layout() {
-        bar = new TextView(this);
-        bar.setTextColor(themeColor(android.R.attr.textColorPrimary, Color.BLACK));
-        bar.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        bar.setMaxLines(2);
-        bar.setPadding(dp(12), dp(8), dp(8), dp(8));
-        Button stop = new Button(this);
-        stop.setText(reader ? "Cancel scan" : "Close");
-        stop.setOnClickListener(v -> finishWith("stop"));
-        LinearLayout top = new LinearLayout(this);
-        top.setOrientation(LinearLayout.HORIZONTAL);
-        top.setGravity(Gravity.CENTER_VERTICAL);
-        top.addView(bar, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        top.addView(stop, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
+    private FrameLayout layout() {
+        FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(themeColor(android.R.attr.colorBackground, Color.WHITE));
-        root.addView(top, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        root.addView(web, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        // edge to edge (forced from Android 15): the bar and the page stay clear of the system bars,
+        // the page never resizes: it keeps the room of the tray's resting height, and the grown tray covers the rest
+        FrameLayout.LayoutParams page = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        page.bottomMargin = dp(SiteTray.collapsedDp());
+        root.addView(web, page);
+        tray = new SiteTray(this, web, root, site.name, reader, getIntent().getStringExtra(EXTRA_LABELS),
+            getIntent().getBooleanExtra(EXTRA_MOTION, true), () -> finishWith("stop"));
+        // edge to edge (forced from Android 15): the page and the tray stay clear of the system bars,
         // the camera cutout and the keyboard
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
             Insets i = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
@@ -313,21 +304,12 @@ public class SiteActivity extends AppCompatActivity {
     }
 
     private void showBar() {
-        if (bar == null) return;
-        String n = site.name, text;
-        if (!reader) text = signed ? "Signed in to " + n + ". Close when done." : "Sign in to " + n + ", then close.";
-        else if ("check".equals(phase)) text = "Finish the check on the page. Reading goes on by itself.";
-        else if ("open".equals(phase)) text = n + ": opening your saved list";
-        else if ("read".equals(phase)) text = n + ": " + added + " new, " + known + " already there";
-        else if ("wait".equals(phase)) text = n + ": paused (offline or in the background)";
-        else text = "Sign in to " + n + ". Reading starts by itself.";
-        if (unsaveFailed) text += ". Unsave unavailable; keeping remaining posts saved.";
-        bar.setText(text);
+        if (tray != null) tray.phase(phase, signed, unsaveFailed);
     }
 
     // the page's messages (scrapers/sites/_runner.js): hello -> init, ping -> signed, status, batch, end
     private void onMessage(WebView view, WebMessageCompat message, Uri origin, boolean isMainFrame, JavaScriptReplyProxy reply) {
-        if (finished) return;
+        if (finished || ended) return;
         String data = isMainFrame && message.getType() == WebMessageCompat.TYPE_STRING ? message.getData() : null;
         if (data == null || data.length() > MAX_MESSAGE) {
             dropped++;
@@ -351,7 +333,7 @@ public class SiteActivity extends AppCompatActivity {
                     break;
                 case "batch":
                     JSONArray items = m.optJSONArray("items");
-                    batch(items);
+                    batch(items, m.optJSONArray("rects"), m.optDouble("vw", 0));
                     JSONArray saved = new JSONArray();
                     if (!finished && items != null && items.length() <= MAX_BATCH) {
                         for (int i = 0; i < items.length(); i++) {
@@ -363,7 +345,7 @@ public class SiteActivity extends AppCompatActivity {
                         .put("urls", saved).toString());
                     break;
                 case "end":
-                    if (ENDS.contains(m.optString("reason"))) finishWith(m.optString("reason"));
+                    if (ENDS.contains(m.optString("reason"))) endWith(m.optString("reason"));
                     else dropped++;
                     break;
                 default:
@@ -384,22 +366,27 @@ public class SiteActivity extends AppCompatActivity {
         unsaveFailed = unsaveFailed || m.optBoolean("unsaveFailed", false);
         known = Math.max(0, Math.min(m.optInt("known", known), MAX_COUNT));
         other = Math.max(0, Math.min(m.optInt("other", other), MAX_COUNT));
+        if (tray != null) tray.counts(added, known);
         showBar();
     }
 
-    private void batch(JSONArray items) {
+    private void batch(JSONArray items, JSONArray rects, double vw) {
         if (items == null || items.length() > MAX_BATCH) {
             dropped++;
             return;
         }
         List<JSONObject> keep = new ArrayList<>();
+        List<Integer> from = new ArrayList<>();
         for (int i = 0; i < items.length(); i++) {
             JSONObject o = SiteRunFile.shape(items.opt(i));
             if (o == null || stored.size() >= SiteRunFile.MAX_ITEMS) {
                 dropped++;
                 continue;
             }
-            if (stored.add(o.optString("url"))) keep.add(o);
+            if (stored.add(o.optString("url"))) {
+                keep.add(o);
+                from.add(i);
+            }
         }
         if (keep.isEmpty()) return;
         try {
@@ -409,8 +396,26 @@ public class SiteActivity extends AppCompatActivity {
             for (JSONObject o : keep) stored.remove(o.optString("url"));
             dropped += keep.size();
             finishWith("failure");
+            return;
+        }
+        // the page's rectangles only place the ghosts of the tray (SiteTray checks every number)
+        if (tray != null) {
+            tray.counts(added, known);
+            tray.batch(keep, from, rects != null && rects.length() <= MAX_BATCH ? rects : null, vw);
         }
         showBar();
+    }
+
+    // a natural end shows the tray's finish and closes on its button; any other end closes the window at once
+    private void endWith(String reason) {
+        if (finished || ended) return;
+        if (tray == null || !reader || !NATURAL.contains(reason)) {
+            finishWith(reason);
+            return;
+        }
+        ended = true;
+        tray.counts(added, known);
+        tray.end(reason, added, known, () -> finishWith(reason));
     }
 
     private void finishWith(String reason) {
@@ -451,6 +456,7 @@ public class SiteActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         open = false;
+        if (tray != null) tray.destroy();
         if (web != null) {
             ViewGroup parent = (ViewGroup) web.getParent();
             if (parent != null) parent.removeView(web);

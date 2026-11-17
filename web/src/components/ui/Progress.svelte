@@ -1,15 +1,16 @@
 <script lang="ts">
   // A job's 12-segment bar (V6 .prog, as in the rail's Jobs): `pct` lights the segments done and sweeps the
   // next one; without `pct` one sweep crosses the whole bar (.prog.busy), for work that cannot be counted.
-  let { label, pct, paused = false }: { label: string; pct?: number; paused?: boolean } = $props()
-  const lit = $derived(pct === undefined ? 0 : Math.min(12, Math.floor(12 * pct / 100)))
+  // `done`: the finished job's bar, every segment green (motion language: the finish that holds, motion.css).
+  let { label, pct, paused = false, done = false }: { label: string; pct?: number; paused?: boolean; done?: boolean } = $props()
+  const lit = $derived(done ? 12 : pct === undefined ? 0 : Math.min(12, Math.floor(12 * pct / 100)))
 </script>
 
-{#if pct === undefined && !paused}
+{#if pct === undefined && !paused && !done}
   <div class="prog busy" role="progressbar" aria-label={label}><i class="lead"></i></div>
 {:else}
-  <div class="prog" role="progressbar" aria-label={label} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-    {#each { length: 12 } as _, i (i)}<i class:lit={i < lit} class:lead={!paused && i === lit}></i>{/each}
+  <div class="prog" class:mo-done={done} role="progressbar" aria-label={label} aria-valuenow={done ? 100 : pct} aria-valuemin={0} aria-valuemax={100}>
+    {#each { length: 12 } as _, i (i)}<i class:lit={i < lit} class:lead={!paused && !done && i === lit}></i>{/each}
   </div>
 {/if}
 

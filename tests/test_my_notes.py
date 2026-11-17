@@ -147,6 +147,18 @@ class MyNotesServerTest(unittest.TestCase):
             time.sleep(0.03)
         self.fail('job did not finish')
 
+    def test_search_matches_full_text_and_respects_category(self):
+        for title, category, body in [('River journal', 'Work', 'x' * 500 + ' Hidden compass.'),
+                                       ('River trip', 'General', 'Hidden compass.'),
+                                       ('Other note', 'Work', 'Nothing matching.')]:
+            note = self.c.post('/api/my-notes', json={'title': title, 'category': category}, headers=W).json()
+            self.c.put('/api/my-notes/' + note['file'], json={'title': title, 'category': category, 'body': body}, headers=W)
+        found = self.c.get('/api/my-notes', params={'category': 'Work', 'q': 'RIVER COMPASS'}).json()
+        self.assertEqual([n['title'] for n in found], ['River journal'])
+        self.assertEqual(len(self.c.get('/api/my-notes', params={'q': 'compass'}).json()), 2)
+        self.assertEqual(self.c.get('/api/my-notes', params={'q': 'no such phrase'}).json(), [])
+        self.assertEqual(len(self.c.get('/api/my-notes', params={'q': '  '}).json()), 3)
+
     def test_crud_and_jobs(self):
         self.c.post('/api/my-notes/categories', json={'name': 'Training'}, headers=W)
         self.assertIn('Training', self.c.get('/api/my-notes/categories').json()['categories'])

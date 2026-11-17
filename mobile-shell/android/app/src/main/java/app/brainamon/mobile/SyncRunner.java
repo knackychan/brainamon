@@ -319,6 +319,8 @@ class SyncRunner implements AutoCloseable {
             JSONObject d=new JSONObject(new String(http("GET",path,null,null,4*1024*1024,!control),StandardCharsets.UTF_8));
             if(d.optBoolean("incompleteSearch") || !d.has("files"))throw new IOException("retry");
             JSONArray rows=d.getJSONArray("files");for(int i=0;i<rows.length();i++)out.put(rows.get(i));
+            if(name==null && progressPhase.equals("drive") && (progressStep.equals("shell.sync.readingIndex") || progressStep.equals("shell.sync.listedIndex")))
+                dispatch("progress",new JSONArray().put("drive").put(0).put(new JSONObject().put("key","shell.sync.listedIndex").put("done",out.length())));
             page=d.optString("nextPageToken");if(!page.isEmpty() && !pages.add(page))throw new IOException("retry");
         }while(!page.isEmpty());return out;
     }

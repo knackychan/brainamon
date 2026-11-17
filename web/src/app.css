@@ -269,14 +269,13 @@
 .mnu .mhd{font:600 10px/1.4 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding-top:12px}
 .mnu .mi:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
 
-/* Running jobs. The card of an item being processed: the drone tag (.drn-tag) names the job and a
-   scan bar runs across the card's bottom edge (the V6 search field's dscan keyframes). Only working
-   cards get the bar, at most 40 at once (lib.scanIds); no idle animation. */
-.job-scan{position:absolute;left:50%;bottom:4px;z-index:2;width:var(--card);height:3px;margin-left:calc(var(--card) / -2);border-radius:2px;pointer-events:none;contain:strict}
-/* the same sweep runs in the front segment of the rail's Jobs bar (RailJobs.svelte), on its unlit track */
-.job-scan,.prog i.lead{background:linear-gradient(90deg,transparent,var(--accent),transparent) 0 0/40% 100% no-repeat;animation:dscan .8s linear infinite}
+/* Running jobs: the drone tag names the job; the shared scan covers the card face.
+   Only working cards get the overlay, at most 40 at once (lib.scanIds); no idle animation. */
+.job-scan{position:absolute;top:14px;left:50%;z-index:2;width:var(--card);aspect-ratio:63/88;margin-left:calc(var(--card) / -2);border-radius:calc(var(--card) * 14 / 300);overflow:hidden;pointer-events:none;contain:layout paint}
+/* the rail's Jobs bar keeps its horizontal sweep on the unlit track */
+.prog i.lead{background:linear-gradient(90deg,transparent,var(--accent),transparent) 0 0/40% 100% no-repeat;animation:dscan .8s linear infinite}
 .prog i.lead{background-color:var(--seg-off)}
-.motion-off .job-scan,.motion-off .prog i.lead{animation:none;background-size:100% 100%}
+.motion-off .prog i.lead{animation:none;background-size:100% 100%}
 
 /* Card focus while a job runs and when it ends. Bigger corner brackets (22px arms, 3px thick) with a
    soft halo and tint: orange and breathing while working, green with a pop when done (held 2.8 s,
@@ -320,6 +319,15 @@
 .rj-run{height:7px;background:linear-gradient(90deg,transparent,var(--accent),transparent) 0 0/40% 100% no-repeat,var(--seg-off);animation:dscan .8s linear infinite}
 .rj-run.held,.motion-off .rj-run{animation:none;background-size:100% 100%,auto;opacity:.5}
 .rj-step{margin:0;font:500 10.5px/1.3 var(--mono);color:var(--wg-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rjobs.fin .wg-hd .n{color:var(--mo-ok-ink)}
+.rj-done .rj-k{background:var(--mo-mint);color:var(--mo-mint-ink)}
+.rj-row .rj-ok{flex:none;font-variant-numeric:tabular-nums;color:var(--mo-ok-ink);font-weight:600}
+.rj-fin .l{color:var(--mo-ok-ink)}
+.tr .c.mo-okc{color:var(--mo-ok-ink)}
+.lamp.mo-pulse{animation:mo-lamp .78s ease-in-out infinite}
+@keyframes mo-lamp{50%{opacity:.45}}
+.motion-off .lamp.mo-pulse{animation:none}
+@media (prefers-reduced-motion:reduce){.lamp.mo-pulse{animation:none}}
 
 /* Knowledge > Connections: the running scan or card synthesis (KnowledgeWs.svelte), a status strip
    under the tools with the job's live step and a scan bar on its bottom edge while it runs */
@@ -380,6 +388,9 @@ html.cm-rest *,html.cm-rest *::before,html.cm-rest *::after{animation-play-state
 #grid.fade>.cell>:not(.sel-mat,.cell-sk){animation:sk-in var(--cell-in) var(--sk-ease) calc(min(var(--i, 0), 30) * var(--cell-step)) backwards}
 #grid img.art{transition:opacity var(--art-in) ease-out}
 #grid img.art:not(.ld){opacity:0}
+#grid .cell.mo-land img.art.ld{animation:mo-land var(--mo-land) var(--mo-ease) both}
+:is(.motion-off,.cm-rest) #grid .cell.mo-land img.art.ld{animation:none}
+@media (prefers-reduced-motion:reduce){#grid .cell.mo-land img.art.ld{animation:none}}
 .sk-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .motion-off .sk-h,.motion-off .sk-l,.motion-off .sk-art{animation:none;background-image:none}
 .motion-off .dock>.dock-sk,.motion-off.cm-boot .dock>.wg>*,.motion-off.cm-boot .jv>*,.motion-off .jv-sk,.motion-off .sk-card,.motion-off #grid.fade>.cell>*{animation:none}
@@ -428,6 +439,25 @@ html.cm-rest *,html.cm-rest *::before,html.cm-rest *::after{animation-play-state
 .ctabs{flex-wrap:wrap;row-gap:4px;overflow-x:visible}
 /* #10 the clock is a glance, not the rail's biggest thing */
 .dock .clk-t{font-size:34px;margin:4px 0 6px}
+/* Let the notes list use the spare rail height while keeping its actions and summary visible. */
+#mods-notes{height:100%;grid-template-rows:auto auto minmax(290px,1fr) auto}
+#mods-notes>.notes-list{min-height:0}
+#mods-notes .tlist{flex:1;min-height:0;max-height:none;align-content:start}
+#mods-know{height:100%;grid-template-rows:auto auto auto minmax(330px,1fr) auto}
+#mods-know>.knowledge-list{min-height:0}
+#mods-know .knowledge-list .tlist{flex:1;min-height:0;max-height:none;align-content:start}
+.ws-n{grid-template-rows:auto minmax(0,1fr);gap:14px}
+.ws-k{grid-template-rows:auto minmax(0,1.25fr) minmax(0,.75fr)}
+.ws-k>.workspace-deck{grid-column:1/-1}
+.workspace-deck .mk:disabled{opacity:.5;cursor:default;transform:none}
+@media (max-width:1599px){
+  .workspace-deck{grid-template-columns:minmax(0,1fr)}
+  .workspace-deck .keys{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+  .workspace-deck .mk{grid-template-columns:auto auto;justify-content:center}
+  .workspace-deck .mk b{display:block}
+}
+@media (max-width:1199px){.ws-k{grid-template-rows:none}}
+@media (max-width:860px){.workspace-deck .keys{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* #13 the card's key strip: 28 px keys (titles are their tooltips), inside the card's lower edge, so
    it never covers the next row or the caption under a small card */
 .cell:not(.lr) .ck-row{top:calc(14px + var(--card) * 88 / 63 - 36px);bottom:auto;right:calc(50% - var(--card) / 2 + 6px)}
@@ -674,3 +704,30 @@ html.cm-rest *,html.cm-rest *::before,html.cm-rest *::after{animation-play-state
 .info-pop::before{content:"";position:absolute;left:0;right:0;top:-10px;height:10px}
 .info-pop a{color:inherit;text-decoration:underline}
 .info-pop code{font:inherit;font-weight:600}
+
+/* Wiskit Deep research (motion language D4, components/WiskitMsg.svelte, lib/research.ts): each tool call is a step
+   with a dot; the items read_items opens arrive as rows that read (.mo-read), then show READ or NOT USED */
+.mo-res{display:grid;gap:6px}
+.mo-res ol{margin:0;padding:0;list-style:none;display:grid;gap:5px}
+.mo-res ol:empty{display:none}
+.mo-step{display:flex;align-items:center;gap:7px;min-width:0;font:var(--type-mo-step);color:var(--lcd-dim)}
+.mo-step b{font-weight:600;color:var(--lcd-ink);font-variant-numeric:tabular-nums}
+.mo-step q{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--lcd-ink)}
+.mo-sdot{flex:none;display:grid;place-items:center;width:15px;height:15px;border:1.5px solid var(--lcd-dim);border-radius:50%;font:var(--type-mo-dot);font-style:normal;color:var(--lcd)}
+.mo-step[data-st="run"] .mo-sdot{border-color:var(--accent);background:var(--accent)}
+.mo-step[data-st="ok"] .mo-sdot{border-color:var(--mo-ok-ink);background:var(--mo-ok-ink)}
+.mo-step[data-st="err"] .mo-sdot{background:var(--lcd-dim)}
+.mo-res ol.mo-srcs{padding-left:22px}
+.mo-src{display:flex;align-items:center;gap:8px;min-width:0;padding:4px 6px 4px 4px;border:1px solid var(--lcd-line);border-radius:6px;background:var(--lcd);font:var(--type-mo-source)}
+.mo-src[data-st="unused"]{opacity:.55}
+.mo-sbx{flex:none;width:24px;height:24px;border-radius:3px;overflow:hidden;background:var(--lcd-2)}
+.mo-sbx img{display:block;width:100%;height:100%;object-fit:cover}
+.mo-sid{flex:none;color:var(--accent);font-weight:600}
+.mo-stl{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.mo-sbd{flex:none;padding:3px 5px;border-radius:3px;font:var(--type-mo-badge);letter-spacing:.06em}
+.mo-src[data-st="reading"] .mo-sbd{background:var(--accent);color:var(--lcd-ink)}
+.mo-src[data-st="read"] .mo-sbd{background:var(--mo-mint);color:var(--mo-mint-ink)}
+.mo-src[data-st="unused"] .mo-sbd{background:var(--lcd-2);color:var(--lcd-dim)}
+.mo-rsum{margin:0;font:var(--type-mo-summary);color:var(--mo-ok-ink)}
+.cm-rest .mo-res .mo-read::after{width:100%;animation:none}
+.cm-rest .m-j .ans .cite.mo-pop{animation:none}

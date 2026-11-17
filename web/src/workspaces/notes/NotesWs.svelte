@@ -5,6 +5,7 @@
   import { readyAfterPaint, ui } from '../../lib/ui.svelte'
   import VoiceRec from '../../components/VoiceRec.svelte'
   import NoteEditor from './NoteEditor.svelte'
+  import NotesDeck from './NotesDeck.svelte'
   import ReformatWin from './ReformatWin.svelte'
 
   onMount(installNotes)
@@ -22,6 +23,7 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
 <main class="ws ws-n" id="ws-notes" role="tabpanel" aria-labelledby="tab-notes" data-ws="notes" hidden={ui.ws !== 'notes'}>
+  <NotesDeck />
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
   <section class="np" aria-labelledby="nt-h" onclick={citation}>
     <header class="np-top">

@@ -793,6 +793,10 @@ public class BrainamonPlugin extends Plugin {
             Intent i = s.openIntent(getContext(), call.getString("site", ""), call.getArray("known", new JSArray()),
                 Boolean.TRUE.equals(call.getBoolean("full", false)), Boolean.TRUE.equals(call.getBoolean("complete", false)));
             i.putExtra("unsave", Boolean.TRUE.equals(call.getBoolean("unsave", false)));
+            // the words of the site window's tray (the page's language) and whether it may move; the window checks both
+            String labels = call.getString("labels", "");
+            if (labels != null && labels.length() <= 16 * 1024) i.putExtra("labels", labels);
+            i.putExtra("motion", !Boolean.FALSE.equals(call.getBoolean("motion", true)));
             startActivityForResult(call, i, "siteClosed");
         } catch (Exception e) {
             siteReject(call, e);

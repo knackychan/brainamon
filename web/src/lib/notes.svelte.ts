@@ -4,6 +4,7 @@ import { api } from './api'
 import { on } from './events.svelte'
 import { jobBusy, jobBusyMsg } from './jobs'
 import { setWS, toast } from './ui.svelte'
+import { promptWin } from './windows.svelte'
 import type { Stamp } from './note-format'
 
 export interface MyNote { file: string; title: string; category: string; created: string; updated: string; body?: string; stamps?: Stamp[]; snippet?: string; head?: string; words?: number }
@@ -12,6 +13,7 @@ const AUTOSAVE_MS = 800
 class Notes {
   categories: string[] = $state.raw([])
   cat = $state('All')
+  q = $state('')
   list: MyNote[] = $state.raw([])
   file: string | null = $state(null)
   title = $state('')
@@ -33,6 +35,7 @@ let version = 0
 let stampVersion = 0
 let opening = 0
 let saving: Promise<boolean> | null = null
+let listing = 0
 
 // the editor's stamp layer (and Apply) change the stamps through this; the autosave sends them
 export function setStamps(s: Stamp[]) {
@@ -46,7 +49,11 @@ export async function loadCategories() {
   try { nt.categories = (await api.get<{ categories: string[] }>('/api/my-notes/categories')).categories } catch { /* keep */ }
 }
 export async function loadList() {
-  try { nt.list = await api.get<MyNote[]>(`/api/my-notes?category=${encodeURIComponent(nt.cat)}`) } catch { /* keep */ }
+  const request = ++listing
+  try {
+    const notes = await api.get<MyNote[]>(`/api/my-notes?category=${encodeURIComponent(nt.cat)}&q=${encodeURIComponent(nt.q)}`)
+    if (request === listing) nt.list = notes
+  } catch { /* keep */ }
 }
 export async function setCat(c: string) {
   nt.cat = c
@@ -120,9 +127,27 @@ async function save(keepalive = false) {
 export async function newNote(title: string) {
   if (!await flush()) return
   const n = await api.post<MyNote>('/api/my-notes', { title, category: nt.cat })
+  nt.q = ''
   await Promise.all([loadCategories(), loadList()])
   await openMyNote(n.file)
   setWS('notes')
+}
+
+export async function promptNewNote() {
+  const title = await promptWin({ title: 'New note', code: 'NTE-43', label: 'Note title', ok: 'Create' })
+  if (title) { try { await newNote(title) } catch (e) { toast((e as Error).message, 'w') } }
+}
+
+export async function pickDigestShots() {
+  if (!nt.file) {
+    const title = await promptWin({ title: 'New note', code: 'NTE-43', label: 'Note title', hint: 'The screenshots are transcribed into this new note.', ok: 'Create' })
+    if (!title) return
+    try { await newNote(title) } catch (e) { toast((e as Error).message, 'w'); return }
+  }
+  const input = document.createElement('input')
+  input.type = 'file'; input.accept = 'image/png,image/jpeg,image/webp,image/bmp,image/gif'; input.multiple = true
+  input.onchange = () => { if (input.files?.length) void digestShots([...input.files]) }
+  input.click()
 }
 // Wiskit's wheel (POST /api/app/note): "write" opens a fresh dated note, "record" shows the empty state and VoiceRec starts at once
 export async function quickNote(mode: 'write' | 'record') {

@@ -20,7 +20,7 @@ class PhoneConnection(unittest.TestCase):
           globalThis.__pair = {e:'pc@example.com',g:'',l:'synthetic-verifier'}
           globalThis.__test = {signed:false,redirect:false,saveFail:false,wrong:false,cancel:false,rows:0,accountSaves:0}
           const modules = {
-            './sync/native.svelte': 'export const nativeSync={supported:false};export const nativeSyncText=()=>"";export const nativeSyncPolicy=async()=>{};export const nativeSyncBarrier=async()=>{}',
+            './sync/native.svelte': 'export const nativeSync={supported:false};export const nativeSyncText=()=>"";export const nativeSyncPolicy=async()=>{};export const nativeSyncBarrier=async()=>{};export const nativeDriveText=()=>"";export const nativePhasePct=()=>null;export const retryNativeSync=async()=>{}',
             './backup.svelte': 'export const backup={busy:false,task:null}',
             '../lib/md': 'export const setCardLookup=()=>{}',
             './source/desktop': 'export class DesktopSource {}',
@@ -29,7 +29,7 @@ class PhoneConnection(unittest.TestCase):
             './mirror/pairing': `const t=globalThis.__test; export const pairing=()=>globalThis.__pair; export const token=p=>t.signed&&p.g?'synthetic-token':null; export const signIn=async()=>{if(t.cancel)throw Error('Google chooser cancelled');if(t.redirect)return false;t.signed=true;return true};export const whoSignedIn=async()=>t.wrong?'wrong@example.com':'pc@example.com';export const confirmAccount=(p,g)=>{t.accountSaves++;p.g=g};export const disconnectDrive=p=>{t.signed=false;delete p.g}; export const triedSilent=()=>true; export const unconfirmedToken=()=>false;export const acceptLink=()=>'';export const newKeyText=()=>'';export const startSolo=()=>{};export const takeFromUrl=()=>{}`,
             './native': `export const isApp=true;export const scanQr=()=>'';export const secretsSaved=async()=>{if(globalThis.__test.saveFail)throw Error('Sign-in could not be saved securely')}`,
             './store': `export const changes={};export const drafts={};export const items={};export const outbox={};export const kv={};export const trimItems=()=>{};export const wipe=()=>{}`,
-            './network.svelte': `export const network={licenseLocked:false,licenseProblem:''};export class SyncPaused extends Error{};export const syncPaused=()=>false;export const syncPauseReason=()=>''`,
+            './network.svelte': `export const network={online:true,licenseLocked:false,licenseProblem:''};export class SyncPaused extends Error{};export const syncPaused=()=>false;export const syncPauseReason=()=>''`,
           }
           registerHooks({resolve(s,c,next){
             if(s==='../sync/native.svelte')return {url:'data:text/javascript,'+encodeURIComponent(modules['./sync/native.svelte']),shortCircuit:true}
@@ -44,6 +44,8 @@ class PhoneConnection(unittest.TestCase):
           const {network} = await import('data:text/javascript,'+encodeURIComponent(modules['./network.svelte']))
           const {LicenseRequired,LICENSE_REQUIRED} = await import('./web/src/mobile/mirror/license.ts')
           const t=globalThis.__test,p=globalThis.__pair
+          network.online=false;assert.equal(S.phone.online,false)
+          network.online=true;assert.equal(S.phone.online,true)
           globalThis.__readError=Error('synthetic refresh failure')
           await S.connectDrive()
           assert.match(S.phone.note,/Google Drive connected/)

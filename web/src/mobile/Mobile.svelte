@@ -47,7 +47,7 @@
   import CaptureKey from './CaptureKey.svelte'
   import { runVault, startVault, vault, watchPc } from './vault/auto.svelte'
   import { syncPaused } from './network.svelte'
-  import { nativeSync } from './sync/native.svelte'
+  import { nativeSync, watchNativeSync } from './sync/native.svelte'
   import Welcome from './Welcome.svelte'
   import Coach from './Coach.svelte'
   import { loadOnb, onb } from './onboard.svelte'
@@ -143,6 +143,7 @@
   onMount(installTraversalGuard)
   onMount(() => { loadOnb() })
   onMount(startVault)              // vault sync rounds (Android app): foreground and every 2 minutes
+  onMount(watchNativeSync)
   // Android's back button: a help dialog or the sync panel closes first; the app leaves only from the Library
   // root; a sheet's root closes the sheet; else one page back when the WebView has one, else up to the parent
   // (a screen opened cold, or after a reload, has nothing behind it)

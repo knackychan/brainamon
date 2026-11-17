@@ -10,6 +10,8 @@ import { on } from './events.svelte'
 import { lib, type Row } from './library.svelte'
 import { soonText } from './commands'
 import { toast, ui } from './ui.svelte'
+import { motionOn } from './motion/motion.ts'
+import { closeResearch, emptyResearch, onTool, researchDone, settle, type Research, type ToolEvent } from './research'
 
 export interface ChatEntry { slug: string; name: string; created?: string; updated?: string; message_count?: number }
 export interface AskOptions {
@@ -26,6 +28,7 @@ export interface WiskitMsg {
   role: 'jarvis'; tag: string; t: string; ctx: string; trace: string[]; text: string; streaming: boolean
   sources: Row[]; cited: number[]; notes: string[]; note?: string; error?: string; q: string; saved?: string
   task?: 'weekly_review'; review?: ReviewMeta; complete?: boolean; saving?: boolean
+  research?: Research                     // Deep only, while this page streams it (lib/research.ts); never saved
 }
 export type Msg = UserMsg | WiskitMsg
 // an Ask attachment (POST /api/ask/attach): a data/inbox file Wiskit reads with the next question
@@ -218,7 +221,7 @@ export async function askWiskit(question: string, reviewRequest?: ReviewRequest)
     if (ask.problem) await refreshAskOptions()      // a key may have been added since the options were read
     const files = ask.atts.map(a => a.id)
     ask.msgs.push({ role: 'user', text: q, t: hhmm(), ...(files.length ? { files: ask.atts.map(a => a.name) } : {}) })
-    ask.msgs.push({ role: 'jarvis', tag: reviewRequest ? 'Weekly review' : ask.mode === 'claude_code' ? 'claude code' : ask.mode, t: hhmm(), ctx: 'Reading the library…', trace: [], text: '', streaming: true, sources: [], cited: [], notes: [], q, ...(reviewRequest ? { task: 'weekly_review' as const, complete: false } : {}) })
+    ask.msgs.push({ role: 'jarvis', tag: reviewRequest ? 'Weekly review' : ask.mode === 'claude_code' ? 'claude code' : ask.mode, t: hhmm(), ctx: 'Reading the library…', trace: [], text: '', streaming: true, sources: [], cited: [], notes: [], q, ...(reviewRequest ? { task: 'weekly_review' as const, complete: false } : ask.mode === 'deep' ? { research: emptyResearch() } : {}) })
     m = ask.msgs[ask.msgs.length - 1] as WiskitMsg
     if (ask.problem) {                              // no key: say so here, no request
       m.streaming = false
@@ -254,8 +257,10 @@ export async function askWiskit(question: string, reviewRequest?: ReviewRequest)
   } finally {
     if (m) {
       m.streaming = false
+      if (m.research && m.research.read === null) m.research = closeResearch(m.research, 'err')
       if (m.error || m.note === 'Stopped.') ask.pet = m.error ? 'sad' : 'idle'
     }
+    clearTimeout(readTimer)
     ask.busy = false
     ask.ctl = null
     ask.run = ''
@@ -272,7 +277,10 @@ function onEvent(m: WiskitMsg, ev: string, d: any) {
     }
   }
   else if (ev === 'context') { m.ctx = d.line; if (d.list) m.tag += ' · list' }
-  else if (ev === 'progress') m.trace.push(d.line)
+  else if (ev === 'progress') { if (d.tool == null || !m.research) m.trace.push(d.line) }   // a research call shows as a step
+  else if (ev === 'tool') {
+    if (m.research) { m.research = onTool(m.research, d as ToolEvent, performance.now(), id => lib.byId.has(id)); readSoon(m) }
+  }
   else if (ev === 'reset') { m.text = ''; m.cited = []; m.notes = []; m.sources = []; setCited([]) }          // Claude Code mode: the text so far led into a tool call
   else if (ev === 'chunk') { m.text += d.text; if (ask.pet !== 'talk') ask.pet = 'talk' }
   else if (ev === 'done') {
@@ -284,6 +292,7 @@ function onEvent(m: WiskitMsg, ev: string, d: any) {
       m.complete = true
       if (d.review) m.review = d.review as ReviewMeta
     }
+    if (m.research) m.research = researchDone(m.research, d.cited)
     setCited(d.cited)
     if (m.task !== 'weekly_review') ask.atts = []   // read: the chat history keeps their text for follow-ups
     ask.slug = d.chat.slug
@@ -293,6 +302,17 @@ function onEvent(m: WiskitMsg, ev: string, d: any) {
     refreshChats()
   } else if (ev === 'stopped') m.note = 'Stopped.'
   else if (ev === 'error') m.error = d.message
+}
+
+// a source row reads once its call delivered it and its fill has run (lib/research.ts settle); motion off, rest or
+// reduced motion: at once. One timer: one answer streams at a time.
+let readTimer: ReturnType<typeof setTimeout> | undefined
+function readSoon(m: WiskitMsg) {
+  clearTimeout(readTimer)
+  if (!m.research) return
+  const { research, wait } = settle(m.research, motionOn() ? performance.now() : Infinity)
+  if (research !== m.research) m.research = research
+  if (wait >= 0) readTimer = setTimeout(() => readSoon(m), wait)
 }
 
 export function stopAsk() {

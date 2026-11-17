@@ -5,11 +5,12 @@
   import Tr from '../library/dock/Tr.svelte'
   import Wg from '../library/dock/Wg.svelte'
   import Px from '../../lib/Px.svelte'
-  import { addCategory, deleteMyNote, digestShots, newNote, nt, openMyNote, renameCategory, setCat, summarize, summaryLine } from '../../lib/notes.svelte'
+  import { addCategory, deleteMyNote, pickDigestShots, promptNewNote, nt, openMyNote, renameCategory, setCat, summarize, summaryLine } from '../../lib/notes.svelte'
   import { DEFAULT_CATEGORY, cleanCategory, otherNamed } from '../../lib/note-category'
   import { toast } from '../../lib/ui.svelte'
   import { confirmWin, promptWin } from '../../lib/windows.svelte'
   import Button from '../../components/ui/Button.svelte'
+  import { api } from '../../lib/api'
 
   const words = $derived(nt.body.trim() ? nt.body.trim().split(/\s+/).length : 0)
   const st = $derived({ saved: 'Saved', pending: 'Editing', saving: 'Saving', error: 'Not saved' }[nt.status])
@@ -25,31 +26,17 @@
     const check = (v: string) => { try { cleanCategory(v); return null } catch (e) { return (e as Error).message } }
     const v = await promptWin({ title: `Rename “${from}”`, code: 'NTE-45', label: 'Category name', value: from, ok: 'Rename', check })
     if (v == null) return
-    const name = cleanCategory(v), other = otherNamed(nt.categories, name, from), n = nt.list.length
+    const name = cleanCategory(v), other = otherNamed(nt.categories, name, from)
+    const n = nt.q.trim() ? (await api.get<unknown[]>(`/api/my-notes?category=${encodeURIComponent(from)}`)).length : nt.list.length
     if (other && !await confirmWin({ title: 'Move notes?', code: 'NTE-46', ok: 'Move notes', msg: `${other} already exists. Move ${n} note${n === 1 ? '' : 's'} into it?` })) return
     const to = other ?? name
     if (to === from) return
     try { await renameCategory(from, to) } catch (e) { toast((e as Error).message, 'w') }
   }
-  async function create() {
-    const v = await promptWin({ title: 'New note', code: 'NTE-43', label: 'Note title', ok: 'Create' })
-    if (v) { try { await newNote(v) } catch (e) { toast((e as Error).message, 'w') } }
-  }
   async function del() {
     if (!nt.file) { toast('Open a note first', 'w'); return }
     const ok = await confirmWin({ title: `Delete “${nt.title}”?`, code: 'NTE-44', danger: true, ok: 'Delete note', msg: `Permanently delete data/notes/${nt.file}?`, detail: 'This cannot be undone.' })
     if (ok) await deleteMyNote()
-  }
-  async function shot() {
-    if (!nt.file) {
-      const v = await promptWin({ title: 'New note', code: 'NTE-43', label: 'Note title', hint: 'The screenshots are transcribed into this new note.', ok: 'Create' })
-      if (!v) return
-      await newNote(v)
-    }
-    const inp = document.createElement('input')
-    inp.type = 'file'; inp.accept = 'image/png,image/jpeg,image/webp,image/bmp,image/gif'; inp.multiple = true
-    inp.onchange = () => { if (inp.files?.length) digestShots([...inp.files]) }
-    inp.click()
   }
 </script>
 
@@ -66,17 +53,17 @@
   </div>
   <div class="tkeys"><Button kind="tool" variant="pri" onclick={add}><Px name="plus" />Add category</Button><Button kind="tool" disabled={nt.cat === 'All' || nt.cat === DEFAULT_CATEGORY} onclick={rename}>Rename</Button></div>
 </Wg>
-<Wg cls="s6" id="nlist" title="Notes" jp="ノート" n={nt.list.length}>
+<Wg cls="s6 notes-list" id="nlist" title="Notes" jp="ノート" n={nt.list.length}>
   <div class="tlist" role="list">
     {#each nt.list as n (n.file)}
       <button type="button" class="trow" aria-current={n.file === nt.file} title={`data/notes/${n.file}`} onclick={() => openMyNote(n.file)}><span class="l">{n.title || 'Untitled'}</span><span class="c">{n.category} · {n.updated.slice(5, 10)}</span></button>
     {:else}
-      <p class="wg-sub">No notes in {nt.cat === 'All' ? 'any category' : nt.cat} yet.</p>
+      <p class="wg-sub">{nt.q.trim() ? 'No notes match your search.' : `No notes in ${nt.cat === 'All' ? 'any category' : nt.cat} yet.`}</p>
     {/each}
   </div>
   <div class="tkeys">
-    <Button kind="tool" variant="pri" onclick={create}><Px name="plus" />New</Button>
-    <Button kind="tool" onclick={shot}><Px name="img" />Digest screenshot</Button>
+    <Button kind="tool" variant="pri" onclick={promptNewNote}><Px name="plus" />New</Button>
+    <Button kind="tool" onclick={pickDigestShots}><Px name="img" />Digest screenshot</Button>
     <span class="sp"></span>
     <Button kind="tool" aria-disabled={nt.file ? undefined : 'true'} onclick={del}><Px name="trash" />Delete</Button>
   </div>

@@ -83,11 +83,15 @@ async def rename_category(request: Request, body: dict = Body(...)):
 
 
 @router.get('/api/my-notes')
-def notes(request: Request, category: str = my_notes.ALL_CATEGORY):
+def notes(request: Request, category: str = my_notes.ALL_CATEGORY, q: str = ''):
     out = []
+    terms = q.casefold().split()
     for p, meta, body in my_notes.personal_notes(_nd(request)):
         cat = meta.get('category') or my_notes.DEFAULT_CATEGORY
         if category != my_notes.ALL_CATEGORY and cat != category:
+            continue
+        text = f'{meta.get("topic", "")} {cat} {body}'.casefold()
+        if not all(term in text for term in terms):
             continue
         d = _out(p, meta)
         d['stamps'] = note_format.parse_stamps(meta.get(note_format.KEY))

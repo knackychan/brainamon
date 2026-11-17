@@ -21,6 +21,7 @@ const CAPS = ['30', '100', '300', '1000', 'All'] as const
 
 class Know {
   q = $state('')
+  sourceQuery = $state('')
   cap = $state<string>(CAPS.includes((ls.get('cm-v6-kcap') ?? '') as any) ? ls.get('cm-v6-kcap')! : '30')
   cat = $state('')
   items: Row[] = $state.raw([])
@@ -54,25 +55,38 @@ export function klog(line: string) {
 export async function searchSources(q = ks.q) {
   q = q.trim()
   if (!q) { toast('Enter a topic to search.', 'w'); return }
-  ks.q = q; ks.cat = ''; ks.loading = true
+  const request = ++sourceRequest
+  ks.q = q; ks.sourceQuery = q; ks.cat = ''; ks.loading = true
   try {
     const r = await api.post<{ items: Row[]; mode: string; notes: { file: string }[] }>(
       '/api/knowledge/sources', { topic: q, limit: ks.cap === 'All' ? 100000 : +ks.cap, smart: true })
+    if (request !== sourceRequest) return
     ks.items = r.items; ks.mode = r.mode; ks.tick.clear()
     ks.noteMatches = r.notes.map(n => n.file)
     klog(`Search “${q}” · ${r.items.length} source(s) · ${r.mode === 'hybrid' ? 'keyword + meaning' : 'keyword (every word)'}`)
-  } catch (e) { toast((e as Error).message, 'w') } finally { ks.loading = false }
+  } catch (e) { if (request === sourceRequest) toast((e as Error).message, 'w') }
+  finally { if (request === sourceRequest) ks.loading = false }
+}
+
+let sourceRequest = 0
+export function clearSources() {
+  sourceRequest++
+  ks.q = ''; ks.sourceQuery = ''; ks.cat = ''; ks.loading = false
+  ks.items = []; ks.mode = ''; ks.tick.clear(); ks.noteMatches = []
 }
 
 export async function loadCategory(name: string) {
   if (!name) return
+  const request = ++sourceRequest
   ks.loading = true
   try {
     const r = await api.get<{ items: Row[] }>('/api/knowledge/category/' + encodeURIComponent(name))
+    if (request !== sourceRequest) return
     const cap = ks.cap === 'All' ? Infinity : +ks.cap
     ks.items = r.items.slice(0, cap); ks.cat = name; ks.mode = 'collection'; ks.tick.clear(); ks.noteMatches = []
     klog(`Loaded collection ${name} · ${r.items.length} item(s)${r.items.length > cap ? `, capped at ${cap}` : ''}`)
-  } catch (e) { toast((e as Error).message, 'w') } finally { ks.loading = false }
+  } catch (e) { if (request === sourceRequest) toast((e as Error).message, 'w') }
+  finally { if (request === sourceRequest) ks.loading = false }
 }
 
 export function setCap(c: string) {

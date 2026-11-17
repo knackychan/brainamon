@@ -5,6 +5,7 @@ import { freeSpace, offline } from './offline.svelte'
 import { driveStatus, measurePend, mirrorSource, phone, source } from './state.svelte'
 import { syncPaused } from './network.svelte'
 import { vault } from './vault/auto.svelte'
+import { nativeSync } from './sync/native.svelte'
 
 export const settings = $state({
   use: null as Awaited<ReturnType<typeof storageUse>> | null,
@@ -33,6 +34,7 @@ export const savedBytes = () => offline.saved.reduce((a, s) => a + (s.size ?? 0)
 export const storageTotal = () => settings.use ? settings.use.light + settings.use.thumbBytes + settings.use.fullBytes + savedBytes() : 0
 
 export function vaultLamp(): string {
+  if (vault.opts.on && nativeSync.supported && ['idle', 'attention'].includes(nativeSync.state) && !syncPaused()) return nativeSync.state === 'idle' ? 'in step' : 'error'
   return vault.opts.on && syncPaused() ? 'paused' : vault.stopping ? 'stopping' : vault.busy ? 'syncing' : vault.queued ? 'queued'
     : !vault.opts.uri ? 'no folder' : !vault.opts.on ? 'off' : !driveStatus().ok ? 'needs Drive' : vault.brake ? 'held'
     : vault.outcome === 'error' ? 'error' : vault.outcome === 'waiting' ? 'waiting for PC' : vault.outcome === 'ok' ? 'in step' : 'not run yet'

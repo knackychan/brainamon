@@ -98,6 +98,27 @@ async function hashCards(cards) {
   return out
 }
 
+// where each new post's picture sits in the window now, for the app's tray (motion language plan 06): one
+// [left, top, width, height] in CSS px per item, or null when no visible image carries the item's picture. Pure
+// (`imgs` is document.images, `vw`/`vh` the window), guarded, and only a hint: the app checks every number again.
+function rectsOf(items, imgs, vw, vh) {
+  var out = []
+  try {
+    for (var i = 0; i < items.length; i++) {
+      var pic = String(items[i].pic || ''), r = null
+      for (var j = 0; pic && j < imgs.length && !r; j++) {
+        var im = imgs[j]
+        if (String(im.currentSrc || '').slice(0, 2000) !== pic && String(im.src || '').slice(0, 2000) !== pic) continue
+        var b = im.getBoundingClientRect()
+        if (b.width >= 8 && b.height >= 8 && b.right > 0 && b.bottom > 0 && b.left < vw && b.top < vh)
+          r = [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]
+      }
+      out.push(r)
+    }
+  } catch (e) { return [] }
+  return out
+}
+
 // ── the page (Node never gets here) ──
 function sleep(ms) {
   return new Promise(function (res) { setTimeout(res, ms) })
@@ -225,7 +246,9 @@ async function main(port) {
     for (var b = 0; b < r.send.length; b += BATCH) {
       var items = r.send.slice(b, b + BATCH)
       receipt = null
-      post({ t: 'batch', batch: ++batchId, items: items })
+      var vw = 0
+      try { vw = Math.round(window.innerWidth) || 0 } catch (e) { vw = 0 }
+      post({ t: 'batch', batch: ++batchId, items: items, rects: rectsOf(items, document.images, vw, window.innerHeight), vw: vw })
       if (!removing) continue
       // The native reply is sent only after SiteRunFile.append has synced the results to disk.
       for (var ack = 0; ack < 150 && receipt === null; ack++) await sleep(100)
@@ -257,8 +280,9 @@ async function main(port) {
     }
     status('read')
     if (r.stop) return end(r.stop)
+    await sleep(400)          // the app copies the pictures it was told about before the page moves
     scroll()
-    await sleep(1200 + Math.random() * 600)
+    await sleep(800 + Math.random() * 600)
   }
 }
 

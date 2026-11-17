@@ -25,6 +25,21 @@ The app is the same page as the PWA. What it adds is native, in one plugin
 
 ## Build
 
+On Windows, double-click `ANDROID-TOOL.cmd` in the repository root for a small
+build/install window (Python with Tkinter required, no extra Python packages).
+It can build the Contributor debug APK or a signed release APK + AAB using the
+existing build scripts. Release signing needs your existing keystore, alias and
+password; passwords are passed to the build in memory and never saved. Build
+prerequisites remain Node/npm, JDK 21 and the Android SDK.
+
+Use **Browse** next to **APK to install** to choose any existing APK, or build one
+to select it automatically. Enable USB debugging on your phones and accept the
+USB authorization prompt, then **Refresh devices**, select phones (Ctrl-click for
+several), and **Install on selected devices**. Installation updates in place;
+signature/version conflicts appear in the log and never trigger an uninstall.
+An upload-key APK cannot update a Play-signed installation; use the Contributor
+build for side-by-side testing. Signed outputs are in `dist/android/`.
+
 ```sh
 cd web && npm ci && npm run build          # the phone page
 cd ../mobile-shell && npm ci && npm run sync   # copy it into android/ (scripts/www.mjs + cap sync)

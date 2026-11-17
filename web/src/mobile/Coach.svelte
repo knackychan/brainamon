@@ -19,7 +19,7 @@
 {/if}
 
 <style>
-  .m-coach { position: fixed; z-index: 30; left: 12px; right: 12px; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-radius: 12px; background: var(--ink); color: var(--wg); box-shadow: 0 6px 18px rgba(0, 0, 0, .25) }
+  .m-coach { position: fixed; z-index: 30; left: calc(12px + env(safe-area-inset-left, 0px)); right: calc(12px + env(safe-area-inset-right, 0px)); bottom: calc(70px + env(safe-area-inset-bottom, 0px)); display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-radius: 12px; background: var(--ink); color: var(--wg); box-shadow: 0 6px 18px rgba(0, 0, 0, .25) }
   /* the arrow over the dock's Add key: the key's centre is 33 px from the screen's right edge (10 px gutter +
      23), so 21 px from the bubble's (12 px gutter); the 14 px arrow starts 14 px from it. The bubble's bottom
      (70 px) clears the dock's top (14 + 46 + 3 px edge) by the arrow's 7 px. */

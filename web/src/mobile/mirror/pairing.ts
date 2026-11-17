@@ -257,7 +257,7 @@ export async function startSolo(keyText: string, dev?: { d: string; x: Record<st
   secrets.set(PAIR, JSON.stringify(p))
   if (!recoveryAccount) secrets.set(TOKEN, null)
 }
-// the AI keys typed on the phone (solo): kept with the pairing, in the app's encrypted storage
+// the AI keys typed on the phone: kept with the pairing, in the app's encrypted storage
 export function setAiKeys(p: Pairing, ai: Record<string, string>) {
   p.ai = {}
   for (const [k, v] of Object.entries(ai)) if (v.trim()) p.ai[k] = v.trim()
@@ -266,6 +266,8 @@ export function setAiKeys(p: Pairing, ai: Record<string, string>) {
 export function setAiKey(p: Pairing, provider: 'openai' | 'anthropic', value: string) {
   const live = pairing()
   if (!live || live.k !== p.k) throw new Error('The phone library changed. Reopen settings before saving a key.')
+  // A pending PC transfer must not overwrite a key the user replaced or cleared here.
+  delete p.t; delete p.tx
   setAiKeys(p, { ...live.ai, [provider]: value })
 }
 // after a solo phone paired with a PC: every change goes again, under the PC's key (source/mirror.ts ready). The

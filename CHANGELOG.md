@@ -2,6 +2,24 @@
 
 Every release bumps `core/version.py` and adds a section here in the same commit. Newest first.
 
+## 1.1.14 - 2026-11-16
+
+- Refines desktop and phone motion, navigation and note and knowledge workspaces.
+- Improves imports, sync progress and background sync reliability.
+- Corrects phone layouts around system bars and screen cutouts.
+
+## Android 137.1.14 - 2026-11-16
+
+- Corrects layouts around system bars and screen cutouts.
+- Improves phone navigation, imports and background sync feedback.
+
+## Android 137.1.12 - 2026-11-13
+
+- Shows API key replacement, Save, Clear and Get a Key controls on paired and standalone phones.
+- Makes OpenAI and Anthropic provider choices visible in Wiskit settings.
+- Keeps the model picker visible and provides fallback models while PC settings are unavailable.
+- Clarifies which API key Wiskit uses and preserves saved keys when a storage write fails.
+
 ## Android 137.1.11 - 2026-11-13
 
 - Recognizes Facebook's current More button when removing newly collected saved posts.

@@ -1688,7 +1688,7 @@ export class MirrorSource implements MobileSource {
     let found: Partial<Record<Provider, { id: string; label: string }[]>> = {}
     try { found = JSON.parse(localStorage.getItem(AI_FOUND) || '{}') } catch { /* none */ }
     const withFound = (p: Provider) => {
-      const base = st?.ask.models[p] ?? [], ids = new Set(base.map(m => m.id))
+      const base = st?.ask.models[p]?.length ? st.ask.models[p] : PHONE_AI.ask.models[p], ids = new Set(base.map(m => m.id))
       return [...base, ...(found[p] ?? []).filter(m => !ids.has(m.id))]
     }
     const providers = (['anthropic', 'openai'] as Provider[]).filter(p => keys[p]).map(p => ({ id: p, label: PROVIDER_LABEL[p], models: withFound(p) }))

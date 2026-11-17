@@ -3,6 +3,8 @@
 import { api } from './api'
 import type { CloudSnapshot } from './backup'
 import type { RequestSnapshot } from './job-requests'
+import { endsHold, finishedJob } from './motion/finish.ts'
+import { FINISH_MS } from './motion/motion.ts'
 import { pushLine, toast, type ConsoleEntry, type ToastLevel } from './ui.svelte'
 
 export interface JobSnap {
@@ -18,6 +20,7 @@ export type CloudSnap = CloudSnapshot
 export const live = $state({
   connected: false,
   jobs: { current: null, last: null } as JobsState,
+  finished: null as JobSnap | null,
   step: '',                          // the running job's latest step line (job_item `step`), '' between items
   cloud: null as CloudSnap | null,   // null until the first read; the rail's Jobs module shows the upload from it
 })
@@ -50,6 +53,7 @@ export function on(kind: string, fn: Handler): () => void {
 const KINDS = ['hello', 'job', 'job_item', 'items_changed', 'log', 'toast', 'ytdlp', 'notes_changed', 'connections_changed', 'synth',
   'canvas_changed', 'canvas_active', 'scrape', 'export_done', 'video_tools', 'settings_changed', 'map', 'ask_saved', 'cloud', 'chats_changed', 'reformat_preview', 'capture_open', 'update']
 let es: EventSource | null = null
+let finishTimer: ReturnType<typeof setTimeout> | undefined
 
 // on every (re)connect: a server that restarted counts seq from 0 again, so this read is taken as is
 let cloudEpoch = 0
@@ -91,7 +95,16 @@ function openStream() {
     es.addEventListener(kind, ev => {
       const data = JSON.parse((ev as MessageEvent).data)
       if (kind === 'hello') { live.jobs = data.jobs; live.step = ''; if (data.jobs.current) syncStep(); loadCloud() }
-      else if (kind === 'job') { if (data.current?.id !== live.jobs.current?.id) live.step = ''; live.jobs = data }
+      else if (kind === 'job') {
+        if (data.current?.id !== live.jobs.current?.id) live.step = ''
+        const ended = endsHold(live.jobs, data), finished = finishedJob(live.jobs, data)
+        if (ended || finished) {
+          clearTimeout(finishTimer)
+          live.finished = ended ? null : { ...finished! }
+          if (live.finished) finishTimer = setTimeout(() => { live.finished = null }, FINISH_MS)
+        }
+        live.jobs = data
+      }
       else if (kind === 'job_item') live.step = data.step ?? (data.state === 'working' ? '' : live.step)
       else if (kind === 'cloud') { if (!live.cloud || data.seq >= live.cloud.seq) live.cloud = data }
       else if (kind === 'log') pushLine(data)

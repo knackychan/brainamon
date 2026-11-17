@@ -3,6 +3,9 @@
   import { onMount } from 'svelte'
   import { siteClear, siteForget, siteOpen, sitePending, siteState, type SiteReaderState, type SiteRunResult } from '../native'
   import { knownHashes, readPending, RULES, type SiteId } from '../sites'
+  import { trayFor } from '../site-tray.ts'
+  import { reasonText } from '../import-run.ts'
+  import ImportRun from '../ImportRun.svelte'
   import { mirrorSource, patchRows, phone, runPictures } from '../state.svelte'
   import { kv } from '../store'
   import { beginLanguageWork } from '../language-switch.ts'
@@ -47,6 +50,10 @@
   let reviews = $state.raw<Partial<Record<SiteId, Review>>>({})
   let discard = $state<SiteId | ''>('')
   let reviewLimit = $state<Partial<Record<SiteId, number>>>({})
+  // an import in progress or just finished (ImportRun.svelte): what its header showed when Import was pressed, kept
+  // after the results were cleared so the run goes on to its pictures and its finish
+  type Flow = { posts: number; reason: string; known: number; refused: number }
+  let flows = $state.raw<Partial<Record<SiteId, Flow>>>({})
   const preview = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 120)
   let note = $state.raw<{ site: SiteId; full: boolean } | null>(null)
   const reader = (site: SiteId) => site !== 'tiktok' && !!RULES[site] && !!st?.sites[site]?.reader
@@ -98,19 +105,31 @@
     if (!review.posts.length) await finishRun(site, review, 0, 0)
   }
 
-  async function importRun(site: SiteId) {
+  const flowOf = (site: SiteId): Flow | null => {
+    const review = reviews[site]
+    if (flows[site]) return flows[site]!
+    return review ? { posts: review.posts.length, reason: reasonText(review.res, t),
+      known: count(review.res?.known), refused: review.dropped + count(review.res?.dropped) } : null
+  }
+
+  async function importRun(site: SiteId): Promise<{ ids: number[]; dups: number } | null> {
     const review = reviews[site], source = mirrorSource
-    if (!review || !source || busy || importing) return
+    if (!review || !source || busy || importing) return null
     const finishLanguageWork = beginLanguageWork()
     busy = site; errors[site] = ''
+    flows = { ...flows, [site]: flowOf(site)! }
     try {
       const result = await source.importLinks(review.posts)
       if (result.ids.length) await patchRows(result.ids)
       await source.addPicHints(review.pics)
       await finishRun(site, review, result.ids.length, result.dups)
-      runPictures()
-    } catch (e) { errors[site] = fail(e) }
-    finally { try { st = await siteState(); busy = '' } finally { finishLanguageWork() } }
+      void runPictures()
+      return result
+    } catch (e) {
+      errors[site] = fail(e)
+      flows = { ...flows, [site]: undefined }
+      return null
+    } finally { try { st = await siteState(); busy = '' } finally { finishLanguageWork() } }
   }
 
   async function discardRun(site: SiteId) {
@@ -134,6 +153,7 @@
     if (!mirrorSource || !canImport) return
     const pending = st.sites[site]?.pending || reviews[site]
     if (!pending && !noteSeen()) { note = { site, full }; return }
+    flows = { ...flows, [site]: undefined }
     const finishLanguageWork = beginLanguageWork()
     busy = site
     messages[site] = t('imports.scan.running')
@@ -141,7 +161,7 @@
       if (pending) await reviewRun(site, reviews[site]?.res ?? null)
       else {
         const known = await knownHashes(site, phone.rows.map(r => r.url))
-        const res = await siteOpen(site, known, full, !!runs[site]?.complete, (site === 'facebook' || site === 'instagram') && !!unsave[site])
+        const res = await siteOpen(site, known, full, !!runs[site]?.complete, (site === 'facebook' || site === 'instagram') && !!unsave[site], trayFor(sources.find(x => x.id === site)?.name ?? site))
         if (res.reason === 'unsupported') errors[site] = WEBVIEW
         else await reviewRun(site, res)
       }
@@ -161,7 +181,7 @@
     const finishLanguageWork = beginLanguageWork()
     errors[site] = ''; messages[site] = ''; confirm = ''; busy = site
     try {
-      const res = await siteOpen(site, [], false, false)
+      const res = await siteOpen(site, [], false, false, false, trayFor(sources.find(x => x.id === site)?.name ?? site))
       if (res.reason === 'unsupported') errors[site] = WEBVIEW
     } catch (e) { errors[site] = fail(e) }
     finally { try { st = await siteState(); busy = '' } finally { finishLanguageWork() } }
@@ -264,14 +284,20 @@
                 <MHint as="p" role="status">{t('imports.scan.notice')}</MHint>
                 <div class="m-row"><MButton variant="pri" size="sm" onclick={accept}>Continue</MButton><MTextButton onclick={() => (note = null)}>Cancel</MTextButton></div>
               {/if}
+              {#if flowOf(s.id)}
+                {@const flow = flowOf(s.id)!}
+                <ImportRun site={s.id} name={s.name} posts={flow.posts} reason={flow.reason} known={flow.known} refused={flow.refused}
+                  disabled={!!busy || importing || !canImport || !reviews[s.id]}
+                  onimport={() => importRun(s.id)}
+                  onlater={() => { reviews = { ...reviews, [s.id]: undefined }; discard = ''; messages[s.id] = 'Saved results kept on this phone. Tap Scan to review them later.' }}
+                  ondone={() => { flows = { ...flows, [s.id]: undefined } }}>
+                  {#snippet extra()}
+                    <MTextButton tone="danger" disabled={!!busy || importing} onclick={() => discardRun(s.id)}>{t(discard === s.id ? 'imports.review.confirmDiscard' : 'imports.review.discard')}</MTextButton>
+                  {/snippet}
+                </ImportRun>
+              {/if}
               {#if reviews[s.id]}
                 {@const review = reviews[s.id]!}
-                <MHint as="p" role="status">{review.posts.length} post{review.posts.length === 1 ? '' : 's'} ready to import · {reason(review.res)}{review.dropped ? ` · ${review.dropped} refused` : ''}</MHint>
-                <div class="m-row">
-                  <MButton variant="pri" size="sm" disabled={!!busy || importing || !canImport} onclick={() => importRun(s.id)}>Import {review.posts.length} post{review.posts.length === 1 ? '' : 's'}</MButton>
-                  <MTextButton disabled={!!busy || importing} onclick={() => { reviews = { ...reviews, [s.id]: undefined }; discard = ''; messages[s.id] = 'Saved results kept on this phone. Tap Scan to review them later.' }}>Later</MTextButton>
-                  <MTextButton tone="danger" disabled={!!busy || importing} onclick={() => discardRun(s.id)}>{t(discard === s.id ? 'imports.review.confirmDiscard' : 'imports.review.discard')}</MTextButton>
-                </div>
                 {#if discard === s.id}
                   <MHint as="p" role="status">{t('imports.review.discardHelp')}</MHint>
                   <MTextButton disabled={!!busy || importing} onclick={() => (discard = '')}>{t('imports.review.keep')}</MTextButton>
@@ -291,7 +317,7 @@
                   </ol>
                   {#if review.posts.length > (reviewLimit[s.id] ?? 10)}<MTextButton onclick={() => (reviewLimit[s.id] = (reviewLimit[s.id] ?? 10) + 10)}>{t('imports.review.more')}</MTextButton>{/if}
                 </MDisclosure>
-              {:else if !messages[s.id] && runs[s.id]?.line}
+              {:else if (!flows[s.id] || runs[s.id]?.bad) && !messages[s.id] && runs[s.id]?.line}
                 <MHint as="p" tone={runs[s.id].bad ? 'error' : 'hint'} role={runs[s.id].bad ? 'alert' : 'status'}>{runs[s.id].line}</MHint>
               {/if}
               {#if reader(s.id) && runs[s.id]?.complete && !reviews[s.id] && !x?.pending}

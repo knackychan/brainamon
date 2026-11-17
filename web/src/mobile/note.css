@@ -135,8 +135,8 @@ html.np-ed .m-dock{display:none}
 
 /* the formatting bar: a floating pill above Android's buttons (the .m-dock rule); full width on the
    keyboard while typing (the WebView then ends at the keyboard's top) */
-.np-dock{position:fixed;left:10px;right:10px;bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:30;overflow:hidden;background:var(--np-solid);color:var(--np-ink);border:1px solid var(--wg-edge);border-radius:24px;box-shadow:0 3px 0 var(--wg-edge)}
-html.typing .np-dock{left:0;right:0;bottom:0;border:0;border-top:1px solid var(--np-edge);border-radius:0;box-shadow:none}
+.np-dock{position:fixed;left:calc(10px + env(safe-area-inset-left,0px));right:calc(10px + env(safe-area-inset-right,0px));bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:30;overflow:hidden;background:var(--np-solid);color:var(--np-ink);border:1px solid var(--wg-edge);border-radius:24px;box-shadow:0 3px 0 var(--wg-edge)}
+html.typing .np-dock{left:env(safe-area-inset-left,0px);right:env(safe-area-inset-right,0px);bottom:0;border:0;border-top:1px solid var(--np-edge);border-radius:0;box-shadow:none}
 .np-bar{display:flex;align-items:center;height:48px;padding:0 6px 0 4px}
 html.typing .np-bar{height:52px;padding:0 4px 0 2px}
 .np-bar-sc{flex:1;min-width:0;display:flex;align-items:center;gap:1px;overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain;
@@ -177,7 +177,7 @@ html.typing .nb.done{display:grid}
 /* bottom sheets (stamps, note actions) and the scrim */
 .np-scrim{position:fixed;inset:0;z-index:39;background:rgba(10,10,14,.32);animation:np-fade .16s ease-out}
 @keyframes np-fade{from{opacity:0}}
-.np-sheet{position:fixed;left:0;right:0;bottom:0;z-index:40;max-height:72%;overflow:auto;padding:6px 14px calc(16px + env(safe-area-inset-bottom,0px));
+.np-sheet{position:fixed;left:0;right:0;bottom:0;z-index:40;max-height:72%;overflow:auto;padding:6px calc(14px + env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) calc(14px + env(safe-area-inset-left,0px));
   background:var(--wg);color:var(--wg-ink);border-radius:18px 18px 0 0;box-shadow:0 -10px 24px -16px rgba(0,0,0,.45);
   animation:np-sheet .2s cubic-bezier(.2,.8,.2,1)}
 @keyframes np-sheet{from{transform:translateY(40px);opacity:.4}}
@@ -201,7 +201,7 @@ html.typing .nb.done{display:grid}
 .np-acts .np-del{color:var(--m-danger)}
 
 /* toasts */
-.np-toasts{position:fixed;left:12px;right:12px;top:64px;z-index:70;display:grid;gap:6px;pointer-events:none}
+.np-toasts{position:fixed;left:calc(12px + env(safe-area-inset-left,0px));right:calc(12px + env(safe-area-inset-right,0px));top:calc(64px + env(safe-area-inset-top,0px));z-index:70;display:grid;gap:6px;pointer-events:none}
 .np-toast{padding:10px 12px;border-radius:10px;background:var(--ink);color:var(--wg);font:500 11.5px/1.4 var(--mono);box-shadow:0 10px 24px -14px rgba(0,0,0,.6);animation:np-up .16s ease-out}
 
 .np :is(button,select,input):focus-visible,.np-dock button:focus-visible,.np-sheet button:focus-visible{outline:2px solid var(--ink-indigo);outline-offset:1px}

@@ -57,7 +57,7 @@ class SettingsLinesTest(unittest.TestCase):
         out = json.loads(test_phone_js.node(test_phone_js.TS_RESOLVE + LINES))
         self.assertEqual(out['sync'], ['Google Drive not connected', 'Wi-Fi only · runs on its own', 'Any network · runs on its own', '1 running · 1 queued'])
         self.assertEqual(out['phone'], ['Saving here · a PC is optional', 'Paired · key ab12'])
-        self.assertEqual(out['ai'], ['OpenAI on your key', 'No AI key yet', 'No AI key · pair again'])
+        self.assertEqual(out['ai'], ['Using your OpenAI API key', 'No AI key yet', 'No AI key yet'])
         self.assertEqual(out['vault'], ['Notes · in step', 'Vault name not set', 'Notes'])
         self.assertEqual(out['vaultTone'], ['busy', 'done', 'todo', 'next', None])        # queued is teal (spec decision)
         self.assertEqual(out['storage'], ['86 MB · keeps favourites', '1.2 GB · favs, canvases, videos'])

@@ -113,7 +113,8 @@ class DesktopJobProgressBrowser(unittest.TestCase):
                             expect(scraper.get_by_role('status').filter(has_text='One job at a time')).to_contain_text('Fetch link info')
                             scraper.get_by_role('button', name='Show progress', exact=True).click()
                             expect(queue).to_be_visible()
-                            queue.get_by_role('button', name='Stop', exact=True).click()
+                            with page.expect_response(lambda r: r.url.endswith('/api/jobs/stop') and r.status == 200):
+                                queue.get_by_role('button', name='Stop', exact=True).click()
                             gates[ids.index(second)].set()
                             expect(page.locator('.rjobs .n')).to_have_text('Idle')
                             expect(queue.locator(f'[data-item-id="{third}"] b')).to_have_text('Not processed')

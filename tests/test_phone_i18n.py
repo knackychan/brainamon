@@ -259,7 +259,7 @@ class PhoneLanguageCoreTest(unittest.TestCase):
             ['googleLine',{signedIn:false,account:'',driveOk:false,lamp:'off',solo:true}],
             ['thisPhoneLine',{solo:false,name:'Original',unsent:3}],['thisPhoneLine',{solo:true,name:'',unsent:0}],
             ...['none','prepared','saved','checked'].map(f=>['recoveryLine',true,f]),['recoveryLine',false,'']]
-          const expected=['Google Drive not connected','Any network · runs on its own','Saving here · a PC is optional','Paired · key abcdef','OpenAI on your key','No AI key · pair again',
+          const expected=['Google Drive not connected','Any network · runs on its own','Saving here · a PC is optional','Paired · key abcdef','Using your OpenAI API key','No AI key yet',
             'Original · in step','Vault name not set','86 MB · keeps favourites','1.2 GB · favs, canvases, videos','Cover cards · night on','Windows app · v1.0.9 · licenses','Version 1.0.9 · licenses',
             'Sign in','Original · 3 not sent','All backed up · no PC paired','Not set up','Passphrase set','File saved, not checked','Passphrase set · file checked','Managed on your PC']
           calls.forEach(([name,...args],i)=>{assert.equal(L[name](...args),expected[i]);assert.equal(L[name](...args,phoneWords),expected[i])})

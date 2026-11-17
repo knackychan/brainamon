@@ -2,6 +2,7 @@ package app.brainamon.mobile;
 import java.util.*;
 import java.util.concurrent.*;
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 
 public class SchedulerCheck {
     static Context c=new Context();
@@ -33,6 +34,27 @@ public class SchedulerCheck {
         assert s.optLong("last")==0 : "budget updated the completed-round time";
     }
     public static void main(String[] args)throws Exception {
+        reset();SyncRunner listing=new SyncRunner(c,"listing",policy,()->false);
+        listing.progressPhase="drive";listing.progressStep="shell.sync.readingIndex";
+        listing.pages.add(new JSONObject().put("files",new JSONArray().put("first")).put("nextPageToken","next"));
+        listing.pages.add(new JSONObject().put("files",new JSONArray().put("second").put("third")));
+        assert listing.listing(null).length()==3;
+        assert listing.steps.size()==2 && listing.steps.get(1).optLong("done")==3 : "Drive listing does not report cumulative progress";
+        listing.progressPhase="vault";listing.pages.add(new JSONObject().put("files",new JSONArray()));listing.listing(null);
+        assert listing.steps.size()==2 : "vault listing overwrote the library read status";
+        listing.progressPhase="drive";listing.pages.add(new JSONObject().put("files",new JSONArray()));listing.listing("manifest.json");
+        assert listing.steps.size()==2 : "a targeted lookup reported unrelated file discovery";
+        listing.pages.add(new JSONObject().put("files",new JSONArray()).put("incompleteSearch",true));
+        try{listing.listing(null);throw new AssertionError("incomplete listing accepted");}catch(IOException expected){assert expected.getMessage().equals("retry");}
+
+        reset();Constraints wifi=SyncWork.constraints(policy);
+        assert wifi.wifi && wifi.type==NetworkType.CONNECTED;
+        assert wifi.request.capabilities.contains(NetworkCapabilities.NET_CAPABILITY_INTERNET);
+        assert !wifi.request.capabilities.contains(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) : "Wi-Fi sync excludes VPN connections";
+        assert wifi.request.transports.equals(Set.of(NetworkCapabilities.TRANSPORT_WIFI,NetworkCapabilities.TRANSPORT_ETHERNET)) : "Wi-Fi sync must exclude cellular-only VPNs";
+        Constraints any=SyncWork.constraints(new JSONObject(policy.toString()).put("wifiOnly",false));
+        assert any.type==NetworkType.CONNECTED && any.request==null;
+
         reset();String root=request(true,true);SyncRunner.budgets=3;
         String current=root;
         for(int chunk=0;chunk<3;chunk++){
@@ -209,7 +231,27 @@ class ProcessDeath extends Error {}
 class Clock { static long now; }
 class Context { String owner="account-a",network=""; }
 class Build { static class VERSION { static int SDK_INT=34; } }
-class Constraints { boolean wifi;Constraints(boolean wifi){this.wifi=wifi;} }
+enum NetworkType { CONNECTED }
+class NetworkCapabilities { static final int NET_CAPABILITY_INTERNET=12,NET_CAPABILITY_NOT_VPN=15,TRANSPORT_WIFI=1,TRANSPORT_ETHERNET=3; }
+class NetworkRequest {
+    Set<Integer> capabilities=new HashSet<>(Set.of(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)),transports=new HashSet<>();
+    static class Builder {
+        NetworkRequest request=new NetworkRequest();
+        Builder addCapability(int capability){request.capabilities.add(capability);return this;}
+        Builder removeCapability(int capability){request.capabilities.remove(capability);return this;}
+        Builder addTransportType(int transport){request.transports.add(transport);return this;}
+        NetworkRequest build(){return request;}
+    }
+}
+class Constraints {
+    boolean wifi;NetworkType type;NetworkRequest request;
+    static class Builder {
+        Constraints value=new Constraints();
+        Builder setRequiredNetworkType(NetworkType type){value.type=type;return this;}
+        Builder setRequiredNetworkRequest(NetworkRequest request,NetworkType fallback){value.request=request;value.type=fallback;value.wifi=true;return this;}
+        Constraints build(){return value;}
+    }
+}
 enum BackoffPolicy { EXPONENTIAL,LINEAR }
 enum OutOfQuotaPolicy { RUN_AS_NON_EXPEDITED_WORK_REQUEST }
 enum ExistingWorkPolicy { APPEND_OR_REPLACE, REPLACE }
@@ -274,8 +316,13 @@ class JSONObject {
     String getString(String k){return (String)Objects.requireNonNull(values.get(k),k);}String optString(String k){return optString(k,"");}String optString(String k,String d){return (String)values.getOrDefault(k,d);}
     boolean optBoolean(String k){return optBoolean(k,false);}boolean optBoolean(String k,boolean d){return (boolean)values.getOrDefault(k,d);}boolean getBoolean(String k){return (boolean)values.get(k);}
     long optLong(String k){return ((Number)values.getOrDefault(k,0)).longValue();}long getLong(String k){return ((Number)values.get(k)).longValue();}double optDouble(String k){return ((Number)values.getOrDefault(k,0)).doubleValue();}
-    JSONObject optJSONObject(String k){return (JSONObject)values.get(k);}JSONObject getJSONObject(String k){return (JSONObject)values.get(k);}boolean isNull(String k){return !has(k)||values.get(k)==NULL;}
+    JSONObject optJSONObject(String k){return (JSONObject)values.get(k);}JSONObject getJSONObject(String k){return (JSONObject)values.get(k);}JSONArray getJSONArray(String k){return (JSONArray)values.get(k);}boolean isNull(String k){return !has(k)||values.get(k)==NULL;}
     public String toString(){String id=UUID.randomUUID().toString();snapshots.put(id,new HashMap<>(values));return id;}
+}
+class JSONArray {
+    List<Object> values=new ArrayList<>();
+    JSONArray put(Object value){values.add(value);return this;}int length(){return values.size();}Object get(int index){return values.get(index);}
+    JSONObject getJSONObject(int index){return (JSONObject)get(index);}
 }
 class SyncStore implements AutoCloseable {
     static Map<String,String> rows=new HashMap<>();static int crashAfterWork,workWrites;SyncStore(Context c){}public void close(){}
@@ -284,10 +331,17 @@ class SyncStore implements AutoCloseable {
     JSONObject next(String scope){return get(scope,"edit")==null?null:new JSONObject().put("name","queued-edit");}
     boolean hasPending(String scope){return next(scope)!=null;}
 }
-class SyncKey {static byte[] utf(String s){return s.getBytes(java.nio.charset.StandardCharsets.UTF_8);} }
+class SyncKey {static byte[] utf(String s){return s.getBytes(java.nio.charset.StandardCharsets.UTF_8);}String name(String s){return s;} }
 class PhoneSecrets {static String get(Context c,String name){return c.owner;}static String stored(Context c,String name){return c.owner;} }
 class SyncRunner implements AutoCloseable {
     /* CHECKPOINTS */
+    /* DRIVE LIST */
+    SyncKey key=new SyncKey();String progressPhase="",progressStep="";
+    Queue<JSONObject> pages=new ArrayDeque<>();List<JSONObject> steps=new ArrayList<>();
+    static String q(String s){return s;}
+    byte[] http(String method,String path,byte[] body,String contentType,int limit,boolean protectedCall){return SyncKey.utf(pages.remove().toString());}
+    Object dispatch(String method,JSONArray args){JSONObject step=args.getJSONObject(2);steps.add(step);progressStep=step.getString("key");return null;}
+    JSONArray listing(String name)throws Exception{return list(name);}
     String id,scope,savedPair;Context context;JSONObject policy;SyncStore store;long deadline=Long.MAX_VALUE;
     boolean accepting=true,cancelled,prioritizeUploads;java.util.function.BooleanSupplier stopped;
     static int calls,budgets,priorityEdits;static String error="";static boolean lateEdit;

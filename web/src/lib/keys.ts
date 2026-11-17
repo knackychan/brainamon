@@ -58,8 +58,8 @@ export function installKeys() {
     if (k >= '1' && k <= '4') { setWS(WS_LIST[+k - 1]); return }
     if (k === '?') { e.preventDefault(); runCmd('keys'); return }
     if (k === '/') {
-      const q = document.getElementById('q') as HTMLInputElement | null
-      if (q && ui.ws === 'lib') { e.preventDefault(); q.focus(); q.select() }
+      const q = document.querySelector<HTMLInputElement>(`#ws-${ui.ws} .dq input`)
+      if (q) { e.preventDefault(); q.focus(); q.select() }
     }
   })
 }

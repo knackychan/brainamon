@@ -2480,13 +2480,13 @@ class SyncService:
                 if self._vault_now:
                     self._vault_now, next_vault = False, 0.0
                 if time.monotonic() >= next_vault:
-                    next_vault = time.monotonic() + VAULT_EVERY
                     try:
                         self._vault_tick()
                     except Exception as e:      # never the end of the thread
                         app_console.emit('log', 'Vault sync failed', level='warning', error=e)
                         if not stop.is_set():
                             self._vault_announce(vault_state='error', vault_reason=str(e))
+                    next_vault = time.monotonic() + VAULT_EVERY
                 if stop.is_set():
                     break
                 self._vault_wake.wait(POLL)

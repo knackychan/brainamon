@@ -133,5 +133,19 @@ export function nativeRound(force = false, legacy = false, dirty = false, onProg
   return driveOnly ? reading : running
 }
 export async function readNativeStatus() {
-  if (await nativeSyncSupported()) Object.assign(nativeSync, await S.status({}))
+  if (await nativeSyncSupported()) Object.assign(nativeSync, await withTimeout(S.status({}), 15_000, nativeSyncText('attention')))
+}
+export function watchNativeSync(): () => void {
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform?.() !== 'android') return () => {}
+  let busy = false
+  const poll = async () => {
+    if (document.hidden || busy) return
+    busy = true
+    try { await readNativeStatus() }
+    catch { nativeSync.state = 'attention' }
+    finally { busy = false }
+  }
+  const timer = window.setInterval(poll, 1000)
+  void poll()
+  return () => window.clearInterval(timer)
 }

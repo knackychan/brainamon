@@ -4,7 +4,7 @@
   // note (Notes > Synthesize). Under the chips one toolbar (plans/06-library-toolbar.md): the title, three round
   // keys (Sort, the view switch, Select) and one summary line (count, order, backup status).
   import Grid from '../Grid.svelte'
-  import { onDestroy } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
   import GetStarted from '../GetStarted.svelte'
   import Sprite from '../Sprite.svelte'
   import { phoneEmpty } from '../../lib/onboarding'
@@ -13,13 +13,41 @@
   import { onb, openPairing } from '../onboard.svelte'
   import { driveLinked, mirrorSource, phone, phoneStatus, refresh, solo, sorts, type Sort } from '../state.svelte'
   import { ACCESS_STATES } from '../mirror/phone-state'
+  import Count from '../../lib/motion/Count.svelte'
+  import { motionOn, Tween } from '../../lib/motion/motion.ts'
+  import { arrival, endArrival, takeArrival, type Arrival } from '../arrival.svelte.ts'
+  import MToast from '../ui/MToast.svelte'
   import MButton from '../ui/MButton.svelte'
   import MInfo from '../ui/MInfo.svelte'
   import MKey from '../ui/MKey.svelte'
   import ShellIcon from '../ShellIcon.svelte'
 
   let { scroller }: { scroller: HTMLElement | undefined } = $props()
-  const chips = $derived([{ key: 'all', label: t('library.all'), n: phone.rows.length }, ...phone.cats.filter(c => c.count).map(c => ({ key: c.name, label: c.name, n: c.count }))])
+  // An import just added posts (arrival.svelte.ts): taken once, when the Library itself shows. The All chip and the summary
+  // hold the count from before the import until the hold ends, then count up; a toast names the site. Not saved, never replayed.
+  let arr = $state.raw<Arrival | null>(null)
+  let released = $state(true)
+  let toast = $state('')
+  const timers: ReturnType<typeof setTimeout>[] = []
+  $effect(() => {
+    const r = phone.route, cur = arrival.cur
+    if (r.tab !== 'lib' || r.item || r.search || !cur || cur.at) return
+    untrack(() => {
+      const a = takeArrival()!
+      const moving = motionOn()
+      const wait = moving ? Math.max(0, a.at - performance.now()) : 0
+      arr = a
+      released = !moving
+      timers.push(setTimeout(() => {
+        released = true
+        toast = t('importrun.toast', { n: a.ids.size, site: a.name })
+      }, wait))
+      timers.push(setTimeout(() => { endArrival(); arr = null }, wait + 90 * 18 + 320 + 400))
+    })
+  })
+  onDestroy(() => timers.forEach(clearTimeout))
+  const held = $derived(arr && !released ? arr.ids.size : 0)
+  const chips = $derived([{ key: 'all', label: t('library.all'), n: phone.rows.length - held }, ...phone.cats.filter(c => c.count).map(c => ({ key: c.name, label: c.name, n: c.count }))])
   const heading = $derived(phone.q.trim() ? t('library.heading.results') : phone.fav ? t('library.heading.favourites') : phone.cat === 'all' ? t('library.heading.all') : phone.cat)
   $effect(() => { phone.cat; phone.fav; phone.q; phone.selection = null })
   onDestroy(() => { phone.selection = null })
@@ -29,6 +57,17 @@
   const ORDER: Record<Sort, Key> = { new: 'library.order.new', old: 'library.order.old', az: 'library.order.az', za: 'library.order.za' }
   const counted = $derived(phone.loaded && phone.rows.length > 0)
   const n = $derived(phone.visible.length)
+  // the summary's number is the real one, except while an arrival counts up: a Tween from the number held before to the
+  // new total (the first call jumps to it), so every other change shows at once, as it always did
+  let ticked = $state<number | null>(null)
+  const summaryTween = new Tween(0, v => { ticked = v })
+  $effect(() => {
+    const target = n - held
+    if (!arr) { ticked = null; return }
+    untrack(() => summaryTween.to(target, ticked === null))
+  })
+  onDestroy(() => summaryTween.stop())
+  const shown = $derived(ticked ?? n - held)
   const order = $derived(phone.rank && phone.q.trim() ? t('library.order.meaning') : t(ORDER[phone.sort]))
   // Google Drive is an add-on: words on the summary line, never a block in the way of the cards
   const phoneOnly = $derived(solo && counted && !phone.signIn && (phone.synced, phone.tokenAt, !driveLinked()))
@@ -47,7 +86,7 @@
 <div class="m-chips" role="tablist" aria-label={t('library.collections')}>
   <button type="button" class="m-chip" class:on={phone.fav} onclick={() => { phone.fav = !phone.fav }}>{t('library.favs')}<small>{phone.favIds.size}</small></button>
   {#each chips as c (c.key)}
-    <button type="button" class="m-chip" class:on={!phone.fav && phone.cat === c.key} onclick={() => { phone.cat = c.key; phone.fav = false }}>{c.label}<small>{c.n}</small></button>
+    <button type="button" class="m-chip" class:on={!phone.fav && phone.cat === c.key} onclick={() => { phone.cat = c.key; phone.fav = false }}>{c.label}{#if c.key === 'all'}<Count as="small" value={c.n} jump={phone.loaded} />{:else}<small>{c.n}</small>{/if}</button>
   {/each}
 </div>
 {/if}
@@ -70,10 +109,11 @@
 {#if counted || phone.signIn}
 <!-- the status words and their (i) never break apart: with large phone text they move down together -->
 <div class="m-lib-sum">
-  {#if counted}{t('library.summary', { n, count: fmtNum(n, 'en'), order })}{' '}{/if}{#if phone.signIn}<span class="m-lib-tail">{counted ? '· ' : ''}{t('library.driveOff')}<MInfo title={t('library.driveSync.title')}><p>{t('library.driveSync.body')}</p></MInfo></span>{/if}
+  {#if counted}{t('library.summary', { n: shown, count: fmtNum(shown, 'en'), order })}{' '}{/if}{#if phone.signIn}<span class="m-lib-tail">{counted ? '· ' : ''}{t('library.driveOff')}<MInfo title={t('library.driveSync.title')}><p>{t('library.driveSync.body')}</p></MInfo></span>{/if}
 </div>
 {/if}
 {#if phone.smart && phone.smartNote && phone.q.trim()}<div class="m-lib-sum" role="status">{phone.smartNote}</div>{/if}
+{#if toast}<MToast text={toast} onclose={() => (toast = '')} />{/if}
 {#if phone.loaded && !phone.route.search}<GetStarted />{/if}
 {#if phone.error && !phone.rows.length && !phone.signIn}
   <div class="m-err">{libraryError}<br /><MButton size="sm" style="margin-top:8px" onclick={() => refresh()}>{t('common.tryAgain')}</MButton></div>

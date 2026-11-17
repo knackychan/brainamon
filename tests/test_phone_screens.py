@@ -262,7 +262,7 @@ class PhoneScreensTest(unittest.TestCase):
         self.assertIn("if (st?.lamp) return t('shell.lamp.joined', { where: L, text: st.lamp })", shell)
         self.assertEqual(english('shell.lamp.joined'), '{where} · {text}')
         self.assertIn('if (st && ACCESS_STATES.includes(st.id)) return { lamp: phoneState(phoneFacts()!).lamp as DriveLamp, ok: false, why: st.text }', state)
-        self.assertIn('return f && phoneState(f, phoneWords)', state)
+        self.assertIn('const st = f && phoneState(f, phoneWords)', state)
         self.assertIn('const owner = $derived(!here && st?.strip ? st : null)', strip)
         self.assertIn('href="#/backup"', strip)
         self.assertIn('{#if m}\n    <StatusCard />', more)

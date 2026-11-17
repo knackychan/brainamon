@@ -2416,7 +2416,6 @@ class PhoneSettingsBackupRecoveryScenes(unittest.TestCase):
                         ai.locator('.m-keyrow').nth(1).get_by_role('button').click()
                         expect(fields.nth(1)).to_have_value('')
                         self.shot(page, language, theme, 'keys-saved-independent')
-                        ai.locator('.m-keyrow').nth(0).get_by_role('button').click()
                         fields.nth(0).fill('synthetic-retained-key-draft')
                         self.group(page, w['look'])
                         self.group(page, w['ai'])

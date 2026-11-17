@@ -4,8 +4,8 @@
   import { beginLanguageWork, languageWorkChanged, registerLanguageCheck } from '../../language-switch.ts'
   import { t } from '../../../lib/i18n/index.ts'
   import { phoneWords } from '../../settings-words'
-  import { devSolo, mirrorSource, phone, refresh, solo } from '../../state.svelte'
-  import { isApp, secretsSaved } from '../../native'
+  import { mirrorSource, phone, solo } from '../../state.svelte'
+  import { secretsSaved } from '../../native'
   import { setAiKey } from '../../mirror/pairing'
   import PageKeys from '../../PageKeys.svelte'
   import { aiLine } from '../../settings-lines'
@@ -31,9 +31,8 @@
     forgetting = true; keysNote = ''
     try {
       await m?.forgetKeys()
-      savedKeys = { openai: false, anthropic: false }
-      editingKeys = { openai: true, anthropic: true }
       keyIn = { openai: '', anthropic: '' }
+      keyFailed = ''; confirmClear = ''
       confirmForgetAi = false; forgetFailed = false
     } catch { forgetFailed = true; keysNote = t('settings.keys.forgetFailed') }
     finally { forgetting = false; aiTick++; done() }
@@ -60,25 +59,31 @@
   }
   const aiProvider = $derived(ai ? ai.providers.find(p => p.id === ai.provider)?.label ?? ai.provider : '')
   let keyIn = $state({ anthropic: '', openai: '' }), keysNote = $state('')
-  let savedKeys = $state({ openai: !!m?.pair.ai?.openai, anthropic: !!m?.pair.ai?.anthropic })
-  let editingKeys = $state({ openai: !m?.pair.ai?.openai, anthropic: !m?.pair.ai?.anthropic })
-  const canSolo = isApp || devSolo                      // keys only in the app's encrypted storage
-  let savingKey = $state('')
-  async function saveKey(provider: 'openai' | 'anthropic') {
-    if (!m || savingKey || forgetting || forgetFailed) return
+  const savedKeys = $derived((phone.synced, aiTick, { openai: !!m?.pair.ai?.openai, anthropic: !!m?.pair.ai?.anthropic }))
+  const providers: ['openai' | 'anthropic', string][] = [['openai', 'OpenAI'], ['anthropic', 'Anthropic']]
+  let confirmClear = $state('')
+  let savingKey = $state(''), keyFailed = $state('')
+  async function saveKey(provider: 'openai' | 'anthropic', clear = false) {
+    if (!m || savingKey || forgetting || forgetFailed || (keyFailed && keyFailed !== provider)) return
+    if (!clear && !keyIn[provider].trim()) return
+    if (clear && confirmClear !== provider) { confirmClear = provider; return }
+    modelRead?.abort()
+    const done = beginLanguageWork()
     savingKey = provider
     try {
       const previous = m.ai()
       if (previous) m.setAi(previous.provider, previous.model)
-      setAiKey(m.pair, provider, keyIn[provider])
+      const next = { ...m.pair }
+      setAiKey(next, provider, clear ? '' : keyIn[provider])
       await secretsSaved()
+      m.pair.ai = next.ai
+      delete m.pair.t; delete m.pair.tx
       keyIn[provider] = ''
-      savedKeys[provider] = true
-      editingKeys[provider] = false
-      keysNote = t('settings.keys.saved', { provider: provider === 'openai' ? 'OpenAI' : 'Anthropic' })
+      confirmClear = ''; keyFailed = ''
+      keysNote = t(clear ? 'settings.keys.cleared' : 'settings.keys.saved', { provider: provider === 'openai' ? 'OpenAI' : 'Anthropic' })
       aiTick++
-    } catch { keysNote = t('settings.keys.failed') }
-    finally { savingKey = '' }
+    } catch { keyFailed = provider; keysNote = t(clear ? 'settings.keys.clearFailed' : 'settings.keys.failed') }
+    finally { savingKey = ''; done() }
   }
   onMount(() => registerLanguageCheck(() => keyIn.openai || keyIn.anthropic ? 'settings.language.unsavedKeys' : null))
 </script>
@@ -99,36 +104,34 @@
 <div class={active ? 'm-pad m-calm m-page' : 'm-settings-parked'}>
   <h1 class="m-page-title">{t('settings.group.ai')}</h1>
   <MStatus look="page" tone={ai ? 'done' : 'todo'} kind={ai ? 'done' : 'empty'} text={aiLine(aiProvider, solo, phoneWords)} />
-  {#if ai || !solo}<MCard id={solo ? undefined : 'm-ai'}>
-      {#if ai}
-        <!-- one key: the provider is a fact, not a choice -->
-        <MRow wrap title={t('settings.keys.provider')}>{#if ai.providers.length > 1}<MSeg label={t('settings.keys.provider')} size="sm" options={ai.providers.map(p => [p.id, p.label] as [string, string])} value={ai.provider} onchange={id => pickAi(id, ai.model)} />{:else}<span class="m-val">{ai.providers[0]?.label ?? ai.provider}</span>{/if}</MRow>
-        <MRow wrap title={t('settings.keys.model')}>{#if active}<MPicker label={t('settings.keys.model')} options={(ai.providers.find(p => p.id === ai.provider)?.models ?? []).map(md => [md.id, md.label])} value={ai.model} onchange={value => pickAi(ai.provider, value)} />{/if}
+  <MCard>
+        <MRow wrap class="m-provider" title={t('settings.keys.provider')} desc={ai?.providers.length === 2 ? undefined : t('settings.keys.providerHelp')}><MSeg label={t('settings.keys.provider')} size="sm" options={providers} value={ai?.provider ?? ''} disabled={!!savingKey || forgetting || forgetFailed} disabledOptions={providers.filter(([id]) => !savedKeys[id]).map(([id]) => id)} onchange={id => pickAi(id, ai?.model ?? '')} /></MRow>
+        <MRow wrap title={t('settings.keys.model')}>{#if active}<MPicker label={t('settings.keys.model')} options={(ai?.providers.find(p => p.id === ai.provider)?.models ?? []).map(md => [md.id, md.label])} value={ai?.model || t('settings.keys.modelNeedsKey')} disabled={!ai || !!savingKey || forgetting || forgetFailed} onchange={value => { if (ai) pickAi(ai.provider, value) }} />{/if}
         </MRow>
-        <MRow wrap title={t('settings.keys.lists')} desc={listNote || undefined}><MButton size="sm" onclick={refreshModels} disabled={listing || forgetting || forgetFailed}>{listing ? t('settings.keys.checking') : t('settings.keys.refresh')}</MButton></MRow>
+        <MRow wrap title={t('settings.keys.lists')} desc={listNote || undefined}><MButton size="sm" onclick={refreshModels} disabled={!ai || listing || !!savingKey || forgetting || forgetFailed}>{listing ? t('settings.keys.checking') : t('settings.keys.refresh')}</MButton></MRow>
         <!-- ai.smart is "an OpenAI key is on this phone" (mirror.ts ai()): voice notes and search by meaning need it -->
-        {#if !ai.smart}<MHint>{solo ? t('settings.keys.addOpenai') : t('settings.keys.pairOpenai')}</MHint>{/if}
-      {:else if !solo && m.pair.t}
+        {#if ai && !ai.smart}<MHint>{t('settings.keys.addOpenai')}</MHint>{/if}
+      {#if !ai && !solo && m.pair.t}
         <MHint>{t('settings.keys.waiting')}</MHint>
-      {:else if !solo}
-        <MHint>{t('settings.keys.pairAgain')}</MHint>
       {/if}
-</MCard>{/if}
-  {#if solo}<MCard id="m-ai">
-        <!-- OpenAI first and marked recommended (decision 8); the aria-labels stay the accessible names -->
-        <MRow wrap title={t('settings.keys.openai')} desc={t('settings.keys.recommended')} />
-        <div class:saved={savedKeys.openai && !editingKeys.openai} class="m-keyrow"><label class="m-fld"><input type="password" bind:value={keyIn.openai} oninput={languageWorkChanged} placeholder={savedKeys.openai && !editingKeys.openai ? t('settings.keys.savedPlaceholder') : 'sk-…'} disabled={!editingKeys.openai || !!savingKey || forgetting || forgetFailed} aria-label={t('settings.keys.openaiLabel')} autocomplete="off" spellcheck="false" /></label>
-          {#if savedKeys.openai && !editingKeys.openai}<MButton size="sm" aria-label={t('settings.keys.changeOpenai')} disabled={!!savingKey || forgetting || forgetFailed} onclick={() => { editingKeys.openai = true; keysNote = '' }}>{t('settings.keys.change')}</MButton>
-          {:else}<MButton size="sm" aria-label={t('settings.keys.saveOpenai')} onclick={() => saveKey('openai')} disabled={!!savingKey || forgetting || forgetFailed || !keyIn.openai.trim()}>{savingKey === 'openai' ? t('settings.keys.saving') : t('common.save')}</MButton>{/if}</div>
-        <MRow wrap title={t('settings.keys.anthropic')} desc={t('settings.keys.optional')} />
-        <div class:saved={savedKeys.anthropic && !editingKeys.anthropic} class="m-keyrow"><label class="m-fld"><input type="password" bind:value={keyIn.anthropic} oninput={languageWorkChanged} placeholder={savedKeys.anthropic && !editingKeys.anthropic ? t('settings.keys.savedPlaceholder') : 'sk-ant-…'} disabled={!editingKeys.anthropic || !!savingKey || forgetting || forgetFailed} aria-label={t('settings.keys.anthropicLabel')} autocomplete="off" spellcheck="false" /></label>
-          {#if savedKeys.anthropic && !editingKeys.anthropic}<MButton size="sm" aria-label={t('settings.keys.changeAnthropic')} disabled={!!savingKey || forgetting || forgetFailed} onclick={() => { editingKeys.anthropic = true; keysNote = '' }}>{t('settings.keys.change')}</MButton>
-          {:else}<MButton size="sm" aria-label={t('settings.keys.saveAnthropic')} onclick={() => saveKey('anthropic')} disabled={!!savingKey || forgetting || forgetFailed || !keyIn.anthropic.trim()}>{savingKey === 'anthropic' ? t('settings.keys.saving') : t('common.save')}</MButton>{/if}</div>
-
-      </MCard>{/if}
+</MCard>
+  <MCard id="m-ai">
+    <MHint>{t('settings.keys.replaceHelp')}</MHint>
+    {#each providers as [provider, label]}
+      <MRow wrap title={t(provider === 'openai' ? 'settings.keys.openai' : 'settings.keys.anthropic')} desc={t(provider === 'openai' ? 'settings.keys.recommended' : 'settings.keys.optional')}><MButton as="a" size="sm" href={provider === 'openai' ? 'https://platform.openai.com/api-keys' : 'https://console.anthropic.com/settings/keys'} target="_blank" rel="noopener noreferrer" aria-label={t('settings.keys.getLabel', { provider: label })}>{t('settings.keys.get')}</MButton></MRow>
+      <div class:saved={savedKeys[provider] && !keyIn[provider]} class="m-keyrow"><label class="m-fld"><input type="password" bind:value={keyIn[provider]} oninput={() => { confirmClear = ''; keysNote = ''; languageWorkChanged() }} placeholder={savedKeys[provider] ? t('settings.keys.savedPlaceholder') : provider === 'openai' ? 'sk-…' : 'sk-ant-…'} disabled={!!savingKey || forgetting || forgetFailed || (!!keyFailed && keyFailed !== provider)} aria-label={t(provider === 'openai' ? 'settings.keys.openaiLabel' : 'settings.keys.anthropicLabel')} autocomplete="off" spellcheck="false" /></label>
+        <MButton size="sm" aria-label={t(provider === 'openai' ? 'settings.keys.saveOpenai' : 'settings.keys.saveAnthropic')} onclick={() => saveKey(provider)} disabled={!!savingKey || forgetting || forgetFailed || (!!keyFailed && keyFailed !== provider) || !keyIn[provider].trim()}>{savingKey === provider ? t('settings.keys.saving') : t('common.save')}</MButton></div>
+      <div class="m-key-actions"><MTextButton tone="danger" aria-label={t('settings.keys.clearLabel', { provider: label })} onclick={() => saveKey(provider, true)} disabled={!!savingKey || forgetting || forgetFailed || (!!keyFailed && keyFailed !== provider) || (!savedKeys[provider] && !keyIn[provider])}>{confirmClear === provider ? t('settings.keys.confirmClear') : t('settings.keys.clear')}</MTextButton>{#if confirmClear === provider}<MTextButton disabled={!!savingKey || forgetting} onclick={() => { confirmClear = '' }}>{t('common.cancel')}</MTextButton>{/if}</div>
+    {/each}
+  </MCard>
   {#if ai || forgetFailed}<MCard><MDisclosure foot summary={t('common.showMore')} less={t('common.showLess')}>      {#if ai || forgetFailed}
         <MRow wrap title={t('settings.keys.onPhone')} desc={t('settings.keys.remainPaired', { providers: ai?.providers.map(p => p.label).join(', ') ?? '' })}><MTextButton tone="danger" onclick={forgetAi} disabled={forgetting || !!savingKey}>{forgetting ? t('settings.keys.forgetting') : forgetFailed ? t('common.retry') : confirmForgetAi ? t('settings.keys.confirmForget') : t('settings.keys.forget')}</MTextButton></MRow>
       {/if}
     </MDisclosure></MCard>{/if}
   <div role="status">{#if keysNote}<MHint>{keysNote}</MHint>{/if}</div>
 </div>
+
+<style>
+  :global(.m-page .m-provider>.m-seg) { flex-basis: 100%; width: 100% }
+  .m-key-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 12px 8px }
+</style>

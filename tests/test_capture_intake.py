@@ -72,6 +72,38 @@ class CaptureIntakeTest(unittest.TestCase):
         self.assertEqual(after, 'First line.\n\n## From Note - 2026-10-18 10:01\n\nSecond.\n')
         self.assertEqual((meta2['kind'], meta2['category'], meta2['topic']), ('personal', 'Inbox', 'A thought'))
 
+    def test_successive_autosaves_from_a_stale_phone_mirror_update_one_note(self):
+        # Even a delayed upload must not turn the PC's receipt time into a competing edit.
+        at = self.t - HOUR
+        title = 'Source: https\\://github.com/kjk-engine/kjk\n\nDiscord: https://discord.gg/example'
+        for i, body in enumerate(('', 'F', 'Fmhy', 'Fmhy.', 'Fmhy.com')):
+            out = intake.apply(self.db, self.doc([{'op': 'note', 'file': FILE, 'title': title,
+                'category': 'General', 'body': body, 'was': '', 'at': at + i}]))
+            self.assertEqual((out.notes, out.kept_pc), ([FILE], 0))
+        self.assertEqual([p.name for p in Path(self.db.notes_dir).glob('*.md')], [FILE])
+        meta, body = self.note()
+        self.assertEqual(meta['topic'], title.replace('\n', ' '))
+        self.assertNotIn('Discord', meta)
+        self.assertEqual(body.strip(), 'Fmhy.com')
+
+    def test_phone_continuation_preserves_a_real_pc_edit_even_in_the_same_second(self):
+        self.made()
+        path = Path(self.db.notes_dir) / FILE
+        # An external editor may keep updated and all other metadata unchanged.
+        path.write_text(path.read_text(encoding='utf-8').replace('First line.', 'Desktop edit.'), encoding='utf-8')
+        out = intake.apply(self.db, self.doc([{'op': 'note', 'file': FILE, 'title': 'A thought',
+            'category': 'Inbox', 'body': 'Phone edit.', 'was': '', 'at': self.t}]))
+        self.assertEqual(out.kept_pc, 1)
+        self.assertEqual(self.note()[1].strip(), 'Desktop edit.')
+        self.assertEqual(len(my_notes.personal_notes(self.db.notes_dir)), 2)
+
+    def test_another_phone_does_not_continue_the_first_phones_revision(self):
+        self.made()
+        out = intake.apply(self.db, self.doc([{'op': 'note', 'file': FILE, 'title': 'A thought',
+            'body': 'Other phone.', 'was': '', 'at': self.t}], device='phone-2'))
+        self.assertEqual(out.kept_pc, 1)
+        self.assertEqual(self.note()[1].strip(), 'First line.')
+
     def test_an_addition_keeps_what_the_pc_wrote_since_the_phone_read_it(self):
         self.made()
         my_notes.save_note(Path(self.db.notes_dir) / FILE, 'A thought', 'Inbox', 'First line.\n\nThe PC wrote this later.\n')

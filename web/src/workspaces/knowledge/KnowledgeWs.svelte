@@ -5,6 +5,7 @@
   import { onMount } from 'svelte'
   import Px from '../../lib/Px.svelte'
   import CardSourcesWin from './CardSourcesWin.svelte'
+  import KnowledgeDeck from './KnowledgeDeck.svelte'
   import { api } from '../../lib/api'
   import { act } from '../../lib/cardmenu'
   import { soonText } from '../../lib/commands'
@@ -86,6 +87,7 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
 <main class="ws ws-k" id="ws-know" role="tabpanel" aria-labelledby="tab-know" data-ws="know" hidden={ui.ws !== 'know'}>
+  <KnowledgeDeck />
   <section class="rwin k-src" aria-labelledby="ksrc-h">
     <div class="wbar"><span class="wdots" aria-hidden="true"><i></i><i></i></span><p class="wtitle" id="ksrc-h">Sources · <span id="ksrc-q">{ks.cat ? `collection ${ks.cat}` : ks.q ? `“${ks.q}”` : 'none yet'}</span></p><span class="wcode">SRC-21</span></div>
     <div class="wtools">

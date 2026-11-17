@@ -41,6 +41,17 @@ class PhoneSyncProgress(unittest.TestCase):
                     expect(page.locator('#m-status')).to_contain_text('Reading the Google Drive file list')
                     page.evaluate("""async()=>{
                       const {nativeSync}=await import('/src/mobile/sync/native.svelte.ts');
+                      nativeSync.driveStep={key:'shell.sync.listedIndex',done:2000};
+                    }""")
+                    expect(page.locator('#m-status')).to_contain_text('2000 files found so far')
+                    expect(page.locator('#m-status [role=progressbar][aria-valuenow]')).to_have_count(0)
+                    page.evaluate("""async()=>{
+                      const {nativeSync}=await import('/src/mobile/sync/native.svelte.ts');
+                      nativeSync.driveStep={key:'shell.sync.downloadingIndex'};
+                    }""")
+                    expect(page.locator('#m-status')).to_contain_text('Downloading the library index')
+                    page.evaluate("""async()=>{
+                      const {nativeSync}=await import('/src/mobile/sync/native.svelte.ts');
                       Object.assign(nativeSync,{progress:.2,driveStep:{key:'shell.sync.readingFiles',done:2,total:4}});
                     }""")
                     expect(bar).to_have_attribute('aria-valuenow', '50')
@@ -74,6 +85,16 @@ class PhoneSyncProgress(unittest.TestCase):
                     }""")
                     expect(lane).to_contain_text('Waiting')
                     expect(panel.locator('[role=progressbar]')).to_have_count(0)
+                    page.evaluate("""async()=>{
+                      const {phone}=await import('/src/mobile/state.svelte.ts');
+                      const {nativeSync}=await import('/src/mobile/sync/native.svelte.ts');
+                      const {vault}=await import('/src/mobile/vault/auto.svelte.ts');
+                      phone.refreshing=true;
+                      vault.busy=true;vault.queued=true;
+                      Object.assign(nativeSync,{state:'idle',finished:true});
+                    }""")
+                    expect(panel.locator('[role=progressbar]')).to_have_count(0)
+                    expect(panel).not_to_contain_text('Reading the Google Drive file list')
                     self.assertEqual(errors, [])
 
     def test_delayed_sync_explains_wait_and_retry_stays_available(self):
@@ -121,6 +142,19 @@ class PhoneSyncProgress(unittest.TestCase):
                     page.evaluate("""async()=>{const {nativeSync}=await import('/src/mobile/sync/native.svelte.ts');Object.assign(nativeSync,{state:'retry',retryable:true,nextAt:Date.now()+60000})}""")
                     retry = page.locator('.m-settings-chips button').first
                     expect(retry).to_be_enabled()
+                    for state in ('queued', 'retry'):
+                        expected = page.evaluate("""async state=>{
+                          const {phone,mirrorSource}=await import('/src/mobile/state.svelte.ts');
+                          const {nativeSync,nativeSyncText}=await import('/src/mobile/sync/native.svelte.ts');
+                          const {network}=await import('/src/mobile/network.svelte.ts');
+                          mirrorSource.pair.g='synthetic@example.test';network.licenseKind='';
+                          phone.refreshing=true;phone.reachable=false;phone.tried=false;phone.noLibrary=false;phone.signIn=false;
+                          Object.assign(nativeSync,{state,retryable:state==='retry'});
+                          return nativeSyncText();
+                        }""", state)
+                        expect(page.locator('.m-page-status:visible')).to_contain_text(expected)
+                        expect(page.locator('.m-page-status:visible small')).to_have_count(0)
+                        expect(page.locator('.m-lane:visible').first).to_contain_text(expected)
                     retry.click()
                     page.wait_for_function('window.__retried===2')
                     self.assertEqual(errors, [])

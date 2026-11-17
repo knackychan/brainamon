@@ -48,7 +48,7 @@ interface BrainamonPlugin {
   clipboardText(): Promise<{ text: string }>
   deviceName(): Promise<{ name: string }>
   siteState(): Promise<SiteReaderState>
-  siteOpen(o: { site: SiteId; known: string[]; full: boolean; complete: boolean; unsave: boolean }): Promise<SiteRunResult>
+  siteOpen(o: { site: SiteId; known: string[]; full: boolean; complete: boolean; unsave: boolean; labels?: string; motion?: boolean }): Promise<SiteRunResult>
   sitePending(o: { site: SiteId; offset: number; max: number }): Promise<SitePage>
   siteClear(o: { site: SiteId }): Promise<void>
   siteForget(o: { site: SiteId }): Promise<{ result: 'deleted' | 'cleared' }>
@@ -407,7 +407,9 @@ export async function siteState(): Promise<SiteReaderState | null> {
   try { return await withTimeout(B.siteState(), 5000, 'The site reader did not answer.') } catch { return null }
 }
 // resolves when the site window closes: no time limit, the user signs in, reads or stops
-export const siteOpen = (site: SiteId, known: string[], full: boolean, complete: boolean, unsave = false) => B.siteOpen({ site, known, full, complete, unsave })
+// `tray`: the words and the motion switch of the window's tray (site-tray.ts); without it the window uses its English words
+export const siteOpen = (site: SiteId, known: string[], full: boolean, complete: boolean, unsave = false, tray?: { labels: string; motion: boolean }) =>
+  B.siteOpen({ site, known, full, complete, unsave, ...(tray ? { labels: tray.labels, motion: tray.motion } : {}) })
 export const sitePending = (site: SiteId, offset: number, max: number) =>
   withTimeout(B.sitePending({ site, offset, max }), 15000, 'The site reader did not answer.')
 export const siteClear = (site: SiteId) => withTimeout(B.siteClear({ site }), 5000, 'The site reader did not answer.')

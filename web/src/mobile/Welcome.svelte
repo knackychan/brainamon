@@ -33,7 +33,7 @@
 </div>
 
 <style>
-  .m-ob { position: fixed; inset: 0; z-index: 60; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; padding: calc(12px + env(safe-area-inset-top, 0px)) 16px calc(20px + env(safe-area-inset-bottom, 0px)); background: var(--case); color: var(--case-ink); outline: none }
+  .m-ob { position: fixed; inset: 0; z-index: 60; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; padding: calc(12px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) calc(20px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px)); background: var(--case); color: var(--case-ink); outline: none }
   .m-ob-top { display: flex; align-items: center; gap: 8px }
   .m-ob-wm { display: inline-flex; font-size: 20px }
   .m-ob-mid { display: grid; place-items: center }

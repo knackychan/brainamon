@@ -3,7 +3,8 @@
 POST /api/ask answers with an SSE stream read by fetch (EventSource is GET-only). Events:
   start    {run}              the answer's id, for POST /api/ask/stop
   context  {line, ids}        the retrieval line ("Sent N items + notes · mode") and the sent ids
-  progress {line}             Deep-mode tool calls and notices
+  progress {line, tool?}      Deep-mode tool calls and notices; `tool` numbers a research call
+  tool     {phase, n, name}   one Deep research call: start {line, q, ids}, then done {ok, ids} (ask_core.deep_answer)
   chunk    {text}             a visible answer-text delta
   done     {text, cited, notes, sources, chat}
   stopped  {}                 the client pressed Stop (nothing saved)
@@ -526,6 +527,14 @@ def _propose_canvas(app, proposal):
             'offer it for after the user answers.')
 
 
+def _tool_event(put, e):
+    """One Deep research call (ask_core.deep_answer on_tool_event): its start line joins the progress trace
+    for the readers that only know progress; the event itself feeds the research steps (web/src/lib/research.ts)."""
+    if e['phase'] == 'start':
+        put('progress', {'line': e['line'], 'tool': e['n']})
+    put('tool', e)
+
+
 def _deep(app, rd, provider, model_id, history, question, embed_key, embed_base, put, stop, *,
           mode='deep', starting_turn=None, research_deadline=None):
     writer = app.state.writer
@@ -557,6 +566,7 @@ def _deep(app, rd, provider, model_id, history, question, embed_key, embed_base,
             item_index=setup['index'], aux_rows=setup['aux_rows'], aux_jobs=setup['jobs'],
             embed_key=embed_key, embed_base=embed_base,
             on_progress=lambda m: put('progress', {'line': m}), on_aux=save_aux, should_stop=stop.is_set,
+            on_tool_event=lambda e: _tool_event(put, e),
             propose=lambda file, instruction='': _propose_reformat(app, file, instruction),
             propose_category=lambda ids, category: _propose_category(app, ids, category),
             propose_categories=lambda groups: _propose_categories(app, groups),

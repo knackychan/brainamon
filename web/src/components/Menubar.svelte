@@ -4,6 +4,8 @@
   import { MENUS, MENU_NAMES, runCmd, type MenuEntry, type MenuKey } from '../lib/commands'
   import { closeMenu, menu, openMenu } from '../lib/menu.svelte'
   import { JOB_SHORT, live } from '../lib/events.svelte'
+  import { lib } from '../lib/library.svelte'
+  import Count from '../lib/motion/Count.svelte'
   import { setWS, toggleConsole, toggleTheme, ui, WS_LIST, WS_NAME, WS_SHORT } from '../lib/ui.svelte'
   import Px from '../lib/Px.svelte'
   import Wordmark from './Wordmark.svelte'
@@ -56,7 +58,8 @@
   $effect(() => { const t = setInterval(() => (clock = localTime()), 15000); return () => clearInterval(t) })
 
   const job = $derived(live.jobs.current)
-  const jobText = $derived(job ? `${job.state === 'paused' ? 'PAUSED ' : ''}${JOB_SHORT[job.kind] ?? job.kind.toUpperCase()} ${job.done + (job.skipped ?? 0) + job.err}/${job.total}` : 'idle')
+  const held = $derived(job ? null : live.finished)
+  const jobText = $derived(job ? `${job.state === 'paused' ? 'PAUSED ' : ''}${JOB_SHORT[job.kind] ?? job.kind.toUpperCase()} ${job.done + (job.skipped ?? 0) + job.err}/${job.total}` : held ? `${JOB_SHORT[held.kind] ?? held.kind.toUpperCase()} DONE` : 'idle')
   const fmt = (n: number) => n.toLocaleString('en-US')
 </script>
 
@@ -80,8 +83,8 @@
   <span class="msp"></span>
   <span class="rt">
     <button class="cvchip" type="button" id="cvchip" aria-haspopup="menu" aria-expanded="false" title="Active canvas: Add to canvas fills this one." onclick={() => runCmd('canvas-target')}><small>Canvas</small><b id="cvchip-n">{cv.doc?.name ?? 'none'}</b><em id="cvchip-c">{activeCount()}</em></button>
-    <button class="mstat hide-m" type="button" id="mb-job" title="Running job: click for progress" onclick={() => runCmd('progress')}><span class="lamp" class:off={!job}></span>JOB&nbsp;<b id="mb-w">{jobText}</b></button>
-    <span class="hide-m">LIB <b id="mb-l">{fmt(ui.libCount)}</b></span>
+    <button class="mstat hide-m" type="button" id="mb-job" title="Running job: click for progress" onclick={() => runCmd('progress')}><span class="lamp" class:off={!job && !held} class:g={!!held} class:mo-pulse={job?.state === 'running'}></span>JOB&nbsp;<b id="mb-w">{jobText}</b></button>
+    <span class="hide-m">LIB <Count as="b" id="mb-l" value={ui.libCount} {fmt} jump={lib.loaded ? 'loaded' : ui.libCount} /></span>
     <button class="mstat hide-m" type="button" id="mb-ck" title={`${ck.detail} Click for Settings > Imports & downloads.`} onclick={() => runCmd('settings-downloads')}><span class="lamp" class:g={ck.lamp === 'g'} class:off={ck.lamp === 'off'}></span>CK</button>
     <span id="mb-c" class="hide-s hide-m">{clock}</span>
     <button class="tkey sq" class:hot={ui.consoleHot} type="button" id="cons-key" aria-pressed={ui.consoleOpen} aria-controls="cons" aria-label="Console" title="Console (Ctrl+`)" onclick={() => toggleConsole()}><Px name="term" /></button>
